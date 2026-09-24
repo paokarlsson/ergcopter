@@ -61,10 +61,12 @@ function startBoardRotation() {
 
 // --- Datakälla ------------------------------------------------------------------
 
+const DEMO_SPM = 40;
+
 function createSource(kind) {
   if (kind === 'usb') return new UsbPm5Source();
   if (kind === 'ble') return new Pm5Source();
-  return new MockSource({ spm: cfg.mockSpm });
+  return new MockSource({ spm: DEMO_SPM }); // bara för ?demo, finns inte i gränssnittet
 }
 
 function attach(kind) {
@@ -82,10 +84,11 @@ function attach(kind) {
     if (line.startsWith('[error]')) console.error('[SkiErg]', line);
   });
   source.setTrace?.(ui.debugVisible);
-  ui.showMock(kind === 'mock', 0);
-  try {
-    localStorage.setItem(SOURCE_KEY, kind);
-  } catch {}
+  if (kind !== 'mock') {
+    try {
+      localStorage.setItem(SOURCE_KEY, kind);
+    } catch {}
+  }
   return source;
 }
 
@@ -123,24 +126,27 @@ async function runDemo() {
   const start = now();
   setInterval(() => {
     let t = now() - start;
+    let watts = 0;
     for (const [s, w] of DEMO_PROFILE) {
-      if (t < s) return setMockPower(w);
+      if (t < s) {
+        watts = w;
+        break;
+      }
       t -= s;
     }
-    setMockPower(0);
+    source.setPower(watts);
   }, 250);
 }
 
-// Återuppta senaste källan utan klick där det går (USB som redan är godkänd, Mock).
+// Återuppta senaste källan utan klick där det går (USB som redan är godkänd).
 if (new URLSearchParams(location.search).has('demo')) runDemo();
 else (async () => {
   let last = null;
   try {
     last = localStorage.getItem(SOURCE_KEY);
   } catch {}
-  if (last) ui.el.sourceSelect.value = last;
-  if (last === 'mock') connect('mock');
-  else if (last === 'usb' && UsbPm5Source.supported) {
+  if (last === 'usb' || last === 'ble') ui.el.sourceSelect.value = last;
+  if (last === 'usb' && UsbPm5Source.supported) {
     const s = attach('usb');
     if (!(await s.resume())) s.setStatus('idle');
   }
@@ -192,13 +198,6 @@ ui.el.setupForm.addEventListener('submit', (e) => {
 });
 document.getElementById('screen-finished').addEventListener('click', () => game.dismissResult());
 
-ui.el.mockPower.addEventListener('input', () => setMockPower(Number(ui.el.mockPower.value)));
-function setMockPower(watts) {
-  if (!(source instanceof MockSource)) return;
-  source.setPower(watts);
-  ui.setMockPower(source.power);
-}
-
 // Inställningar
 function openSettings() {
   ui.openSettings(cfg);
@@ -209,7 +208,6 @@ function applyConfig(next) {
   game.setConfig(cfg);
   preview.cfg = cfg;
   sound.setEnabled(cfg.sound);
-  if (source instanceof MockSource) source.spm = cfg.mockSpm;
   if (game.state === 'IDLE') showBoard(); // t.ex. sammanlagd lista på/av
 }
 document.getElementById('settings-form').addEventListener('submit', () => applyConfig(ui.readSettings(cfg)));
@@ -247,13 +245,6 @@ addEventListener('keydown', (e) => {
   if (key === 'd') {
     const on = ui.toggleDebug();
     source?.setTrace?.(on);
-    return;
-  }
-  if (key === 'ArrowUp' || key === 'ArrowDown') {
-    if (source instanceof MockSource) {
-      e.preventDefault();
-      setMockPower(source.power + (key === 'ArrowUp' ? 10 : -10));
-    }
     return;
   }
   if (game.state === 'FINISHED' && !['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return game.dismissResult();

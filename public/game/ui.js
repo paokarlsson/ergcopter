@@ -66,9 +66,6 @@ export class GameUI {
       reconnect: $('reconnect'),
       warning: $('warning'),
       warningText: $('warning-text'),
-      mockPanel: $('mock-panel'),
-      mockPower: $('mock-power'),
-      mockValue: $('mock-value'),
       settings: $('settings'),
       settingsFields: $('settings-fields'),
       settingsPreview: $('settings-preview'),
@@ -251,8 +248,8 @@ export class GameUI {
   /** Synliga instrumentpaneler i skärmkoordinater, så att scenen kan undvika dem. */
   hudRects() {
     const els = this.el.hud.hidden
-      ? [this.el.mockPanel]
-      : [document.querySelector('.hud-alt'), this.el.lift, this.el.vario, this.el.timer, this.el.mockPanel];
+      ? []
+      : [document.querySelector('.hud-alt'), this.el.lift, this.el.vario, this.el.timer];
     // getClientRects() är tom för dolda element (offsetParent duger inte: fixed ger alltid null)
     return els.filter((el) => el && el.getClientRects().length > 0).map((el) => el.getBoundingClientRect());
   }
@@ -319,16 +316,6 @@ export class GameUI {
   showWarning(text) {
     this.el.warningText.textContent = text;
     this.el.warning.hidden = false;
-  }
-
-  showMock(visible, watts = 0) {
-    this.el.mockPanel.hidden = !visible;
-    this.setMockPower(watts);
-  }
-
-  setMockPower(watts) {
-    this.el.mockPower.value = String(watts);
-    setText(this.el.mockValue, `${watts} W`);
   }
 
   // --- Debug ----------------------------------------------------------------------

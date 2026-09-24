@@ -59,3 +59,10 @@ test('namn;höjd;område – område valfritt, text tur och retur', () => {
   ]);
   assert.deepEqual(parseMilestones(formatMilestones(DEFAULT_MILESTONES)), DEFAULT_MILESTONES);
 });
+
+test('borttagna inställningar (t.ex. mockSpm) rensas bort', () => {
+  const storage = memoryStorage({ 'skierg.config.v1': JSON.stringify({ mockSpm: 55, G: 25 }) });
+  const cfg = loadConfig(storage);
+  assert.equal('mockSpm' in cfg, false);
+  assert.equal(cfg.G, 25);
+});

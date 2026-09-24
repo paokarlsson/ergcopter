@@ -31,9 +31,6 @@ export const DEFAULT_CONFIG = Object.freeze({
   showCombinedBoard: false, // sammanlagd topplista som extra flik
   sound: false,
   milestones: DEFAULT_MILESTONES, // se milestones.js
-
-  // Mock-källan
-  mockSpm: 40,
 });
 
 /** Standardvärden före tillägget – sparade värden som är exakt dessa byts mot de nya. */
@@ -85,7 +82,6 @@ export const CONFIG_SCHEMA = [
   { group: 'Visning', key: 'showRawWatts', label: 'Visa råa watt och P0 på skärmen', type: 'bool' },
   { group: 'Visning', key: 'sound', label: 'Rotorljud', type: 'bool' },
   { group: 'Visning', key: 'milestones', label: 'Milstolpar (namn;höjd;område per rad, området är valfritt)', type: 'milestones' },
-  { group: 'Mock', key: 'mockSpm', label: 'Mock: drag per minut', type: 'number', min: 10, max: 120, step: 1 },
 ];
 
 const STORAGE_KEY = 'skierg.config.v1';
@@ -128,9 +124,12 @@ export function resetConfig(storage = safeStorage()) {
   return sanitize({ ...DEFAULT_CONFIG });
 }
 
-/** Håller värden inom schemats gränser och milstolparna sorterade. */
+/**
+ * Håller värden inom schemats gränser och milstolparna sorterade. Nycklar som
+ * inte längre finns (t.ex. borttagna inställningar) rensas bort.
+ */
 export function sanitize(cfg) {
-  const out = { ...cfg };
+  const out = Object.fromEntries(Object.keys(DEFAULT_CONFIG).map((k) => [k, cfg[k] ?? DEFAULT_CONFIG[k]]));
   for (const f of CONFIG_SCHEMA) {
     if (f.type === 'number') {
       const v = Number(out[f.key]);

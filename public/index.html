@@ -61,7 +61,6 @@
             <select id="source-select" aria-label="Datakälla">
               <option value="usb">PM5 via USB</option>
               <option value="ble">PM5 via Bluetooth</option>
-              <option value="mock">Mock (utan erg)</option>
             </select>
             <button type="button" id="connect">Anslut</button>
           </div>
@@ -128,14 +127,6 @@
       <button id="warning-close" aria-label="Stäng">×</button>
     </div>
 
-    <!-- Mock-reglage -->
-    <div id="mock-panel" class="mock" hidden>
-      <label>Mock-effekt <output id="mock-value">0 W</output>
-        <input type="range" id="mock-power" min="0" max="600" step="5" value="0" />
-      </label>
-      <span class="muted">↑/↓ ±10 W</span>
-    </div>
-
     <!-- Inställningar (S) -->
     <dialog id="settings">
       <form method="dialog" id="settings-form">
@@ -168,7 +159,7 @@
           <button type="button" id="export-csv">Exportera CSV</button>
           <button type="button" id="board-clear" class="danger">Rensa topplistan</button>
         </div>
-        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · D debug · ↑/↓ mock-effekt · <a href="dashboard.html">Dashboard</a></p>
+        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · D debug · <a href="dashboard.html">Dashboard</a></p>
       </form>
     </dialog>
 

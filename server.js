@@ -1,10 +1,13 @@
 // Minimal statisk server utan beroenden: node server.js  (PORT=3000 som standard)
-const http = require('node:http');
-const fs = require('node:fs');
-const path = require('node:path');
+// ES-modul: package.json har "type": "module", och i Docker-imagen (utan
+// package.json) känner Node igen syntaxen själv.
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT) || 3000;
-const ROOT = path.join(__dirname, 'public');
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
