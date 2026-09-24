@@ -13,7 +13,7 @@ test('standardlistan är sorterad, har unika namn och täcker Jämtland till Eve
   assert.deepEqual(hs, [...hs].sort((a, b) => a - b));
   assert.equal(new Set(DEFAULT_MILESTONES.map((m) => m.name)).size, DEFAULT_MILESTONES.length);
   assert.ok(DEFAULT_MILESTONES.some((m) => m.name === 'Åreskutan' && m.h === 1420));
-  assert.ok(DEFAULT_MILESTONES.some((m) => m.name === 'Helags' && m.h === 1796));
+  assert.ok(DEFAULT_MILESTONES.some((m) => m.name === 'Helags' && m.h === 1797));
   assert.equal(DEFAULT_MILESTONES.at(-1).name, 'Mount Everest');
 });
 

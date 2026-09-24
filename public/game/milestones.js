@@ -2,9 +2,10 @@
 // Gallrade till ungefär 50–100 m mellanrum där de flesta pass slutar (800–2 500 m),
 // glesare högre upp. Barn når typiskt drygt 1 000 m, otränade vuxna 1 500–2 000 m.
 //
-// Källor (hämtade 2026-09-24):
+// Källor (hämtade och dubbelkollade mot Wikidata/Wikipedia 2026-09-24):
 //   Jämtland/Härjedalen: vandrafotaleva.nu (höjder mot Lantmäteriets data),
-//     sv.wikipedia.org/wiki/Lista_över_Sveriges_landskaps_högsta_punkter
+//     sv.wikipedia.org/wiki/Helagsfjället, sv.wikipedia.org/wiki/Storsylen,
+//     sv.wikipedia.org/wiki/Bunnerfjällen
 //   Sverige: varldenshaftigaste.se/topplistor/sveriges-12-hogsta-berg
 //   Norge: en.wikipedia.org/wiki/List_of_mountains_of_Norway_by_height
 //   Europa och världen: vedertagna höjder (en.wikipedia.org)
@@ -19,8 +20,9 @@ export const DEFAULT_MILESTONES = [
   { name: 'Åreskutan', h: 1420, area: 'Jämtland' },
   { name: 'Östra Bunnerstöten', h: 1502, area: 'Jämtland' },
   { name: 'Stora Härjångsstöten', h: 1626, area: 'Jämtland' },
-  { name: 'Storsylen', h: 1742, area: 'Jämtlands högsta punkt' },
-  { name: 'Helags', h: 1796, area: 'Härjedalens högsta' },
+  // Toppen ligger ~90 m in i Norge; Jämtlands högsta punkt på svenska sidan är 1 743 m.
+  { name: 'Storsylen', h: 1762, area: 'Sylarna, toppen i Norge' },
+  { name: 'Helags', h: 1797, area: 'Härjedalens högsta' },
 
   // Sverige och Norge
   { name: 'Gaustatoppen', h: 1883, area: 'Norge' },

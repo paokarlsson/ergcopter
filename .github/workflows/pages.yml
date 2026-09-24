@@ -1,0 +1,46 @@
+# Publicerar spelet (public/) till GitHub Pages när master uppdateras.
+# Testerna måste gå igenom först. Pages ger https, som WebHID och Web Bluetooth kräver.
+name: Deploy till GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# En deploy i taget; en pågående avbryts inte så att en halv publicering undviks.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Tester
+        run: node --test
+      - name: Strategisimulator
+        run: node tools/simulate.js
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
