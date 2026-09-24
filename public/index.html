@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Helikopterspelet</title>
+    <link rel="stylesheet" href="game.css" />
+    <script type="module" src="game/main.js"></script>
+  </head>
+  <body>
+    <canvas id="scene" aria-hidden="true"></canvas>
+
+    <!-- Instrument under flygning -->
+    <div id="hud" hidden>
+      <div class="hud-alt">
+        <output id="alt" class="alt-big">0 m</output>
+        <div class="alt-max">Max <output id="alt-max">0 m</output></div>
+      </div>
+      <div class="hud-side">
+        <div class="lift">
+          <div class="lift-label"><span>Lyft</span><output id="lift-pct">0 %</output></div>
+          <div class="lift-track" role="meter" aria-label="Lyft" aria-valuemin="0" aria-valuemax="200" id="lift-meter">
+            <div class="lift-fill" id="lift-fill"></div>
+            <div class="lift-mark"></div>
+          </div>
+          <div class="lift-hint" id="lift-hint">100 % = håller höjden</div>
+        </div>
+        <div class="vario"><output id="vario">· 0,0 m/s</output></div>
+        <div class="timer"><output id="timer">0:00</output></div>
+        <div class="raw" id="raw" hidden></div>
+      </div>
+      <div class="replay-badge" id="replay-badge" hidden></div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <!-- IDLE -->
+    <section id="screen-idle" class="screen" hidden>
+      <div class="card wide">
+        <h1>Helikopterspelet</h1>
+        <p class="lead">Hur högt kan du flyga på SkiErgen?</p>
+        <div class="board">
+          <div class="board-head">
+            <h2>Topplista</h2>
+            <div class="tabs" role="tablist" id="board-tabs" aria-label="Klass"></div>
+          </div>
+          <ol id="board-idle" class="board-list" role="tabpanel"></ol>
+          <p class="today" id="today-idle"></p>
+        </div>
+        <button class="primary big" id="start">Tryck Enter för att starta</button>
+      </div>
+    </section>
+
+    <!-- SETUP -->
+    <section id="screen-setup" class="screen" hidden>
+      <form class="card" id="setup-form" autocomplete="off">
+        <h2>Ny deltagare</h2>
+        <fieldset class="conn">
+          <legend>Erg</legend>
+          <div class="row">
+            <select id="source-select" aria-label="Datakälla">
+              <option value="usb">PM5 via USB</option>
+              <option value="ble">PM5 via Bluetooth</option>
+              <option value="mock">Mock (utan erg)</option>
+            </select>
+            <button type="button" id="connect">Anslut</button>
+          </div>
+          <p class="conn-status" id="conn-status" data-kind="idle">Inte ansluten</p>
+        </fieldset>
+        <label>Namn eller alias
+          <input id="name" name="name" maxlength="40" required />
+        </label>
+        <label>Vikt (kg, 15–200) – visas inte
+          <input id="mass" name="mass" type="password" inputmode="numeric" pattern="[0-9]*" required />
+        </label>
+        <fieldset class="klass">
+          <legend>Klass</legend>
+          <div class="klass-options" id="klass-options"></div>
+        </fieldset>
+        <p class="reminder" id="child-reminder" hidden></p>
+        <p class="error" id="setup-error" role="alert"></p>
+        <div class="row end">
+          <button type="button" id="setup-cancel">Avbryt</button>
+          <button type="submit" class="primary">Klar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- READY -->
+    <section id="screen-ready" class="screen" hidden>
+      <div class="card center">
+        <p class="who" id="ready-name"></p>
+        <h1>Dra för att lyfta!</h1>
+        <p class="muted">eller tryck Enter · Esc avbryter</p>
+      </div>
+    </section>
+
+    <!-- COUNTDOWN -->
+    <section id="screen-countdown" class="screen bare" hidden>
+      <output class="countdown" id="countdown">3</output>
+    </section>
+
+    <!-- FINISHED -->
+    <section id="screen-finished" class="screen" hidden>
+      <div class="card center">
+        <p class="who" id="fin-name"></p>
+        <p class="muted" id="fin-reason"></p>
+        <p class="result"><output id="fin-height">0 m</output></p>
+        <p class="rank" id="fin-rank"></p>
+        <p class="milestone" id="fin-milestone"></p>
+        <p class="muted">Tryck valfri tangent</p>
+      </div>
+    </section>
+
+    <!-- Frånkopplad -->
+    <section id="screen-disconnected" class="screen alert" hidden>
+      <div class="card center">
+        <h2>Anslutningen till ergen bröts</h2>
+        <p id="disc-message" class="muted">Försöker återansluta…</p>
+        <p class="muted">Passet är pausat.</p>
+        <button id="reconnect" class="primary" hidden>Anslut igen</button>
+      </div>
+    </section>
+
+    <!-- Varning (t.ex. inte en SkiErg) -->
+    <div id="warning" class="warning" hidden>
+      <span id="warning-text"></span>
+      <button id="warning-close" aria-label="Stäng">×</button>
+    </div>
+
+    <!-- Mock-reglage -->
+    <div id="mock-panel" class="mock" hidden>
+      <label>Mock-effekt <output id="mock-value">0 W</output>
+        <input type="range" id="mock-power" min="0" max="600" step="5" value="0" />
+      </label>
+      <span class="muted">↑/↓ ±10 W</span>
+    </div>
+
+    <!-- Inställningar (S) -->
+    <dialog id="settings">
+      <form method="dialog" id="settings-form">
+        <header class="row">
+          <h2>Inställningar</h2>
+          <button type="button" id="settings-close" aria-label="Stäng">×</button>
+        </header>
+        <div class="settings-body">
+          <div id="settings-fields"></div>
+          <aside class="settings-side">
+            <h3>Förhandsvisning med aktuella värden</h3>
+            <div id="settings-preview" class="preview" aria-live="polite"></div>
+            <details class="calibration" open>
+              <summary>Kalibrering på plats</summary>
+              <ol id="calibration-steps"></ol>
+              <table class="preview-table" id="calibration-actions">
+                <thead><tr><th>Observation</th><th>Åtgärd</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </details>
+          </aside>
+        </div>
+        <div class="row">
+          <button type="button" id="settings-reset">Återställ standard</button>
+          <button type="submit" class="primary" id="settings-save">Spara</button>
+        </div>
+        <h3>Topplista</h3>
+        <div class="row">
+          <button type="button" id="export-json">Exportera JSON</button>
+          <button type="button" id="export-csv">Exportera CSV</button>
+          <button type="button" id="board-clear" class="danger">Rensa topplistan</button>
+        </div>
+        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · D debug · ↑/↓ mock-effekt · <a href="dashboard.html">Dashboard</a></p>
+      </form>
+    </dialog>
+
+    <!-- Debug (D) -->
+    <pre id="debug" class="debug" hidden></pre>
+  </body>
+</html>

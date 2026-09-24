@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SkiErg – dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="dashboard.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>SkiErg</h1>
+      <a href="./" class="nav-link">← Helikopterspelet</a>
+      <span id="status" data-kind="idle">Inte ansluten</span>
+      <button id="connect">Anslut PM5 (USB)</button>
+      <button id="disconnect" hidden>Koppla från</button>
+    </header>
+
+    <p id="unsupported" hidden>
+      Den här webbläsaren saknar WebHID. Öppna sidan i Chrome eller Edge på Windows.
+    </p>
+
+    <main>
+      <section class="metric big"><h2>Tid</h2><output id="time">0:00.0</output></section>
+      <section class="metric big"><h2>Tempo /500 m</h2><output id="pace">–</output></section>
+      <section class="metric big"><h2>Watt</h2><output id="power">–</output></section>
+      <section class="metric"><h2>Meter</h2><output id="distance">0</output></section>
+      <section class="metric"><h2>Tag/min</h2><output id="cadence">–</output></section>
+      <section class="metric"><h2>Kalorier</h2><output id="calories">0</output></section>
+      <section class="metric"><h2>Puls</h2><output id="hr">–</output></section>
+      <section class="metric"><h2>Drag</h2><output id="stroke">–</output></section>
+      <section class="metric"><h2>Pass</h2><output id="workout">–</output></section>
+      <section class="metric"><h2>Dragfaktor</h2><output id="drag">–</output></section>
+    </main>
+
+    <section class="panel force">
+      <div class="panel-head">
+        <h2>Kraftkurva</h2>
+        <ul class="legend">
+          <li><span class="key series"></span>Aktuellt drag</li>
+          <li><span class="key history"></span>Tidigare drag (8)</li>
+        </ul>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="force-chart" role="img" aria-label="Kraft under draget, i newton per sampel"></canvas>
+        <div id="force-tip" class="tooltip" hidden></div>
+      </div>
+      <table class="strokes">
+        <thead>
+          <tr>
+            <th>Drag</th>
+            <th>Topp (N)</th>
+            <th>Snitt (N)</th>
+            <th>Toppens läge</th>
+            <th>Dragtid (s)</th>
+          </tr>
+        </thead>
+        <tbody id="strokes"></tbody>
+      </table>
+    </section>
+
+    <footer>
+      <label><input type="checkbox" id="log-toggle" /> Visa rå CSAFE-trafik</label>
+      <pre id="log" hidden></pre>
+    </footer>
+  </body>
+</html>

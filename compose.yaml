@@ -1,0 +1,11 @@
+services:
+  skierg:
+    build: .
+    init: true # så att Ctrl+C / docker compose stop avslutar direkt
+    ports:
+      # Bara localhost; WSL vidarebefordrar den till Windows-webbläsaren.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Ändringar i public/ syns direkt vid omladdning, utan ombygge.
+      - ./public:/app/public:ro
+    restart: unless-stopped
