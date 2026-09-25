@@ -9,7 +9,7 @@ import { GameRenderer, fmtM } from './render.js';
 import { GameUI, download } from './ui.js';
 import { Replay, landingTrajectory } from './replay.js';
 import { RotorSound } from './audio.js';
-import { now } from './sources/source.js';
+import { now, isIOS } from './sources/source.js';
 import { MockSource } from './sources/mock.js';
 import { UsbPm5Source } from './sources/usb.js';
 import { Pm5Source } from './sources/ble.js';
@@ -147,6 +147,7 @@ else (async () => {
     last = localStorage.getItem(SOURCE_KEY);
   } catch {}
   if (last === 'usb' || last === 'ble') ui.el.sourceSelect.value = last;
+  else if (isIOS()) ui.el.sourceSelect.value = 'ble'; // USB fungerar aldrig på iOS
   if (last === 'usb' && UsbPm5Source.supported) {
     const s = attach('usb');
     if (!(await s.resume())) s.setStatus('idle');
