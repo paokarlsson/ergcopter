@@ -13,6 +13,7 @@ import { now } from './sources/source.js';
 import { MockSource } from './sources/mock.js';
 import { UsbPm5Source } from './sources/usb.js';
 import { Pm5Source } from './sources/ble.js';
+import { mountScreenControls, toggleFullscreen } from '../screen.js';
 
 const SOURCE_KEY = 'skierg.source';
 
@@ -242,6 +243,7 @@ addEventListener('keydown', (e) => {
 
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (key === 's') return openSettings();
+  if (key === 'f') return toggleFullscreen();
   if (key === 'd') {
     const on = ui.toggleDebug();
     source?.setTrace?.(on);
@@ -322,6 +324,7 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+mountScreenControls(document.getElementById('screen-controls'));
 ui.showState(game.state);
 showBoard(0);
 startBoardRotation();

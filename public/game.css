@@ -636,6 +636,38 @@ select {
   padding: 2px 10px;
 }
 
+/* Helskärm och håll skärmen på: övre högra hörnet, ovanför höjdskalan */
+.screen-controls {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 25;
+}
+.screen-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 0.35);
+  color: #fff;
+  opacity: 0.75;
+}
+.screen-btn:hover,
+.screen-btn:focus-visible {
+  opacity: 1;
+}
+.screen-btn[data-state='on'] {
+  background: var(--accent);
+  opacity: 1;
+}
+.screen-btn[data-state='pending'] {
+  outline: 2px dashed var(--accent);
+}
 
 /* --- Inställningar och debug ------------------------------------------------ */
 
