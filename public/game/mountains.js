@@ -2,6 +2,13 @@
 // på toppen. Allt i skärmkoordinater; formen är deterministisk per topp.
 
 const RIDGE_STEPS = 16;
+const MAX_SLOPE = 0.95; // största kMin + kSpan nedan
+const MAX_JAG_PX = 20;
+
+/** Hur långt en silhuett högst når ut åt sidorna från toppen, givet höjden i px ned till `bottom`. */
+export function mountainReach(depth) {
+  return Math.max(0, depth) * MAX_SLOPE + MAX_JAG_PX;
+}
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -76,7 +83,8 @@ export function signLayout(ctx, m, sx, sy, passed, scale, formatHeight) {
   ctx.font = nameFont;
   const w1 = ctx.measureText(m.name).width;
   ctx.font = heightFont;
-  const w2 = ctx.measureText(heightText).width;
+  // Bredden räknas alltid med bocken, så att skylten inte ändrar storlek när toppen passeras.
+  const w2 = ctx.measureText(`✓ ${formatHeight(m.h)} m`).width;
   const pad = 14 * scale;
   const w = Math.max(w1, w2) + pad * 2;
   const h = 60 * scale;

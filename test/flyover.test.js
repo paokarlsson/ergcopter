@@ -37,7 +37,7 @@ function fly(climb, seconds, h0 = 700) {
     r.advance(dt, rotor, h);
     r.draw({ h, vy, rotor, hMax: h, todayBest: null, milestones: DEFAULT_MILESTONES, avoid: [], flying: true });
     for (const item of r.mountains) {
-      const sx = W + 200 - (r.distance - item.startAt);
+      const sx = W + item.entry - (r.distance - item.startAt);
       if (!passed.has(item.m.name) && sx <= HELI_X) passed.set(item.m.name, h - item.m.h);
     }
   }

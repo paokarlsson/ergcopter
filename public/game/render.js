@@ -4,7 +4,7 @@
 // Siffror och mätare ligger i DOM (ui.js).
 
 import { drawHelicopter, drawCloud, drawTree } from './heli-draw.js';
-import { drawMountain, drawSign, signLayout, rand } from './mountains.js';
+import { drawMountain, drawSign, signLayout, mountainReach, rand } from './mountains.js';
 
 const VIEW_SPAN_M = 300; // höjd som syns i huvudvyn
 const GROUND_MARGIN_PX = 56; // marken så här högt upp när man står på den
@@ -15,18 +15,24 @@ const GAUGE_COLUMN_PX = 230; // sidoskalan med namn tar så här mycket av höge
 const HELI_X = 0.4; // helikopterns plats i sidled, andel av bredden
 const FLY_SPEED_PX = 20; // px/s per rad/s rotorvarv
 const MIN_FLY_SPEED_PX = 260; // i luften rullar landskapet minst så här fort
-const MOUNTAIN_ENTRY_PX = 200; // bergen startar så här långt utanför högerkanten
+const MOUNTAIN_ENTRY_PX = 200; // bergen startar minst så här långt utanför högerkanten (och alltid helt utanför bild)
+const MOUNTAIN_BOTTOM_PX = 60; // silhuetten går så här långt under nederkanten
 const MOUNTAIN_GAP_PX = 260; // minsta avstånd mellan två berg som kommer tätt
 const MOUNTAIN_SKIP_BELOW_M = 60; // topp som redan ligger så här långt under oss skickas inte
+const MOUNTAIN_WITHDRAW_M = 20; // ett väntande berg dras tillbaka först när vi hamnar så här långt under toppen
+const SIGN_FADE_S = 0.25; // skyltar tonar in och ut i stället för att blinka
+const SIGN_EDGE_FADE_PX = 90; // och tonar mot kanterna av området där de får synas
 
 export class GameRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.distance = 0; // px landskapet rullat
-    this.mountains = []; // { m, startAt } – startAt: distance när berget passerar högerkanten
+    this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
     this.speed = 0; // px/s just nu
+    this.signAlpha = new Map(); // namn → 0–1, skyltarnas intoning
+    this.lastDraw = null;
     this.colors = null;
     const refresh = () => (this.colors = readColors(canvas));
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refresh);
@@ -43,6 +49,7 @@ export class GameRenderer {
   clearMountains() {
     this.mountains = [];
     this.sent.clear();
+    this.signAlpha.clear();
   }
 
   /**
@@ -50,30 +57,38 @@ export class GameRenderer {
    * toppens höjd (förutsagt från stighastigheten). Då flyger man över toppen
    * precis när milstolpen passeras. Berg som kommer tätt köar med mellanrum.
    */
-  #sendMountains(v, W) {
+  #sendMountains(v, W, H, y) {
     if (!v.flying || this.speed <= 0) return;
     const hx = W * HELI_X;
     const climb = Math.max(0, v.vy);
+    const reach = (m) => mountainReach(H + MOUNTAIN_BOTTOM_PX - y(m.h));
 
-    // Berg som ännu inte syns dras tillbaka om vi inte längre hinner upp till toppen
-    // (t.ex. slutat stiga) – de skickas in igen när vi närmar oss höjden.
+    // Berg som ännu inte syns alls dras tillbaka om vi inte längre hinner upp till
+    // toppen (t.ex. slutat stiga) – de skickas in igen när vi närmar oss höjden.
+    // Ett berg vars sluttning redan syns får alltid vara kvar, annars blinkar det.
     this.mountains = this.mountains.filter((item) => {
-      const sx = W + MOUNTAIN_ENTRY_PX - (this.distance - item.startAt);
-      const reachable = v.h + climb * ((sx - hx) / this.speed) >= item.m.h - 5;
-      if (sx <= W || reachable) return true;
+      const sx = W + item.entry - (this.distance - item.startAt);
+      if (sx - reach(item.m) <= W) return true;
+      const reachable = v.h + climb * ((sx - hx) / this.speed) >= item.m.h - MOUNTAIN_WITHDRAW_M;
+      if (reachable) return true;
       this.sent.delete(item.m.name);
       return false;
     });
 
-    const travelS = (W + MOUNTAIN_ENTRY_PX - hx) / this.speed;
-    const predicted = v.h + climb * travelS;
     for (const m of v.milestones) {
-      if (this.sent.has(m.name) || m.h > predicted) continue;
+      if (this.sent.has(m.name)) continue;
+      // Startar helt utanför bild, så att sluttningen glider in i stället för att dyka upp,
+      // och minst MOUNTAIN_GAP_PX bakom föregående berg i kön.
+      const last = this.mountains.at(-1);
+      const queued = last ? W + last.entry - (this.distance - last.startAt) + MOUNTAIN_GAP_PX : -Infinity;
+      const startSx = Math.max(W + Math.max(MOUNTAIN_ENTRY_PX, reach(m)), queued);
+      if (m.h > v.h + climb * ((startSx - hx) / this.speed)) continue;
       this.sent.add(m.name);
       if (m.h < v.h - MOUNTAIN_SKIP_BELOW_M) continue; // redan långt under – skulle passera utanför bild
-      const last = this.mountains.at(-1);
-      const startAt = Math.max(this.distance, last ? last.startAt + MOUNTAIN_GAP_PX : -Infinity);
-      this.mountains.push({ m, startAt });
+      // Är berget redan sent ute (t.ex. vid en snabb stigning) startar det närmare, som förr.
+      const due = climb > 0 ? hx + ((m.h - v.h) / climb) * this.speed : Infinity;
+      const sx = Math.max(W + MOUNTAIN_ENTRY_PX, queued, Math.min(startSx, due));
+      this.mountains.push({ m, startAt: this.distance, entry: sx - W });
     }
   }
 
@@ -107,10 +122,13 @@ export class GameRenderer {
     const cam = Math.max(v.h, camGround); // höjden som hamnar på heliY0
     const y = (alt) => heliY0 - (alt - cam) * pxPerM;
     const scale = Math.max(0.6, Math.min(1.6, W / 1100));
+    const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+    const dt = this.lastDraw === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastDraw));
+    this.lastDraw = t;
 
-    this.#sendMountains(v, W);
+    this.#sendMountains(v, W, H, y);
     this.#sky(ctx, W, H, cam);
-    this.#mountains(ctx, W, H, v, y, scale, cam);
+    this.#mountains(ctx, W, H, v, y, dt, cam);
     this.#clouds(ctx, W, H, cam, pxPerM, y);
     if (y(0) < H + 80) this.#ground(ctx, W, H, y(0));
     this.#altitudeTicks(ctx, W, H, cam, y, c);
@@ -165,11 +183,12 @@ export class GameRenderer {
    * så att en lägre topps sluttning aldrig täcker en högre topp med skylt.
    * Skylten blir grön när helikoptern flugit över toppen.
    */
-  #mountains(ctx, W, H, v, y, scale, cam) {
+  #mountains(ctx, W, H, v, y, dt, cam) {
     const c = this.colors;
     const usable = W - GAUGE_COLUMN_PX; // inga skyltar under sidoskalan
+    const bottom = H + MOUNTAIN_BOTTOM_PX;
     const hazeTarget = mix(c.skyTopLow, c.skyTopHigh, Math.min(1, cam / SKY_TOP_M));
-    const sxOf = (item) => W + MOUNTAIN_ENTRY_PX - (this.distance - item.startAt);
+    const sxOf = (item) => W + item.entry - (this.distance - item.startAt);
     this.mountains = this.mountains.filter((item) => sxOf(item) > -W); // långt ut till vänster
     const visible = this.mountains
       .map((item) => ({
@@ -180,24 +199,42 @@ export class GameRenderer {
         // att den läses som ett berg längre bort som man flyger förbi framför.
         haze: 0.05 + 0.2 * rand(item.m.h * 1.3 + 7) + 0.4 * Math.min(1, Math.max(0, (item.m.h - v.h) / 120)),
       }))
-      .filter(({ sx, sy }) => sy < H + 20 && sx < W + MOUNTAIN_ENTRY_PX * 2)
+      .filter(({ sx, sy }) => sy < H + 20 && sx - mountainReach(bottom - sy) < W)
       .sort((a, b) => b.m.h - a.m.h);
     for (const { m, sx, sy, haze } of visible) {
       const colors = { ...c, rock: mix(c.mountainRock, hazeTarget, haze), snow: mix(c.mountainSnow, hazeTarget, haze * 0.5) };
-      drawMountain(ctx, m, sx, sy, H + 60, colors);
+      drawMountain(ctx, m, sx, sy, bottom, colors);
     }
-    // Skyltarna sist; de som skulle hamna under instrumenten eller en annan skylt hoppas över.
+
+    // Skyltarna sist; de som skulle hamna under instrumenten eller en annan skylt
+    // tonas ut. Skyltar som redan syns placeras först, så att två skyltar som
+    // nuddar varandra inte turas om att synas bild för bild.
     const taken = [...(v.avoid ?? [])];
     // Skyltarna skalar med skärmbredden: ~1,6 på 1 600 px, större på en storskärm.
     const s = Math.max(0.9, Math.min(2.4, W / 1000));
-    for (const { m, sx, sy } of visible) {
-      if (sx < 70 || sx > usable - 60) continue;
+    const shown = (m) => (this.signAlpha.get(m.name) ?? 0) > 0;
+    const order = [...visible].sort((a, b) => shown(b.m) - shown(a.m));
+    const signs = [];
+    for (const { m, sx, sy } of order) {
+      const edge = clamp01((usable - 60 - sx) / SIGN_EDGE_FADE_PX) * clamp01((sx - 70) / SIGN_EDGE_FADE_PX);
       const passed = sx <= W * HELI_X;
       const L = signLayout(ctx, m, sx, sy, passed, s, fmtM);
-      if (taken.some((r) => overlaps(L, r))) continue;
-      taken.push({ x: L.x - 6, y: L.y - 6, w: L.w + 12, h: L.h + 12 });
+      const fits = edge > 0 && !taken.some((r) => overlaps(L, r));
+      if (fits) taken.push({ x: L.x - 6, y: L.y - 6, w: L.w + 12, h: L.h + 12 });
+      const step = dt / SIGN_FADE_S;
+      const alpha = clamp01((this.signAlpha.get(m.name) ?? 0) + (fits ? step : -step));
+      this.signAlpha.set(m.name, alpha);
+      if (alpha * edge > 0) signs.push({ m, sx, sy, passed, L, a: alpha * edge });
+    }
+    for (const name of this.signAlpha.keys()) {
+      if (!visible.some((item) => item.m.name === name)) this.signAlpha.delete(name);
+    }
+    // Rita i höjdordning som bergen, så att överlappande skyltar under intoning ligger stilla.
+    for (const { m, sx, sy, passed, L, a } of signs.sort((p, q) => q.m.h - p.m.h)) {
+      ctx.globalAlpha = a;
       drawSign(ctx, m, sx, sy, passed, s, c, L);
     }
+    ctx.globalAlpha = 1;
   }
 
   #clouds(ctx, W, H, cam, pxPerM, y) {
@@ -418,4 +455,5 @@ function roundRect(ctx, x, y, w, h, r) {
 
 
 const mod = (a, n) => ((a % n) + n) % n;
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
 export const fmtM = (m) => Math.round(m).toLocaleString('sv-SE');
