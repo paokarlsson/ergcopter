@@ -6,7 +6,7 @@
 
 import { buildFrame, parseFrame, le, CMD, PM } from '../../csafe.js';
 import { PM5 } from '../../pm5.js';
-import { SourceBase, now } from './source.js';
+import { SourceBase, now, unsupportedMessage } from './source.js';
 
 export const LBF_TO_N = 4.44822;
 const DRIVE = 2;
@@ -51,7 +51,7 @@ export class UsbPm5Source extends SourceBase {
 
   /** Visar enhetsväljaren om ingen PM redan är godkänd. Anropas från ett klick. */
   async start() {
-    if (!UsbPm5Source.supported) throw new Error('WebHID saknas – använd Chrome eller Edge');
+    if (!UsbPm5Source.supported) throw new Error(unsupportedMessage('WebHID'));
     navigator.hid.addEventListener('disconnect', this.onHidDisconnect);
     navigator.hid.addEventListener('connect', this.onHidConnect);
     this.setStatus('connecting');

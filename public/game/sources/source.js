@@ -55,3 +55,19 @@ export class SourceBase {
 
 export const hex = (bytes) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+
+/** iPhone/iPad. iPadOS utger sig för att vara en Mac, så pekskärmen avgör. */
+export function isIOS(nav = globalThis.navigator) {
+  if (!nav) return false;
+  return /iPhone|iPad|iPod/.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+}
+
+/** Felmeddelande när webbläsaren saknar Web Bluetooth/WebHID. */
+export function unsupportedMessage(api, nav = globalThis.navigator) {
+  if (isIOS(nav)) {
+    return api === 'Web Bluetooth'
+      ? 'iPhone/iPad stöder inte Web Bluetooth i Safari eller Chrome – öppna sidan i appen Bluefy (gratis i App Store)'
+      : 'USB fungerar inte på iPhone/iPad – välj Bluetooth och öppna sidan i appen Bluefy (gratis i App Store)';
+  }
+  return `${api} saknas – använd Chrome eller Edge`;
+}

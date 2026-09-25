@@ -1,7 +1,7 @@
 // Pm5Source: Concept2 PM5 via Web Bluetooth (spec §3).
 // Referens: Concept2 PM Bluetooth Smart Communications Interface Definition rev 1.30.
 
-import { SourceBase, now, hex } from './source.js';
+import { SourceBase, now, hex, unsupportedMessage } from './source.js';
 
 const uuid = (short) => `ce06${short}-43e5-11e4-916c-0800200c9a66`;
 const SERVICE = {
@@ -40,7 +40,7 @@ export class Pm5Source extends SourceBase {
 
   /** Visar Chromes enhetsväljare. Måste anropas från ett klick. */
   async start() {
-    if (!Pm5Source.supported) throw new Error('Web Bluetooth saknas – använd Chrome eller Edge');
+    if (!Pm5Source.supported) throw new Error(unsupportedMessage('Web Bluetooth'));
     this.setStatus('connecting');
     this.device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE.discovery] }],
