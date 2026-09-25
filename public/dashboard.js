@@ -2,6 +2,7 @@
 import { le, CMD, PM } from './csafe.js';
 import { StrokeTracker, ForceChart, strokeStats } from './forcecurve.js';
 import { UsbPm5Source } from './game/sources/usb.js';
+import { mountScreenControls } from './screen.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -13,6 +14,8 @@ const ui = {
   logToggle: $('log-toggle'),
   strokes: $('strokes'),
 };
+
+mountScreenControls($('screen-controls'));
 
 const tracker = new StrokeTracker({ keep: 8 });
 const chart = new ForceChart($('force-chart'), $('force-tip'));

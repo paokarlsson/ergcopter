@@ -111,6 +111,31 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
+/* Helskärm och håll skärmen på, längst till höger i sidhuvudet */
+.screen-controls {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.screen-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.screen-btn[data-state='on'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.screen-btn[data-state='pending'] {
+  border: 2px dashed var(--accent);
+}
+
 #unsupported {
   padding: 12px 16px;
   border: 1px solid var(--error);
