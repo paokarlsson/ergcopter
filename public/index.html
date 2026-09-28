@@ -30,6 +30,13 @@
         <div class="raw" id="raw" hidden></div>
       </div>
       <div class="replay-badge" id="replay-badge" hidden></div>
+      <!-- Övningens instruktion (plan.md §3) -->
+      <div class="drill" id="drill" hidden>
+        <div class="drill-head"><span id="drill-name"></span><span id="drill-step"></span></div>
+        <div class="drill-text" id="drill-text"></div>
+        <div class="drill-bar" id="drill-bar" hidden><div class="drill-bar-fill" id="drill-bar-fill"></div></div>
+        <div class="drill-sink" id="drill-sink" hidden></div>
+      </div>
     </div>
 
     <div id="toast" class="toast" hidden></div>
@@ -88,10 +95,25 @@
       </form>
     </section>
 
+    <!-- MENU: övningar eller fri flygning -->
+    <section id="screen-menu" class="screen" hidden>
+      <div class="card wide">
+        <p class="who" id="menu-name"></p>
+        <h2 id="menu-title">Aspirant · Dagens övningar</h2>
+        <p class="muted small">Övningarna flygs med skolhelikoptern från verkstan.</p>
+        <p class="lead" id="menu-lead"></p>
+        <ol class="menu-list" id="menu-list"></ol>
+        <div class="row end">
+          <button type="button" id="menu-cancel">Avstå<span class="keys"> (Esc)</span></button>
+        </div>
+      </div>
+    </section>
+
     <!-- READY -->
     <section id="screen-ready" class="screen" hidden>
       <div class="card center" id="ready-card">
         <p class="who" id="ready-name"></p>
+        <p class="ready-goal" id="ready-goal" hidden></p>
         <h1>Dra för att lyfta!</h1>
         <p class="muted keys">eller tryck Enter · Esc avbryter</p>
         <p class="muted touch">eller tryck här för att starta</p>

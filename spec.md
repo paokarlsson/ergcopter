@@ -157,7 +157,9 @@ Effektkurvan är en uppskattning. Parametrarna ska trimmas efter tester med rikt
 
 ## 7. Spelflöde
 
-Tillstånd: `IDLE → SETUP → READY → COUNTDOWN → FLYING → FINISHED → IDLE`
+Tillstånd: `IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE`
+
+I MENU väljer deltagaren fri flygning (det som beskrivs här) eller en övning (se `plan.md` §3). Efter en övning går FINISHED tillbaka till MENU.
 
 - **IDLE**: vänteskärm med topplista och "Tryck för att starta".
 - **SETUP**: operatören matar in namn eller alias, vikt och eventuell klass.

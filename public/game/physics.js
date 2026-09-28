@@ -25,6 +25,7 @@ export class Flight {
     this.tHMax = 0;
     this.hasFlown = false; // har varit i luften under passet
     this.power = 0; // senaste P_smooth
+    this.touchdown = null; // senaste sättningen: { t, speed } (m/s, positiv nedåt)
   }
 
   /** Effekt som krävs för att hålla höjden h. */
@@ -41,17 +42,24 @@ export class Flight {
     return this.h <= 0;
   }
 
-  /** Ett tidssteg (dt) med effekten P_smooth. Explicit Euler. */
+  /**
+   * Ett tidssteg (dt) med effekten P_smooth. Explicit Euler.
+   * Valfritt `cfg.ceiling` (m, 0 = av): helikopterns tak, där den inte stiger mer.
+   */
   step(power) {
-    const { G, dt, maxSinkRate } = this.cfg;
+    const { G, dt, maxSinkRate, ceiling = 0 } = this.cfg;
     this.power = power;
     let v = (G * (power - this.requiredPower())) / this.P0;
     if (maxSinkRate > 0) v = Math.max(v, -maxSinkRate);
     if (this.h <= 0 && v < 0) v = 0; // markvillkor
+    if (ceiling > 0 && this.h >= ceiling && v > 0) v = 0; // taket
 
+    const wasAirborne = this.h > 0;
     this.v = v;
     this.h = Math.max(0, this.h + v * dt);
+    if (ceiling > 0 && v > 0) this.h = Math.min(this.h, ceiling);
     this.t += dt;
+    if (wasAirborne && this.h <= 0) this.touchdown = { t: this.t, speed: -v };
     if (this.h > 0) this.hasFlown = true;
     if (this.h > this.hMax) {
       this.hMax = this.h;

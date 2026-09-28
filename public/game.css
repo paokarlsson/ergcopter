@@ -45,6 +45,15 @@
   --sign-text: #3b2a18;
   --sign-post: #5a3d22;
   --sign-check: #1a7f37;
+  /* Övningarnas hjälplinjer – ljusa mot himlen, med mörk platta bakom text */
+  --guide: #3ee08f;
+  --guide-band: rgb(62 224 143 / 0.16);
+  --guide-fill: rgb(62 224 143 / 0.32);
+  --guide-label-bg: rgb(10 20 30 / 0.72);
+  --guide-label-text: #ffffff;
+  --workshop-wall: #b7503a;
+  --workshop-roof: #3b3f47;
+  --workshop-door: #e3dfd6;
   color-scheme: light;
 }
 
@@ -580,6 +589,140 @@ select {
   font-weight: 600;
 }
 
+/* Övningens instruktion: under höjden, så att marken och landningsplatsen syns */
+.drill {
+  position: absolute;
+  left: 110px;
+  top: calc(40px + clamp(3.5rem, 9vw, 7rem) + clamp(1.1rem, 2.4vw, 1.8rem) * 1.4);
+  width: min(480px, calc(100vw - 660px));
+  min-width: 320px;
+  padding: 14px 18px;
+  background: rgb(0 0 0 / 0.5);
+  border-radius: 14px;
+  text-shadow: none;
+}
+.drill-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.drill-text {
+  margin-top: 4px;
+  font-size: clamp(1.2rem, 2.2vw, 1.7rem);
+  font-weight: 800;
+  line-height: 1.2;
+}
+.drill-bar {
+  height: 12px;
+  margin-top: 10px;
+  background: rgb(255 255 255 / 0.25);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.drill-bar-fill {
+  width: 0;
+  height: 100%;
+  background: var(--guide);
+}
+.drill-sink {
+  margin-top: 8px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.drill-sink[data-ok='true'] {
+  color: var(--guide);
+}
+.drill-sink[data-ok='false'] {
+  color: #ff8a80;
+}
+
+/* --- Menyn: övningar ------------------------------------------------------ */
+
+.menu-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.menu-item {
+  display: grid;
+  grid-template-columns: 2.2em 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 8px 14px;
+  background: var(--panel-solid);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  outline: none;
+}
+.menu-key {
+  display: grid;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 8px;
+  background: var(--border);
+  font-weight: 700;
+}
+.menu-name {
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+.menu-goal {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.menu-done {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  color: var(--good);
+  font-weight: 700;
+}
+.menu-item.suggested {
+  border-color: var(--good);
+  box-shadow: inset 0 0 0 2px var(--good);
+}
+.menu-pull {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--good);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.menu-item.free {
+  margin-top: 8px;
+}
+.ready-goal {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+.result output[data-status] {
+  font-size: clamp(2.4rem, 7vw, 4.2rem);
+}
+.result output[data-status='passed'] {
+  color: var(--good);
+}
+.result output[data-status='failed'] {
+  color: var(--bad);
+}
+
 .toast {
   position: fixed;
   left: 50%;
@@ -767,6 +910,13 @@ dialog h3 {
 @media (max-width: 700px) {
   .hud-alt {
     left: 16px;
+  }
+  .drill {
+    left: 16px;
+    right: 16px;
+    top: 140px;
+    width: auto;
+    min-width: 0;
   }
   .hud-side {
     right: 16px;

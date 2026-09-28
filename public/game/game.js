@@ -1,11 +1,24 @@
-// Spelflödet (spec §7): IDLE → SETUP → READY → COUNTDOWN → FLYING → FINISHED → IDLE.
+// Spelflödet (spec §7, plan.md §8):
+//   IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE
+// I MENU väljer deltagaren en övning eller fri flygning (så högt som möjligt).
+// Efter en övning går FINISHED tillbaka till MENU, så att man kan fortsätta öva.
+// Den som står på ergen behöver inte röra skärmen: ett drag i MENU startar det
+// föreslagna valet, och ett drag efter en övnings resultat går tillbaka till MENU.
 // Ren logik utan DOM. Tiden kommer utifrån via tick(t) i sekunder.
 
 import { Flight } from './physics.js';
 import { StrokeSmoother } from './signal.js';
 import { MIN_MASS, MAX_MASS, CLASSES } from './config.js';
+import { ExerciseRun } from './exercise.js';
+import { getHelicopter, helicopterConfig } from './helicopters.js';
 
-export const STATES = ['IDLE', 'SETUP', 'READY', 'COUNTDOWN', 'FLYING', 'FINISHED'];
+export const STATES = ['IDLE', 'SETUP', 'MENU', 'READY', 'COUNTDOWN', 'FLYING', 'FINISHED'];
+
+/** Så länge efter att menyn eller ett övningsresultat visats räknas inga drag, så att man hinner läsa. */
+export const STROKE_GRACE_S = 3;
+
+/** Helikoptern som övningarna flygs med. */
+export const EXERCISE_HELICOPTER = 'school';
 const MAX_TICK_S = 2; // längre glapp (t.ex. datorn sov) räknas inte som speltid
 
 export class Game {
@@ -13,6 +26,11 @@ export class Game {
     this.cfg = cfg;
     this.state = 'IDLE';
     this.player = null; // { name, mass, klass }
+    this.exercise = null; // vald övning, null = fri flygning
+    this.helicopter = null; // helikoptertyp, null = standard
+    this.run = null; // ExerciseRun under en övning
+    this.suggested = null; // förslaget i menyn som ett drag startar, null = fri flygning
+    this.menuFor = 0; // s i MENU
     this.flight = null;
     this.smoother = new StrokeSmoother(cfg);
     this.paused = false;
@@ -35,6 +53,7 @@ export class Game {
   #set(state) {
     const from = this.state;
     this.state = state;
+    if (state === 'MENU') this.menuFor = 0;
     this.#emit('state', { from, to: state });
   }
 
@@ -62,8 +81,23 @@ export class Game {
     if (!Number.isInteger(kg) || kg < MIN_MASS || kg > MAX_MASS) return `Vikten ska vara ett heltal ${MIN_MASS}–${MAX_MASS} kg`;
     if (!CLASSES.some((c) => c.name === klass)) return 'Välj klass';
     this.player = { name: trimmed.slice(0, 40), mass: kg, klass };
-    this.#set('READY');
+    this.#set('MENU');
     return null;
+  }
+
+  /** Förslaget i menyn (t.ex. nästa ej godkända övning), null = fri flygning. */
+  suggest(exercise) {
+    this.suggested = exercise ?? null;
+  }
+
+  /**
+   * Val i menyn: en övning (från EXERCISES) eller null för fri flygning.
+   */
+  choose(exercise) {
+    if (this.state !== 'MENU') return;
+    this.exercise = exercise ?? null;
+    this.helicopter = exercise ? getHelicopter(EXERCISE_HELICOPTER) : null;
+    this.#set('READY');
   }
 
   /** Enter i READY, eller första draget. */
@@ -74,15 +108,16 @@ export class Game {
     if (this.countdownLeft <= 0) this.#takeOff();
   }
 
-  /** Esc: avbryter passet (sparas) eller backar till IDLE. */
+  /** Esc: avbryter passet (sparas), backar från READY till menyn eller till IDLE. */
   escape() {
     if (this.state === 'FLYING') this.#finish('operator');
+    else if (this.state === 'READY' || this.state === 'COUNTDOWN') this.#toMenu();
     else if (this.state !== 'IDLE') this.#toIdle();
   }
 
   /** Tangent eller klick i resultatvisningen. */
   dismissResult() {
-    if (this.state === 'FINISHED') this.#toIdle();
+    if (this.state === 'FINISHED') this.#afterResult();
   }
 
   setPaused(paused) {
@@ -93,6 +128,18 @@ export class Game {
 
   /** @param {{t:number, power:number, strokeCount:number}} stroke */
   stroke(stroke) {
+    if (this.state === 'MENU') {
+      // Dra för att starta förslaget, direkt till nedräkningen.
+      if (this.menuFor < STROKE_GRACE_S) return;
+      this.choose(this.suggested);
+      this.startCountdown();
+      return;
+    }
+    if (this.state === 'FINISHED') {
+      // Efter en övning: dra för att gå tillbaka till menyn.
+      if (this.exercise && this.finishedFor >= STROKE_GRACE_S) this.#toMenu();
+      return;
+    }
     if (this.state === 'READY') {
       this.startCountdown();
       return;
@@ -123,9 +170,11 @@ export class Game {
         this.acc -= this.cfg.dt;
         this.#physicsStep();
       }
+    } else if (this.state === 'MENU') {
+      this.menuFor += dt;
     } else if (this.state === 'FINISHED') {
       this.finishedFor += dt;
-      if (this.finishedFor >= this.cfg.resultDisplayS) this.#toIdle();
+      if (this.finishedFor >= this.cfg.resultDisplayS) this.#afterResult();
     }
   }
 
@@ -134,8 +183,14 @@ export class Game {
     return this.state === 'FLYING' ? this.acc / this.cfg.dt : 0;
   }
 
+  /** Konfigurationen för passet, med helikopterns parametrar ovanpå. */
+  get flightConfig() {
+    return this.helicopter ? helicopterConfig(this.cfg, this.helicopter) : this.cfg;
+  }
+
   #takeOff() {
-    this.flight = new Flight(this.cfg, this.player.mass);
+    this.flight = new Flight(this.flightConfig, this.player.mass);
+    this.run = this.exercise ? new ExerciseRun(this.exercise) : null;
     this.smoother = new StrokeSmoother(this.cfg);
     this.acc = 0;
     this.lastStrokeT = 0;
@@ -150,6 +205,12 @@ export class Game {
     const power = this.smoother.value(f.t);
     this.prevH = f.h;
     f.step(power);
+
+    if (this.run) {
+      this.run.update(f, power);
+      if (this.run.status !== 'running') this.#finish(this.run.status);
+      return; // övningen avgör när passet är slut
+    }
 
     for (const m of this.cfg.milestones) {
       if (!this.passed.has(m.name) && f.h >= m.h) {
@@ -183,15 +244,39 @@ export class Game {
       reason,
       milestone: this.highestMilestone(f.hMax),
       endH: f.h,
+      exercise: this.run
+        ? {
+            id: this.exercise.id,
+            name: this.exercise.name,
+            status: this.run.status, // 'running' om passet avbröts
+            failReason: this.run.failReason,
+            results: this.run.results,
+          }
+        : null,
     };
     this.finishedFor = 0;
     this.#set('FINISHED');
     this.#emit('finish', this.result);
   }
 
+  #afterResult() {
+    if (this.exercise) this.#toMenu();
+    else this.#toIdle();
+  }
+
+  #toMenu() {
+    this.flight = null;
+    this.run = null;
+    this.result = null;
+    this.#set('MENU');
+  }
+
   #toIdle() {
     this.player = null;
+    this.exercise = null;
+    this.helicopter = null;
     this.flight = null;
+    this.run = null;
     this.result = null;
     this.#set('IDLE');
   }

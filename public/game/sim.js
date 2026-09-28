@@ -3,6 +3,7 @@
 import { Flight } from './physics.js';
 import { StrokeSmoother } from './signal.js';
 import { ScriptedSource } from './sources/scripted.js';
+import { ExerciseRun } from './exercise.js';
 
 /**
  * Kör profilen genom ScriptedSource → StrokeSmoother → Flight tills
@@ -30,4 +31,31 @@ export function runPhysicsOnly(cfg, bodyMass, profile) {
   const flight = new Flight(cfg, bodyMass);
   while (flight.t < source.duration - 1e-9) flight.step(source.powerAt(flight.t + cfg.dt / 2));
   return { hMax: flight.hMax, tHMax: flight.tHMax, flight };
+}
+
+/**
+ * Kör en övning headless med en pilot som bestämmer varje drag.
+ * `pilot(state)` anropas var 60/spm sekund och returnerar effekten för draget,
+ * eller null för att inte dra alls.
+ * @param {object} cfg  konfiguration, t.ex. från helicopterConfig
+ * @returns {ExerciseRun}
+ */
+export function runExercise(cfg, bodyMass, exercise, pilot, { spm = 40 } = {}) {
+  const run = new ExerciseRun(exercise);
+  const smoother = new StrokeSmoother(cfg);
+  const flight = new Flight(cfg, bodyMass);
+  const interval = 60 / spm;
+  let nextStroke = interval;
+  let count = 0;
+  while (run.status === 'running') {
+    if (flight.t >= nextStroke - 1e-9) {
+      nextStroke += interval;
+      const power = pilot({ flight, run, step: run.step });
+      if (power !== null) smoother.push({ t: flight.t, power, strokeCount: ++count });
+    }
+    const power = smoother.value(flight.t);
+    flight.step(power);
+    run.update(flight, power);
+  }
+  return run;
 }
