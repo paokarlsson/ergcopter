@@ -168,7 +168,7 @@ select {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 60px 16px 16px; /* överst plats för skärmknapparna */
   background: rgb(0 0 0 / 0.25);
 }
 .screen.bare {
@@ -182,7 +182,8 @@ select {
 
 .card {
   width: min(520px, 100%);
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 76px);
+  max-height: calc(100dvh - 76px); /* krymper när tangentbordet visas på mobilen */
   overflow: auto;
   padding: 28px 32px;
   background: var(--panel);
@@ -667,6 +668,10 @@ select {
 }
 .screen-btn[data-state='pending'] {
   outline: 2px dashed var(--accent);
+}
+/* Vikten döljs utan lösenordsfält, så att webbläsaren inte vill spara den som lösenord. */
+.secret {
+  -webkit-text-security: disc;
 }
 
 /* --- Inställningar och debug ------------------------------------------------ */
