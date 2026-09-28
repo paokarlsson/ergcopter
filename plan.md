@@ -10,6 +10,17 @@ Status: idéstadium. Inget är byggt än.
 - Fysiken är densamma som i dag (spec §5). Allt nytt byggs ovanpå: övningar, uppdrag, helikoptertyper och karriär.
 - Det gamla läget, "så högt som möjligt" med topplista, finns kvar som ett eget läge tills vidare.
 
+### Designprincip: inte bara styrka och kondition
+
+Det gamla läget mäter i princip bara styrka och kondition. Fjällräddaren ska belöna fler saker:
+
+- **Precision:** hålla ett höjdband och landa mjukt. Alla mål uttrycks relativt den egna lyfteffekten `P0`, så en lätt eller otränad spelare har samma chans. Att hovra på 300 m kräver bara 11 % över `P0`.
+- **Timing och läsförmåga:** sluta och börja veva i rätt ögonblick, parera en luftgrop, utnyttja uppvind.
+- **Hushållning:** fördela krafterna över ett långt uppdrag i stället för att ta ut sig tidigt.
+- **Beslut:** ta uppdraget eller inte, vänta ut vädret, välja flyghöjd, vända i tid.
+
+Uppdrag bedöms därför på precision, säkerhet och beslut, inte på hur högt man kommer. Låga höjder är det som jämnar ut skillnaden i styrka, så de flesta moment bör ligga där.
+
 ### Varför fysiken passar
 
 - **Patienten blir last.** Lyfteffekten räknas från vikten, `P0 = P_ref · (m / m_ref)^k`. En patient som plockas upp ökar `m` mitt i passet, och man måste dra hårdare för att komma hem. Det krävs ingen ny fysik, bara en ny vikt.
@@ -23,7 +34,7 @@ Status: idéstadium. Inget är byggt än.
 | Aspirant | Skolhelikopter | Bara övningar från verkstan, inga skarpa räddningar |
 | Junior fjällräddare | Lätt räddningshelikopter | Enklare uppdrag: Suljätten, Mullfjället, Drommen, en patient |
 | Fjällräddare | Lätt räddningshelikopter | Åreskutan, tidsgräns (patienten blir nedkyld) |
-| Senior fjällräddare | Tung räddningshelikopter | Helags, två personer, byig vind |
+| Senior fjällräddare | Tung räddningshelikopter | Helags, två personer, byig vind och luftgropar |
 | Räddningsledare | Tung räddningshelikopter | Kebnekaise, mörker, flera hämtningar i samma pass |
 
 - Man går upp i grad genom erfarenhet från godkända övningar och uppdrag.
@@ -111,7 +122,7 @@ Svårigheten kan skruvas med:
 - patientens vikt
 - vinschtid
 - tidsgräns
-- vind, som brus på effektbehovet
+- väder (se avsnitt 6)
 - antal personer
 
 ### Valet att ta uppdraget
@@ -121,13 +132,48 @@ Svårigheten kan skruvas med:
 - Om man tar ett för svårt uppdrag och misslyckas kan man förlora lite "förtroende". Det gör valet till en riktig avvägning.
 - Spelet kan märka larmen med "Rekommenderat" utifrån spelarens tidigare resultat. Då behövs ingen gissning om hur stark personen är.
 
-## 6. Namn, vikt och ålder
+## 6. Väder
+
+Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker att bara dra hårt.
+
+### Fenomen
+
+| Fenomen | Vad som händer i spelet | Vad det kräver av spelaren |
+|---|---|---|
+| **Luftgropar** | Lyftet försvinner i 1–3 s och helikoptern sjunker plötsligt | Reaktion. Med förvarning (mörkt moln, skakning) blir det att förutse |
+| **Byig vind** | Effektbehovet svajar hela tiden | Aktiv styrning för att hålla sig i hovringsbandet |
+| **Motvind** | Utflygningen tar längre tid | Hushållning med krafterna |
+| **Uppvind** vid fjällsidor | Gratis lyft en stund | Att läsa terrängen och utnyttja den |
+| **Moln och dålig sikt** | Målhöjden syns inte, bara instrumenten | Instrumentflygning: lita på höjdmätaren |
+| **Isbildning** | Helikoptern blir sakta tyngre | Att inse när man ska vända |
+
+### Hur det byggs
+
+- Vädret blir en faktor på effektbehovet: `P_req(h, t) = P0 · (1 + h / H_air) · (1 + w(t))`.
+  - Byar och luftgropar gör `w(t)` positivt, alltså tyngre.
+  - Uppvind gör `w(t)` negativt, alltså lättare.
+- `w(t)` räknas från ett frö, så samma väder kan spelas upp igen och testas headless.
+- Motvind påverkar inte fysiken. Den förlänger en **transportfas**: man ska hålla marschhöjd i X sekunder för att "komma fram", och motvind gör X längre.
+- Isbildning är en vikt som ökar under passet, på samma sätt som patienten.
+
+### Beslut som vädret ger
+
+- **Väderprognos i larmet:** "Suljätten, 845 m. Byig vind, risk för luftgropar." Man väljer att ta uppdraget, avstå eller vänta på ett bättre väderfönster.
+- **Flyghöjd under transporten:** lågt kräver mindre effekt men har mer turbulens nära terrängen. Högt är lugnare men kostar mer.
+- **Att vända är ett godkänt beslut.** Den som avbryter i tid när vädret blir för dåligt får poäng för säkerhet, inte ett misslyckande.
+
+### Väder i karriären
+
+- Aspiranten övar i lugnt väder. Senare övningar kan ha lätt vind.
+- Svårare grader får tuffare väder, men prognosen säger alltid vad som väntar.
+
+## 7. Namn, vikt och ålder
 
 - **Namnet** blir spelarprofilen. Grad, erfarenhet och godkända övningar sparas lokalt (localStorage), så den som kommer tillbaka fortsätter sin karriär.
 - **Vikten** används som i dag och sparas inte i profilen (spec §6).
 - **Åldern** kan styra vilka uppdrag som erbjuds. Barn kan få en egen, snällare karriärstege, ungefär som klasserna fungerar i dag. Åldern sparas inte, bara klassen.
 
-## 7. Byggordning
+## 8. Byggordning
 
 1. **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken.
 2. **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms och egen grafik.
@@ -136,11 +182,12 @@ Svårigheten kan skruvas med:
 5. **Profiler och grader** som sparas på namnet.
 6. **Examensflygning** och den lätta räddningshelikoptern.
 7. **Skarpa uppdrag** med larmskärm (Ja/Nej), vinsch och patient som last.
-8. **Svårare grader:** tung helikopter, vind, tidsgräns, flera patienter.
+8. **Väder:** vädermotor med frö, byar, luftgropar, uppvind, motvind och prognos i larmet.
+9. **Svårare grader:** tung helikopter, tidsgräns, flera patienter, moln och isbildning.
 
 Första bygget omfattar steg 1–4 med övningarna 1–4.
 
-## 8. Öppna frågor
+## 9. Öppna frågor
 
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
 - **Tröghet:** Helikoptern har ingen tröghet: så fort effekten ändras ändras farten direkt. Det gör att ett fall aldrig känns som att fart byggs upp. Tröghet påverkar balansen i hela spelet, så den väntar. Det kan bli ett senare steg om fallet känns platt.
@@ -148,3 +195,5 @@ Första bygget omfattar steg 1–4 med övningarna 1–4.
 - **Användning:** Ska spelet fortfarande köras på event, med många olika spelare, eller mer av samma person över tid? Det avgör hur viktig karriären med sparade profiler är.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?
 - **Namn på helikoptrarna.**
+- **Förvarning om luftgropar:** ska de alltid synas i förväg, eller bara hos högre grader?
+- **Poäng:** hur vägs precision, säkerhet, tid och beslut ihop till ett resultat?
