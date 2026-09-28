@@ -5,6 +5,7 @@
   "description": "Helikopterspel som drivs av en Concept2 SkiErg. Inga beroenden.",
   "scripts": {
     "test": "node --test",
-    "simulate": "node tools/simulate.js"
+    "simulate": "node tools/simulate.js",
+    "exercises": "node tools/exercises.js"
   }
 }

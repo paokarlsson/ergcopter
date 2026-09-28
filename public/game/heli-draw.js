@@ -1,11 +1,16 @@
 // Ritfunktioner för helikoptern och landskapet. Koordinater kring helikopterns
 // mitt, nosen åt höger, skala 1 ≈ 250 px rotordiameter.
 
-export function drawHelicopter(ctx, rotor, c) {
+/**
+ * @param {object} [livery]  helikopterns utseende (helicopters.js): { body, trim, label }.
+ *                           Utan livery används temats färger.
+ */
+export function drawHelicopter(ctx, rotor, c, livery = null) {
   const blur = rotor.blur;
+  const body = livery?.body ?? c.body;
 
   // Stjärtbom och fena
-  ctx.fillStyle = c.body;
+  ctx.fillStyle = body;
   ctx.beginPath();
   ctx.moveTo(-34, -8);
   ctx.lineTo(-112, -4);
@@ -52,10 +57,17 @@ export function drawHelicopter(ctx, rotor, c) {
   ctx.stroke();
 
   // Kropp och ruta
-  ctx.fillStyle = c.body;
+  ctx.fillStyle = body;
   ctx.beginPath();
   ctx.ellipse(0, 0, 46, 22, 0, 0, Math.PI * 2);
   ctx.fill();
+  if (livery?.label) {
+    ctx.fillStyle = livery.trim;
+    ctx.font = '800 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(livery.label, -14, 6);
+  }
   ctx.fillStyle = c.glass;
   ctx.beginPath();
   ctx.ellipse(22, -4, 22, 15, 0, -Math.PI / 2, Math.PI / 2 - 0.3);

@@ -2,7 +2,7 @@
 
 En utbyggnad av helikopterspelet (se `spec.md`). Man börjar som aspirant i fjällräddningen, övar moment med en skolhelikopter och får med tiden skarpa räddningsuppdrag. Man väljer alltid själv om man tar ett uppdrag eller en övning.
 
-Status: idéstadium. Inget är byggt än.
+Status: övningsmotorn och skolhelikoptern är byggda och testade headless (se §8). De är ännu inte kopplade till spelet.
 
 ## 1. Grundidé
 
@@ -58,7 +58,7 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 
 - Sjunkhastigheten beror direkt på hur mycket effekten ligger under behovet: `dh/dt = G · (P − P_req) / P0`. Med 0 W faller man i över 20 m/s.
 - För att sätta ner under 2 m/s måste man ligga inom ungefär 9 % under sin lyfteffekt. Det kräver precision snarare än kraft.
-- **Nytt:** en regel för vad som räknas som hård landning, alltså en gräns för sjunkhastigheten när helikoptern når marken. Den finns inte i dag.
+- **Byggt:** fysiken registrerar sjunkhastigheten när helikoptern sätter ner (`flight.touchdown`). Landningssteget underkänner en landning över gränsen.
 
 ### 3.2 Fritt fall
 
@@ -66,9 +66,13 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 - Effekten ligger kvar i 3 s efter sista draget (`strokeTimeoutS`) och tonas sedan ned under 1 s (`fadeOutS`). Man måste alltså sluta veva innan man vill börja falla.
 - När man börjar igen syns effekten först när draget är klart. Då faller man ytterligare 30–40 m.
 - Momentet blir alltså att sluta i tid och börja igen i tid, inte bara att reagera.
+- **Byggt:** fallet börjar när effekten har tonats ned till 0. Det räknas bara om man släpper från minst `from − tol`. Helikoptern räknas som uppfångad när man vevar igen och den sjunker långsammare än 1 m/s. Då bedöms den lägsta höjden. Fångar man för tidigt eller för sent får man återkoppling och gör om: stig igen och släpp på nytt. Slår man i marken är övningen underkänd.
 - I skolhelikoptern (med fallbroms) är fallet lugnare, ungefär 50 s för 500 m. Förslag: övningen görs först i skolhelikoptern, där det är lätt att fånga upp den. Den görs sedan om som junior utan broms, där det är på riktigt. Alternativet är att instruktören slår av bromsen för övningen.
 
 ### 3.3 Ändringar som övningarna kräver
+
+Kvar att göra när övningarna kopplas till spelet:
+
 
 - Passet avslutas i dag efter `idleEndS` (10 s) utan drag, så fritt fall skulle avbryta spelet. Den regeln stängs av under övningarna.
 - På samma sätt behöver `groundEndS` ses över, så att en landning mitt i en övning inte avslutar passet i förtid.
@@ -90,10 +94,10 @@ Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska 
 
 1. **Skolhelikopter** (aspirant)
    - Den förlåtande egenskapen är en fallbroms på cirka 10 m/s, så en miss straffas mildare och det blir lättare att landa mjukt.
-   - Luften tunnas ut snabbare än i dag. Den klarar övningshöjderna men inte de höga topparna.
+   - Ett tak på 1 500 m, där den inte stiger mer. Den klarar övningshöjderna men inte de höga topparna. Taket valdes i stället för att luften tunnas ut snabbare, eftersom det senare hade gjort övningarna på 1 000 m tyngre och gynnat styrka.
    - Den har ingen vinsch och ingen plats för patient. Det förklarar varför aspiranten bara övar.
    - Den är gul med texten SKOLA (`heli-draw.js`).
-   - Ljudet får ljusare ton och snabbare rotor (`helicopter-sound.js`).
+   - Ljudet får ljusare ton och snabbare rotor (`helicopter-sound.js`). Inte byggt än.
 2. **Lätt räddningshelikopter** (junior och fjällräddare)
    - Vinsch och en patient. Ingen fallbroms längre, fysiken som i dag.
    - Räcker till fjällen i Jämtland och Härjedalen.
@@ -175,8 +179,8 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 
 ## 8. Byggordning
 
-1. **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken.
-2. **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms och egen grafik.
+1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
+2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms (10 m/s), tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
 3. **Menyskärm efter inmatningen:** "Aspirant [namn]: Dagens övningar" med godkända övningar bockade. Man väljer övning eller avstår.
 4. **Hjälplinjer på skärmen:** hovringsband, fallmål och ett landningsmål med sjunkhastighetsmätare.
 5. **Profiler och grader** som sparas på namnet.

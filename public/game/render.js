@@ -150,7 +150,7 @@ export class GameRenderer {
     // Nosen ned i framåtflykt (positiv vinkel = medurs), lite upp när den stiger fort.
     ctx.rotate(0.08 * v.rotor.blur * airborne - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)));
     ctx.scale(scale, scale);
-    drawHelicopter(ctx, v.rotor, c);
+    drawHelicopter(ctx, v.rotor, c, v.livery);
     ctx.restore();
 
     this.#gauge(ctx, W, H, v, c);
