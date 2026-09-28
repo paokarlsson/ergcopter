@@ -50,7 +50,7 @@
           <ol id="board-idle" class="board-list" role="tabpanel"></ol>
           <p class="today" id="today-idle"></p>
         </div>
-        <button class="primary big" id="start">Tryck Enter för att starta</button>
+        <button class="primary big" id="start"><span class="keys">Tryck Enter för att starta</span><span class="touch">Tryck här för att starta</span></button>
       </div>
     </section>
 
@@ -73,7 +73,7 @@
           <input id="name" name="name" maxlength="40" required />
         </label>
         <label>Vikt (kg, 15–200) – visas inte
-          <input id="mass" name="mass" type="password" inputmode="numeric" pattern="[0-9]*" required />
+          <input id="mass" name="mass" type="text" class="secret" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required />
         </label>
         <fieldset class="klass">
           <legend>Klass</legend>
@@ -90,10 +90,12 @@
 
     <!-- READY -->
     <section id="screen-ready" class="screen" hidden>
-      <div class="card center">
+      <div class="card center" id="ready-card">
         <p class="who" id="ready-name"></p>
         <h1>Dra för att lyfta!</h1>
-        <p class="muted">eller tryck Enter · Esc avbryter</p>
+        <p class="muted keys">eller tryck Enter · Esc avbryter</p>
+        <p class="muted touch">eller tryck här för att starta</p>
+        <button type="button" class="touch" id="ready-cancel">Avbryt</button>
       </div>
     </section>
 
@@ -110,7 +112,7 @@
         <p class="result"><output id="fin-height">0 m</output></p>
         <p class="rank" id="fin-rank"></p>
         <p class="milestone" id="fin-milestone"></p>
-        <p class="muted">Tryck valfri tangent</p>
+        <p class="muted"><span class="keys">Tryck valfri tangent</span><span class="touch">Tryck på skärmen</span></p>
       </div>
     </section>
 

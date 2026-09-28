@@ -9,7 +9,7 @@ import { GameRenderer, fmtM } from './render.js';
 import { GameUI, download } from './ui.js';
 import { Replay, landingTrajectory } from './replay.js';
 import { RotorSound } from './audio.js';
-import { now, isIOS } from './sources/source.js';
+import { now } from './sources/source.js';
 import { MockSource } from './sources/mock.js';
 import { UsbPm5Source } from './sources/usb.js';
 import { Pm5Source } from './sources/ble.js';
@@ -146,8 +146,8 @@ else (async () => {
   try {
     last = localStorage.getItem(SOURCE_KEY);
   } catch {}
-  if (last === 'usb' || last === 'ble') ui.el.sourceSelect.value = last;
-  else if (isIOS()) ui.el.sourceSelect.value = 'ble'; // USB fungerar aldrig på iOS
+  if (last === 'ble' || (last === 'usb' && UsbPm5Source.supported)) ui.el.sourceSelect.value = last;
+  else if (!UsbPm5Source.supported) ui.el.sourceSelect.value = 'ble'; // t.ex. Android och iOS saknar WebHID
   if (last === 'usb' && UsbPm5Source.supported) {
     const s = attach('usb');
     if (!(await s.resume())) s.setStatus('idle');
@@ -199,6 +199,12 @@ ui.el.setupForm.addEventListener('submit', (e) => {
   ui.setupError(game.submitSetup(data));
 });
 document.getElementById('screen-finished').addEventListener('click', () => game.dismissResult());
+// Pekskärm: tryck på kortet i READY i stället för Enter, Avbryt i stället för Esc.
+document.getElementById('ready-card').addEventListener('click', () => game.startCountdown());
+document.getElementById('ready-cancel').addEventListener('click', (e) => {
+  e.stopPropagation();
+  game.escape();
+});
 
 // Inställningar
 function openSettings() {
