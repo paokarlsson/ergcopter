@@ -4,12 +4,14 @@
 import { CONFIG_SCHEMA, CLASSES, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from './config.js';
 import { preview, CALIBRATION_STEPS, CALIBRATION_ACTIONS, PERSON_SECONDS, BALANCE_MASS } from './calibration.js';
 import { fmtM } from './render.js';
+import { describeResults } from './exercise.js';
 
 const $ = (id) => document.getElementById(id);
 
 const SCREEN_FOR_STATE = {
   IDLE: 'screen-idle',
   SETUP: 'screen-setup',
+  MENU: 'screen-menu',
   READY: 'screen-ready',
   COUNTDOWN: 'screen-countdown',
   FLYING: null,
@@ -55,6 +57,16 @@ export class GameUI {
       klassOptions: $('klass-options'),
       childReminder: $('child-reminder'),
       readyName: $('ready-name'),
+      readyGoal: $('ready-goal'),
+      menuName: $('menu-name'),
+      menuList: $('menu-list'),
+      drill: $('drill'),
+      drillName: $('drill-name'),
+      drillStep: $('drill-step'),
+      drillText: $('drill-text'),
+      drillBar: $('drill-bar'),
+      drillBarFill: $('drill-bar-fill'),
+      drillSink: $('drill-sink'),
       countdown: $('countdown'),
       finName: $('fin-name'),
       finReason: $('fin-reason'),
@@ -188,8 +200,61 @@ export class GameUI {
     });
   }
 
-  showReady(name) {
+  /** @param {object|null} exercise  vald övning, null = fri flygning */
+  showReady(name, exercise = null) {
     this.el.readyName.textContent = name;
+    this.el.readyGoal.hidden = !exercise;
+    if (exercise) this.el.readyGoal.textContent = `${exercise.name}: ${exercise.goal}`;
+  }
+
+  /**
+   * Menyn efter inmatningen: övningarna (med bock för godkända) och fri flygning.
+   * Siffertangenterna väljer: 1–N övningarna, N+1 fri flygning.
+   * @param {(exercise: object|null) => void} onChoose
+   */
+  renderMenu(name, exercises, passed, onChoose) {
+    this.el.menuName.textContent = name;
+    const item = (key, title, goal, done, onClick, extraClass = '') => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `menu-item ${extraClass}`.trim();
+      const k = Object.assign(document.createElement('span'), { className: 'menu-key', textContent: key });
+      const n = Object.assign(document.createElement('span'), { className: 'menu-name', textContent: title });
+      const g = Object.assign(document.createElement('span'), { className: 'menu-goal', textContent: goal });
+      b.append(k, n);
+      if (done) b.append(Object.assign(document.createElement('span'), { className: 'menu-done', textContent: '✓ Godkänd' }));
+      b.append(g);
+      b.addEventListener('click', onClick);
+      li.append(b);
+      return li;
+    };
+    this.el.menuList.replaceChildren(
+      ...exercises.map((ex, i) => item(String(i + 1), ex.name, ex.goal, passed.has(ex.id), () => onChoose(ex))),
+      item(String(exercises.length + 1), 'Fri flygning', 'Så högt du kan – topplistan', false, () => onChoose(null), 'free')
+    );
+  }
+
+  /**
+   * Övningens panel under flygningen. null döljer den.
+   * @param {{ name, stepText, step, steps, progress?, sink? }|null} d
+   *   sink: { speed, max } visas under landningen
+   */
+  updateDrill(d) {
+    const e = this.el;
+    e.drill.hidden = !d;
+    if (!d) return;
+    setText(e.drillName, d.name);
+    setText(e.drillStep, d.steps > 1 ? `Steg ${d.step} av ${d.steps}` : '');
+    setText(e.drillText, d.stepText);
+    e.drillBar.hidden = d.progress == null;
+    if (d.progress != null) e.drillBarFill.style.width = `${Math.round(d.progress * 100)}%`;
+    e.drillSink.hidden = !d.sink;
+    if (d.sink) {
+      const dec = (x) => x.toFixed(1).replace('.', ',');
+      setText(e.drillSink, `Sjunker ${dec(Math.max(0, d.sink.speed))} m/s · max ${dec(d.sink.max)}`);
+      e.drillSink.dataset.ok = String(d.sink.speed <= d.sink.max);
+    }
   }
 
   setCountdown(n) {
@@ -200,6 +265,8 @@ export class GameUI {
   /** rank/total gäller inom deltagarens klass. */
   showFinished(result, rank, total) {
     this.el.finName.textContent = result.klass ? `${result.name} · ${result.klass}` : result.name;
+    delete this.el.finHeight.dataset.status;
+    if (result.exercise) return this.#showExerciseResult(result);
     this.el.finReason.textContent = REASONS[result.reason] ?? '';
     this.el.finHeight.textContent = `${fmtM(result.hMax)} m`;
     this.el.finRank.textContent = result.klass ? `Plats ${rank} av ${total} i klassen` : `Plats ${rank} av ${total}`;
@@ -207,6 +274,16 @@ export class GameUI {
     this.el.finMilestone.textContent = m
       ? `Högsta milstolpe: ${m.name} (${[m.area, `${fmtM(m.h)} m`].filter(Boolean).join(', ')})`
       : 'Ingen milstolpe den här gången';
+  }
+
+  #showExerciseResult(result) {
+    const ex = result.exercise;
+    const status = ex.status === 'running' ? 'aborted' : ex.status;
+    this.el.finReason.textContent = `Övning: ${ex.name}`;
+    this.el.finHeight.textContent = { passed: 'Godkänd!', failed: 'Underkänd', aborted: 'Avbruten' }[status];
+    this.el.finHeight.dataset.status = status;
+    this.el.finRank.textContent = status === 'failed' ? ex.failReason : describeResults(ex.results);
+    this.el.finMilestone.textContent = `Tid ${formatClock(result.duration)} · tillbaka till övningarna`;
   }
 
   // --- Instrument --------------------------------------------------------------------
@@ -249,7 +326,7 @@ export class GameUI {
   hudRects() {
     const els = this.el.hud.hidden
       ? []
-      : [document.querySelector('.hud-alt'), this.el.lift, this.el.vario, this.el.timer];
+      : [document.querySelector('.hud-alt'), this.el.lift, this.el.vario, this.el.timer, this.el.drill];
     // getClientRects() är tom för dolda element (offsetParent duger inte: fixed ger alltid null)
     return els.filter((el) => el && el.getClientRects().length > 0).map((el) => el.getBoundingClientRect());
   }

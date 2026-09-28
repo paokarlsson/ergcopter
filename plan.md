@@ -2,7 +2,7 @@
 
 En utbyggnad av helikopterspelet (se `spec.md`). Man börjar som aspirant i fjällräddningen, övar moment med en skolhelikopter och får med tiden skarpa räddningsuppdrag. Man väljer alltid själv om man tar ett uppdrag eller en övning.
 
-Status: övningsmotorn och skolhelikoptern är byggda och testade headless (se §8). De är ännu inte kopplade till spelet.
+Status: övningarna 1–4 går att spela. Motor, skolhelikopter, meny och hjälplinjer är byggda (se §8).
 
 ## 1. Grundidé
 
@@ -71,11 +71,8 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 
 ### 3.3 Ändringar som övningarna kräver
 
-Kvar att göra när övningarna kopplas till spelet:
-
-
-- Passet avslutas i dag efter `idleEndS` (10 s) utan drag, så fritt fall skulle avbryta spelet. Den regeln stängs av under övningarna.
-- På samma sätt behöver `groundEndS` ses över, så att en landning mitt i en övning inte avslutar passet i förtid.
+- **Byggt:** under en övning är det bara övningen som avgör när passet är slut: godkänd, underkänd, tidsgränsen eller Esc. Reglerna om tid utan drag (`idleEndS`), tid på marken (`groundEndS`) och max passlängd gäller bara fri flygning.
+- Övningar hamnar inte på topplistan och ger inga notiser om passerade toppar.
 
 ## 4. Helikoptrar
 
@@ -181,8 +178,8 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 
 1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
 2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms (10 m/s), tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
-3. **Menyskärm efter inmatningen:** "Aspirant [namn]: Dagens övningar" med godkända övningar bockade. Man väljer övning eller avstår.
-4. **Hjälplinjer på skärmen:** hovringsband, fallmål och ett landningsmål med sjunkhastighetsmätare.
+3. ✅ **Menyskärm efter inmatningen:** "Aspirant · Dagens övningar" med godkända övningar bockade. Man väljer övning (tangent 1–4), fri flygning (5) eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`).
+4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på, släpphöjd och fångstzon i fritt fall, landningsplatta med sjunkhastighet mot gränsen, och verkstaden vid startplatsen. En panel under höjden visar övningens instruktion och återkoppling. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
 5. **Profiler och grader** som sparas på namnet.
 6. **Examensflygning** och den lätta räddningshelikoptern.
 7. **Skarpa uppdrag** med larmskärm (Ja/Nej), vinsch och patient som last.

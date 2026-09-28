@@ -147,3 +147,15 @@ test('flera steg kan klaras i samma tidssteg', () => {
   assert.equal(run.status, 'passed');
   assert.equal(run.instruction, 'Godkänd!');
 });
+
+test('hjälplinjer per steg', async () => {
+  const { stepGuides } = await import('../public/game/exercise.js');
+  assert.deepEqual(stepGuides(null), { lines: [], landingPad: false });
+  assert.equal(stepGuides({ type: 'climb', to: 50 }).lines[0].h, 50);
+  const hover = stepGuides({ type: 'hover', at: 300, tol: 25, holdS: 30, held: 15 }).lines[0];
+  assert.deepEqual([hover.lo, hover.hi, hover.progress], [275, 325, 0.5]);
+  assert.equal(stepGuides({ type: 'land', maxSpeed: 2 }).landingPad, true);
+  const armed = stepGuides({ type: 'freefall', from: 1000, to: 500, tol: 50, phase: 'armed' }).lines;
+  assert.deepEqual(armed.map((l) => l.kind), ['line', 'band']);
+  assert.equal(stepGuides({ type: 'freefall', from: 1000, to: 500, tol: 50, phase: 'falling' }).lines.length, 1);
+});

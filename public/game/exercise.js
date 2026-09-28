@@ -186,3 +186,56 @@ export class ExerciseRun {
     this.durationS = flight.t;
   }
 }
+
+/**
+ * Hjälplinjer för det aktuella steget, i världskoordinater (meter):
+ *   { kind: 'line', h, label }            målhöjd
+ *   { kind: 'band', lo, hi, label, progress? }  zon att hålla sig i eller fånga upp i
+ * plus `landingPad` när man ska landa.
+ */
+export function stepGuides(step) {
+  if (!step) return { lines: [], landingPad: false };
+  const fmt = (h) => Math.round(h).toLocaleString('sv-SE');
+  switch (step.type) {
+    case 'climb':
+      return { lines: [{ kind: 'line', h: step.to, label: `Mål ${fmt(step.to)} m` }], landingPad: false };
+    case 'hover':
+      return {
+        lines: [
+          {
+            kind: 'band',
+            lo: step.at - step.tol,
+            hi: step.at + step.tol,
+            label: `Hovra här ${Math.floor(step.held ?? 0)} / ${step.holdS} s`,
+            progress: Math.min(1, (step.held ?? 0) / step.holdS),
+          },
+        ],
+        landingPad: false,
+      };
+    case 'land':
+      return { lines: [], landingPad: true };
+    case 'freefall': {
+      const zone = { kind: 'band', lo: step.to - step.tol, hi: step.to + step.tol, label: 'Fånga upp här' };
+      const release = { kind: 'line', h: step.from - step.tol, label: `Släpp över ${fmt(step.from - step.tol)} m` };
+      return { lines: step.phase === 'armed' ? [release, zone] : [zone], landingPad: false };
+    }
+  }
+  return { lines: [], landingPad: false };
+}
+
+/** Kort sammanfattning av de avklarade stegen, t.ex. "landade i 0,8 m/s". */
+export function describeResults(results) {
+  const dec = (x) => x.toFixed(1).replace('.', ',');
+  return results
+    .map((r) =>
+      r.type === 'land'
+        ? `landade i ${dec(r.speed)} m/s`
+        : r.type === 'freefall'
+          ? `fångad på ${m(r.caughtAt)}${r.attempts > 1 ? ` (${r.attempts} försök)` : ''}`
+          : r.type === 'hover'
+            ? `hovrade ${Math.round(r.held)} s`
+            : null
+    )
+    .filter(Boolean)
+    .join(' · ');
+}

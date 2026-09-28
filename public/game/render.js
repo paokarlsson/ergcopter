@@ -102,6 +102,10 @@ export class GameRenderer {
    * @param {{name:string,h:number}[]} v.milestones
    * @param {DOMRect[]} [v.avoid]      instrument i DOM som skyltar inte får hamna under
    * @param {boolean} [v.flying]        skicka in nya berg (bara under passet)
+   * @param {object[]} [v.guides]        övningens hjälplinjer (exercise.js stepGuides)
+   * @param {boolean} [v.landingPad]     markera landningsplatsen under helikoptern
+   * @param {boolean} [v.workshop]       verkstaden vid startplatsen (övningar)
+   * @param {object} [v.livery]          helikopterns utseende
    */
   draw(v) {
     const { canvas, ctx } = this;
@@ -130,9 +134,10 @@ export class GameRenderer {
     this.#sky(ctx, W, H, cam);
     this.#mountains(ctx, W, H, v, y, dt, cam);
     this.#clouds(ctx, W, H, cam, pxPerM, y);
-    if (y(0) < H + 80) this.#ground(ctx, W, H, y(0));
+    if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v);
     this.#altitudeTicks(ctx, W, H, cam, y, c);
     this.#lines(ctx, W, H, v, y, c);
+    this.#guides(ctx, W, H, v, y, c);
 
     // Helikoptern: medarna mot marken vid h = 0
     const hx = W * HELI_X;
@@ -254,7 +259,7 @@ export class GameRenderer {
     ctx.globalAlpha = 1;
   }
 
-  #ground(ctx, W, H, groundY) {
+  #ground(ctx, W, H, groundY, v) {
     const c = this.colors;
     ctx.fillStyle = c.hill;
     ctx.beginPath();
@@ -268,10 +273,42 @@ export class GameRenderer {
     ctx.fillStyle = c.ground;
     ctx.fillRect(0, groundY, W, H - groundY + 1);
     for (let i = -1; i < W / 110 + 1; i++) drawTree(ctx, i * 110 - mod(this.distance, 110) + 55, groundY, c);
-    const padX = W * 0.4 - this.distance;
+    const padX = W * HELI_X - this.distance;
+    if (v.workshop && padX > -420) drawWorkshop(ctx, padX - 310, groundY, c);
     if (padX > -120) {
       ctx.fillStyle = c.pad;
       ctx.fillRect(padX - 80, groundY - 3, 160, 5);
+    }
+    if (v.landingPad) drawLandingPad(ctx, W * HELI_X, groundY, c);
+  }
+
+  /**
+   * Övningens hjälplinjer: målhöjder som streckade linjer och zoner som band,
+   * med etikett till vänster. Hovringsbandet fylls på medan man håller sig i det.
+   */
+  #guides(ctx, W, H, v, y, c) {
+    const right = W - GAUGE_COLUMN_PX;
+    const left = 100; // höjdskalans siffror får vara ifred
+    for (const g of v.guides ?? []) {
+      if (g.kind === 'band') {
+        const top = y(g.hi);
+        const bottom = y(g.lo);
+        if (bottom < -20 || top > H + 20) continue;
+        ctx.fillStyle = c.guideBand;
+        ctx.fillRect(0, top, right, bottom - top);
+        if (g.progress > 0) {
+          ctx.fillStyle = c.guideFill;
+          ctx.fillRect(0, top, right * g.progress, bottom - top);
+        }
+        dashed(ctx, 0, right, top, c.guide);
+        dashed(ctx, 0, right, bottom, c.guide);
+        guideLabel(ctx, g.label, left, top - 6, c);
+      } else {
+        const yy = y(g.h);
+        if (yy < -20 || yy > H + 20) continue;
+        dashed(ctx, 0, right, yy, c.guide);
+        guideLabel(ctx, g.label, left, yy - 6, c);
+      }
     }
   }
 
@@ -330,7 +367,8 @@ export class GameRenderer {
     const top = 60;
     const bottom = H - 60;
     // Fasta steg så att skalan inte zoomar om vid varje passerad topp.
-    const reach = Math.max(v.h, v.hMax ?? 0, v.todayBest ?? 0) * 1.15;
+    const guideTop = Math.max(0, ...(v.guides ?? []).map((g) => g.hi ?? g.h));
+    const reach = Math.max(v.h, v.hMax ?? 0, v.todayBest ?? 0, guideTop) * 1.15;
     const range = GAUGE_STEPS_M.find((r) => r >= reach) ?? Math.ceil(reach / 1000) * 1000;
     const gy = (alt) => bottom - (Math.min(alt, range) / range) * (bottom - top);
 
@@ -362,12 +400,19 @@ export class GameRenderer {
       ctx.lineTo(x + 18, gy(alt) + 6);
       ctx.fill();
     }
+    // Övningens mål på skalan
+    ctx.fillStyle = c.guide;
+    for (const g of v.guides ?? []) {
+      if (g.kind === 'band') roundRect(ctx, x - 9, gy(g.hi), 18, Math.max(3, gy(g.lo) - gy(g.hi)), 3);
+      else roundRect(ctx, x - 12, gy(g.h) - 2, 24, 4, 2);
+      ctx.fill();
+    }
     // Helikopterns läge
     ctx.fillStyle = c.surface;
     ctx.beginPath();
     ctx.arc(x, gy(v.h), 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = c.body;
+    ctx.fillStyle = v.livery?.body ?? c.body;
     ctx.beginPath();
     ctx.arc(x, gy(v.h), 6, 0, Math.PI * 2);
     ctx.fill();
@@ -424,6 +469,14 @@ function readColors(el) {
     signText: v('--sign-text'),
     signPost: v('--sign-post'),
     signCheck: v('--sign-check'),
+    guide: v('--guide'),
+    guideBand: v('--guide-band'),
+    guideFill: v('--guide-fill'),
+    guideLabelBg: v('--guide-label-bg'),
+    guideLabelText: v('--guide-label-text'),
+    workshopWall: v('--workshop-wall'),
+    workshopRoof: v('--workshop-roof'),
+    workshopDoor: v('--workshop-door'),
   };
 }
 
@@ -453,6 +506,69 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.roundRect(x, y, w, Math.max(0, h), Math.min(r, Math.max(0, h) / 2));
 }
 
+
+function dashed(ctx, x0, x1, yy, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 10]);
+  ctx.beginPath();
+  ctx.moveTo(x0, Math.round(yy) + 0.5);
+  ctx.lineTo(x1, Math.round(yy) + 0.5);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Etikett med mörk platta, läsbar mot både ljus och mörk himmel. */
+function guideLabel(ctx, text, x, bottomY, c) {
+  ctx.font = '700 17px system-ui, sans-serif';
+  const w = ctx.measureText(text).width + 20;
+  ctx.fillStyle = c.guideLabelBg;
+  ctx.beginPath();
+  ctx.roundRect(x, bottomY - 28, w, 28, 8);
+  ctx.fill();
+  ctx.fillStyle = c.guideLabelText;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + 10, bottomY - 14);
+}
+
+/** Verkstaden där aspiranten startar: hangar med sadeltak och port. */
+function drawWorkshop(ctx, x, groundY, c) {
+  const w = 190;
+  const h = 70;
+  ctx.fillStyle = c.workshopWall;
+  ctx.fillRect(x - w / 2, groundY - h, w, h);
+  ctx.fillStyle = c.workshopRoof;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2 - 12, groundY - h);
+  ctx.lineTo(x, groundY - h - 38);
+  ctx.lineTo(x + w / 2 + 12, groundY - h);
+  ctx.fill();
+  ctx.fillStyle = c.workshopDoor;
+  ctx.fillRect(x - 55, groundY - 52, 110, 52);
+  ctx.fillStyle = c.workshopRoof;
+  ctx.font = '800 14px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('VERKSTAN', x, groundY - 61);
+}
+
+/** Landningsplatta med H under helikoptern. */
+function drawLandingPad(ctx, x, groundY, c) {
+  ctx.fillStyle = c.guideLabelBg;
+  ctx.beginPath();
+  ctx.ellipse(x, groundY + 1, 110, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = c.guide;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fillStyle = c.guide;
+  ctx.font = '900 16px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('H', x + 80, groundY + 1);
+}
 
 const mod = (a, n) => ((a % n) + n) % n;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));

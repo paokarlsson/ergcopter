@@ -30,13 +30,14 @@ function flying(overrides = {}) {
   game.tick(t);
   game.openSetup();
   assert.equal(game.submitSetup({ name: 'Testa', mass: 80, klass: 'Vuxen' }), null);
+  game.choose(null); // fri flygning
   game.startCountdown();
   clock.advance(game.cfg.countdownS + 0.05);
   assert.equal(game.state, 'FLYING');
   return { game, clock, events };
 }
 
-test('flödet IDLE → SETUP → READY → COUNTDOWN → FLYING', () => {
+test('flödet IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING', () => {
   const game = new Game(cfg);
   const seen = [];
   game.on('state', ({ to }) => seen.push(to));
@@ -47,15 +48,19 @@ test('flödet IDLE → SETUP → READY → COUNTDOWN → FLYING', () => {
   assert.match(game.submitSetup({ name: 'A', mass: 80, klass: '' }), /klass/);
   assert.match(game.submitSetup({ name: 'A', mass: 80, klass: 'Senior' }), /klass/);
   assert.equal(game.submitSetup({ name: 'A', mass: 80, klass: 'Vuxen' }), null);
+  game.stroke({ t: 0, power: 200, strokeCount: 0 }); // drag i menyn startar inget
+  assert.equal(game.state, 'MENU');
+  game.choose(null);
   game.stroke({ t: 0, power: 200, strokeCount: 1 }); // första draget startar nedräkningen
   for (let t = 0; t <= 3.1; t += 0.05) game.tick(t);
-  assert.deepEqual(seen, ['SETUP', 'READY', 'COUNTDOWN', 'FLYING']);
+  assert.deepEqual(seen, ['SETUP', 'MENU', 'READY', 'COUNTDOWN', 'FLYING']);
 });
 
 test('drag under nedräkningen ignoreras och fysiken nollställs', () => {
   const game = new Game(cfg);
   game.openSetup();
   game.submitSetup({ name: 'A', mass: 80, klass: 'Vuxen' });
+  game.choose(null);
   game.tick(0);
   game.startCountdown();
   game.stroke({ t: 0.1, power: 500, strokeCount: 1 });

@@ -4,6 +4,8 @@ import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } fro
 import { Game } from './game.js';
 import { StrokeSmoother } from './signal.js';
 import { Leaderboard } from './leaderboard.js';
+import { Progress } from './progress.js';
+import { EXERCISES, stepGuides } from './exercise.js';
 import { Rotor } from './rotor.js';
 import { GameRenderer, fmtM } from './render.js';
 import { GameUI, download } from './ui.js';
@@ -19,6 +21,7 @@ const SOURCE_KEY = 'skierg.source';
 
 let cfg = loadConfig();
 const board = new Leaderboard();
+const progress = new Progress();
 const game = new Game(cfg);
 const rotor = new Rotor();
 const renderer = new GameRenderer(document.getElementById('scene'));
@@ -114,6 +117,7 @@ function onStatus(status) {
 const connected = () => source?.status.state === 'connected';
 
 // ?demo: Mock-källan flyger en demospelare (80 kg) efter en effektprofil, utan erg.
+// ?demo=<övnings-id> väljer en övning i stället för fri flygning.
 const DEMO_PROFILE = [
   [8, 60],
   [40, 280],
@@ -124,6 +128,8 @@ async function runDemo() {
   await connect('mock');
   game.openSetup();
   ui.setupError(game.submitSetup({ name: 'Demo', mass: 80, klass: 'Vuxen' }));
+  // ?demo=hover osv. flyger en övning, annars fri flygning.
+  game.choose(EXERCISES.find((e) => e.id === new URLSearchParams(location.search).get('demo')) ?? null);
   const start = now();
   setInterval(() => {
     let t = now() - start;
@@ -167,22 +173,36 @@ game.on('state', ({ to }) => {
   } else if (to === 'SETUP') {
     clearInterval(boardTimer);
     ui.setConnStatus(source?.status ?? { state: 'idle' }, source?.name);
-  } else if (to === 'READY') {
-    todayBest = board.todayBest(Date.now(), game.player.klass);
-    ui.showReady(game.player.name);
+  } else if (to === 'MENU') {
     ui.clearSetup();
+    renderMenu();
+  } else if (to === 'READY') {
+    todayBest = game.exercise ? null : board.todayBest(Date.now(), game.player.klass);
+    ui.showReady(game.player.name, game.exercise);
   }
 });
 
-game.on('milestone', (m) => ui.toast(`${m.name} ${fmtM(m.h)} m!`, m.area ?? ''));
+function renderMenu() {
+  ui.renderMenu(game.player.name, EXERCISES, progress.passed(game.player.name), (ex) => game.choose(ex));
+}
+
+// Under en övning är det instruktionen som gäller – inga notiser om toppar.
+game.on('milestone', (m) => {
+  if (!game.run) ui.toast(`${m.name} ${fmtM(m.h)} m!`, m.area ?? '');
+});
 
 game.on('finish', (result) => {
+  replay = result.endH > 0 ? new Replay(landingTrajectory(game.flight), cfg.dt, cfg.replayMaxS) : null;
+  if (result.exercise) {
+    if (result.exercise.status === 'passed') progress.markPassed(result.name, result.exercise.id);
+    ui.showFinished(result);
+    return; // övningar hamnar inte på topplistan
+  }
   const { entry } = board.add(result);
   const { rank, total } = board.classRank(entry);
   todayBest = board.todayBest(Date.now(), result.klass);
   // Visa deltagarens klass när vi kommer tillbaka till startskärmen.
   boardTab = Math.max(0, boardTabs().findIndex((t) => t.klass === result.klass));
-  replay = result.endH > 0 ? new Replay(landingTrajectory(game.flight), cfg.dt, cfg.replayMaxS) : null;
   ui.showFinished(result, rank, total);
 });
 
@@ -190,6 +210,7 @@ game.on('finish', (result) => {
 
 document.getElementById('start').addEventListener('click', () => game.openSetup());
 document.getElementById('setup-cancel').addEventListener('click', () => game.escape());
+document.getElementById('menu-cancel').addEventListener('click', () => game.escape());
 ui.el.connect.addEventListener('click', () => connect(ui.el.sourceSelect.value));
 ui.el.reconnect.addEventListener('click', () => connect(sourceKind));
 ui.el.setupForm.addEventListener('submit', (e) => {
@@ -259,6 +280,12 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (game.state === 'FINISHED' && !['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return game.dismissResult();
+  if (game.state === 'MENU' && /^[1-9]$/.test(key)) {
+    const i = Number(key) - 1;
+    if (i < EXERCISES.length) game.choose(EXERCISES[i]);
+    else if (i === EXERCISES.length) game.choose(null);
+    return;
+  }
   if (key === 'Enter') {
     if (game.state === 'IDLE') game.openSetup();
     else if (game.state === 'READY') game.startCountdown();
@@ -297,6 +324,8 @@ function frame() {
   }
 
   const P0 = f?.P0 ?? (game.player ? liftPower(cfg, game.player.mass) : cfg.P_ref);
+  const run = game.state === 'FLYING' ? game.run : null;
+  const guides = stepGuides(run?.step);
   const power = game.state === 'FLYING' ? game.power : preview.value(now());
   rotor.step(dt, power / P0);
   renderer.advance(dt, rotor, h);
@@ -304,12 +333,17 @@ function frame() {
     h,
     vy,
     rotor,
-    hMax: f?.hMax ?? 0,
+    hMax: game.exercise ? 0 : f?.hMax ?? 0,
     todayBest,
     milestones: cfg.milestones,
     avoid: ui.hudRects(),
     flying: game.state === 'FLYING',
+    guides: guides.lines,
+    landingPad: guides.landingPad,
+    workshop: Boolean(game.exercise),
+    livery: game.helicopter?.livery,
   });
+  ui.updateDrill(run?.step ? drillInfo(run, f) : null);
   sound.update(power / P0, rotor.omega);
 
   if (game.state === 'COUNTDOWN') ui.setCountdown(game.countdownLeft);
@@ -372,6 +406,19 @@ ui.showState(game.state);
 showBoard(0);
 startBoardRotation();
 requestAnimationFrame(frame);
+
+/** Övningspanelens innehåll för det aktuella steget. */
+function drillInfo(run, f) {
+  const step = run.step;
+  return {
+    name: run.exercise.name,
+    step: run.index + 1,
+    steps: run.exercise.steps.length,
+    stepText: run.instruction,
+    progress: step.type === 'hover' ? Math.min(1, step.held / step.holdS) : null,
+    sink: step.type === 'land' ? { speed: -f.v, max: step.maxSpeed } : null,
+  };
+}
 
 function dateStamp() {
   return new Date().toISOString().slice(0, 10);
