@@ -1,68 +1,53 @@
-// Valfritt rotorljud (spec §8): tonhöjd och "chop" följer P_smooth/P0.
-// WebAudio kräver en användargest innan ljud får spelas – unlock() anropas vid klick/tangent.
+// Valfritt rotorljud (spec §8): helikopterljudet följer P_smooth/P0.
+// Hovring (100 %) är fullt rotorvarv; över 100 % låter det mer – 200 % är vanligt,
+// 300 % taket. WebAudio kräver en användargest innan ljud får spelas – unlock()
+// anropas vid klick/tangent.
+
+import { HelicopterSound } from './helicopter-sound.js';
+import { now } from './sources/source.js';
+
+const VOLUME = 0.7;
+const MAX_RATIO = 3;
+const ENGINE_OFF_OMEGA = 0.5; // rad/s: under detta, utan effekt, stängs motorn av
 
 export class RotorSound {
   constructor() {
-    this.ctx = null;
+    this.heli = null;
     this.enabled = false;
-    this.nodes = null;
+    this.last = null;
   }
 
   setEnabled(on) {
     this.enabled = on;
-    if (this.nodes) this.nodes.master.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.2);
+    if (!this.heli) return;
+    this.heli.setVolume(on ? VOLUME : 0);
+    if (!on) this.heli.setEngine(false);
   }
 
   /** Skapar/återupptar ljudet. Måste anropas i en klick- eller tangenthändelse. */
   unlock() {
     if (!this.enabled) return;
     try {
-      if (!this.ctx) this.#build();
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (!this.heli) this.heli = new HelicopterSound({ volume: VOLUME, maxThrottle: MAX_RATIO, autoUpdate: false });
+      this.heli.start().catch(() => {});
     } catch {
+      this.heli = null;
       this.enabled = false; // ingen WebAudio – spelet fungerar ändå
     }
   }
 
   /**
-   * @param {number} ratio   P_smooth/P0
-   * @param {number} omega   rotorns vinkelhastighet (rad/s) för "chop"-takten
+   * @param {number} ratio   P_smooth/P0, 1 = hovring
+   * @param {number} omega   rotorns vinkelhastighet (rad/s); motorn går så länge rotorn snurrar
    */
   update(ratio, omega) {
-    if (!this.nodes) return;
-    const t = this.ctx.currentTime;
-    const r = Math.max(0, Math.min(2.5, ratio));
-    const { osc, lfo, filter, amp } = this.nodes;
-    osc.frequency.setTargetAtTime(30 + 40 * r, t, 0.3);
-    filter.frequency.setTargetAtTime(200 + 500 * r, t, 0.3);
-    lfo.frequency.setTargetAtTime(Math.min(28, (omega * 4) / (2 * Math.PI)), t, 0.3);
-    amp.gain.setTargetAtTime(Math.min(0.12, 0.05 * r + (omega > 0.5 ? 0.02 : 0)), t, 0.3);
-  }
-
-  #build() {
-    const ctx = (this.ctx = new AudioContext());
-    const master = ctx.createGain();
-    master.gain.value = this.enabled ? 1 : 0;
-    master.connect(ctx.destination);
-
-    // Ton: sågtand genom lågpass. Chop: LFO som modulerar volymen (bladpassager).
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    const amp = ctx.createGain();
-    amp.gain.value = 0;
-    const chop = ctx.createGain();
-    chop.gain.value = 0.6;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0;
-    const lfoDepth = ctx.createGain();
-    lfoDepth.gain.value = 0.4;
-    lfo.connect(lfoDepth).connect(chop.gain);
-
-    osc.connect(filter).connect(chop).connect(amp).connect(master);
-    osc.start();
-    lfo.start();
-    this.nodes = { master, osc, filter, amp, lfo };
+    const t = now();
+    const dt = this.last === null ? 0 : t - this.last;
+    this.last = t;
+    if (!this.heli?.context) return;
+    const r = Math.max(0, Math.min(MAX_RATIO, ratio || 0));
+    this.heli.setEngine(this.enabled && (r > 0.02 || omega > ENGINE_OFF_OMEGA));
+    this.heli.setThrottle(r);
+    this.heli.update(dt);
   }
 }

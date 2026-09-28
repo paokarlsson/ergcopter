@@ -183,7 +183,7 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 - Milstolpar (konfigurerbara), standard: Åreskutan 1 420 m, Kebnekaise 2 097 m, Galdhøpiggen 2 469 m, Mont Blanc 4 806 m, Kilimanjaro 5 895 m, Mount Everest 8 849 m. Visa en kort notis när en milstolpe passeras.
 - Tid sedan start.
 - Topplista i IDLE och FINISHED med namn och höjd, aldrig vikt eller watt.
-- Valfritt ljud: rotorljud vars tonhöjd följer `P_smooth / P0`.
+- Valfritt ljud: helikopterljud som följer `P_smooth / P0`. Hovring (100 %) ger fullt rotorvarv; över 100 % låter det mer (bladslag, dunk, volym) upp till taket 300 %, med tydlig skillnad vid 200 %.
 
 ## 9. Inställningar och data
 
