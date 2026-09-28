@@ -210,6 +210,8 @@ function applyConfig(next) {
   game.setConfig(cfg);
   preview.cfg = cfg;
   sound.setEnabled(cfg.sound);
+  sound.unlock(); // sparas med klick/tangent, så ljudet får starta direkt
+  renderSoundBtn();
   if (game.state === 'IDLE') showBoard(); // t.ex. sammanlagd lista på/av
 }
 document.getElementById('settings-form').addEventListener('submit', () => applyConfig(ui.readSettings(cfg)));
@@ -325,7 +327,41 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-mountScreenControls(document.getElementById('screen-controls'));
+// Pekskärmar saknar tangenter: knappar för ljud och inställningar bredvid helskärm.
+const ICONS = {
+  soundOn: '<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>',
+  soundOff: '<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="m16 9 6 6M22 9l-6 6"/>',
+  settings:
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+};
+const icon = (d) =>
+  `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+function screenButton(label, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'screen-btn';
+  btn.setAttribute('aria-label', label);
+  btn.addEventListener('click', (e) => {
+    onClick();
+    e.currentTarget.blur(); // annars tar Enter/mellanslag knappen i stället för spelet
+  });
+  return btn;
+}
+const soundBtn = screenButton('Rotorljud', () => applyConfig({ ...cfg, sound: !cfg.sound }));
+function renderSoundBtn() {
+  soundBtn.innerHTML = icon(cfg.sound ? ICONS.soundOn : ICONS.soundOff);
+  soundBtn.title = cfg.sound ? 'Rotorljud: på' : 'Rotorljud: av';
+  soundBtn.setAttribute('aria-pressed', String(cfg.sound));
+  soundBtn.dataset.state = cfg.sound ? 'on' : 'off';
+}
+const settingsBtn = screenButton('Inställningar', openSettings);
+settingsBtn.innerHTML = icon(ICONS.settings);
+settingsBtn.title = 'Inställningar (S)';
+renderSoundBtn();
+
+const screenControls = document.getElementById('screen-controls');
+screenControls.append(soundBtn, settingsBtn);
+mountScreenControls(screenControls);
 ui.showState(game.state);
 showBoard(0);
 startBoardRotation();
