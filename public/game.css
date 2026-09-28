@@ -669,6 +669,18 @@ select {
 .screen-btn[data-state='pending'] {
   outline: 2px dashed var(--accent);
 }
+/* Tangenttips på datorn, pektips på pekskärmar utan tangentbord. */
+.touch {
+  display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+  .keys {
+    display: none;
+  }
+  .touch {
+    display: revert;
+  }
+}
 /* Vikten döljs utan lösenordsfält, så att webbläsaren inte vill spara den som lösenord. */
 .secret {
   -webkit-text-security: disc;

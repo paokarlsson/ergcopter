@@ -199,6 +199,12 @@ ui.el.setupForm.addEventListener('submit', (e) => {
   ui.setupError(game.submitSetup(data));
 });
 document.getElementById('screen-finished').addEventListener('click', () => game.dismissResult());
+// Pekskärm: tryck på kortet i READY i stället för Enter, Avbryt i stället för Esc.
+document.getElementById('ready-card').addEventListener('click', () => game.startCountdown());
+document.getElementById('ready-cancel').addEventListener('click', (e) => {
+  e.stopPropagation();
+  game.escape();
+});
 
 // Inställningar
 function openSettings() {
