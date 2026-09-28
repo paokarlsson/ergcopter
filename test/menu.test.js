@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Game } from '../public/game/game.js';
+import { Game, STROKE_GRACE_S } from '../public/game/game.js';
 import { getExercise } from '../public/game/exercise.js';
 import { Progress } from '../public/game/progress.js';
 
@@ -122,4 +122,57 @@ test('trasig lagring ger tom progress', () => {
   storage.setItem('skierg.progress.v1', '{trasig');
   assert.equal(new Progress(storage).passed('Kim').size, 0);
   assert.equal(new Progress(null).passed('Kim').size, 0);
+});
+
+test('ett drag i menyn startar förslaget direkt, men inte under de första sekunderna', () => {
+  const { game, clock } = inMenu();
+  game.suggest(getExercise('hover'));
+  game.stroke({ t: 0, power: 100, strokeCount: 1 });
+  assert.equal(game.state, 'MENU', 'för tidigt: man hinner läsa menyn');
+  clock.advance(STROKE_GRACE_S + 0.1);
+  game.stroke({ t: 0, power: 100, strokeCount: 2 });
+  assert.equal(game.state, 'COUNTDOWN');
+  assert.equal(game.exercise.id, 'hover');
+  assert.equal(game.helicopter.id, 'school');
+});
+
+test('utan förslag startar ett drag i menyn fri flygning', () => {
+  const { game, clock } = inMenu();
+  clock.advance(STROKE_GRACE_S + 0.1);
+  game.stroke({ t: 0, power: 100, strokeCount: 1 });
+  assert.equal(game.state, 'COUNTDOWN');
+  assert.equal(game.exercise, null);
+});
+
+test('efter en övning går ett drag tillbaka till menyn, efter en stund', () => {
+  const { game, clock } = inMenu();
+  game.choose(getExercise('hover'));
+  takeOff(game, clock);
+  game.escape();
+  assert.equal(game.state, 'FINISHED');
+  game.stroke({ t: 0, power: 100, strokeCount: 1 });
+  assert.equal(game.state, 'FINISHED', 'resultatet hinner synas');
+  clock.advance(STROKE_GRACE_S + 0.1);
+  game.stroke({ t: 0, power: 100, strokeCount: 2 });
+  assert.equal(game.state, 'MENU');
+  game.stroke({ t: 0, power: 100, strokeCount: 3 });
+  assert.equal(game.state, 'MENU', 'nytt andrum i menyn');
+});
+
+test('efter fri flygning gör drag ingenting i resultatet', () => {
+  const { game, clock } = inMenu();
+  game.choose(null);
+  takeOff(game, clock);
+  game.escape();
+  clock.advance(STROKE_GRACE_S + 0.1);
+  game.stroke({ t: 0, power: 100, strokeCount: 1 });
+  assert.equal(game.state, 'FINISHED');
+});
+
+test('förslaget är första ej godkända övningen, sedan fri flygning', async () => {
+  const { nextExercise } = await import('../public/game/progress.js');
+  const { EXERCISES } = await import('../public/game/exercise.js');
+  assert.equal(nextExercise(EXERCISES, new Set()).id, 'first-lift');
+  assert.equal(nextExercise(EXERCISES, new Set(['first-lift', 'altitude'])).id, 'hover');
+  assert.equal(nextExercise(EXERCISES, new Set(EXERCISES.map((e) => e.id))), null);
 });

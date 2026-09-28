@@ -4,7 +4,7 @@ import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } fro
 import { Game } from './game.js';
 import { StrokeSmoother } from './signal.js';
 import { Leaderboard } from './leaderboard.js';
-import { Progress } from './progress.js';
+import { Progress, nextExercise } from './progress.js';
 import { EXERCISES, stepGuides } from './exercise.js';
 import { Rotor } from './rotor.js';
 import { GameRenderer, fmtM } from './render.js';
@@ -182,8 +182,12 @@ game.on('state', ({ to }) => {
   }
 });
 
+/** Menyn med ett förslag som startar med ett drag – man ska inte behöva röra skärmen. */
 function renderMenu() {
-  ui.renderMenu(game.player.name, EXERCISES, progress.passed(game.player.name), (ex) => game.choose(ex));
+  const passed = progress.passed(game.player.name);
+  const suggested = nextExercise(EXERCISES, passed);
+  game.suggest(suggested);
+  ui.renderMenu(game.player.name, EXERCISES, passed, suggested, (ex) => game.choose(ex));
 }
 
 // Under en övning är det instruktionen som gäller – inga notiser om toppar.

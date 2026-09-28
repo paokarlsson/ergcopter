@@ -2,6 +2,8 @@
 //   IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE
 // I MENU väljer deltagaren en övning eller fri flygning (så högt som möjligt).
 // Efter en övning går FINISHED tillbaka till MENU, så att man kan fortsätta öva.
+// Den som står på ergen behöver inte röra skärmen: ett drag i MENU startar det
+// föreslagna valet, och ett drag efter en övnings resultat går tillbaka till MENU.
 // Ren logik utan DOM. Tiden kommer utifrån via tick(t) i sekunder.
 
 import { Flight } from './physics.js';
@@ -11,6 +13,9 @@ import { ExerciseRun } from './exercise.js';
 import { getHelicopter, helicopterConfig } from './helicopters.js';
 
 export const STATES = ['IDLE', 'SETUP', 'MENU', 'READY', 'COUNTDOWN', 'FLYING', 'FINISHED'];
+
+/** Så länge efter att menyn eller ett övningsresultat visats räknas inga drag, så att man hinner läsa. */
+export const STROKE_GRACE_S = 3;
 
 /** Helikoptern som övningarna flygs med. */
 export const EXERCISE_HELICOPTER = 'school';
@@ -24,6 +29,8 @@ export class Game {
     this.exercise = null; // vald övning, null = fri flygning
     this.helicopter = null; // helikoptertyp, null = standard
     this.run = null; // ExerciseRun under en övning
+    this.suggested = null; // förslaget i menyn som ett drag startar, null = fri flygning
+    this.menuFor = 0; // s i MENU
     this.flight = null;
     this.smoother = new StrokeSmoother(cfg);
     this.paused = false;
@@ -46,6 +53,7 @@ export class Game {
   #set(state) {
     const from = this.state;
     this.state = state;
+    if (state === 'MENU') this.menuFor = 0;
     this.#emit('state', { from, to: state });
   }
 
@@ -75,6 +83,11 @@ export class Game {
     this.player = { name: trimmed.slice(0, 40), mass: kg, klass };
     this.#set('MENU');
     return null;
+  }
+
+  /** Förslaget i menyn (t.ex. nästa ej godkända övning), null = fri flygning. */
+  suggest(exercise) {
+    this.suggested = exercise ?? null;
   }
 
   /**
@@ -115,6 +128,18 @@ export class Game {
 
   /** @param {{t:number, power:number, strokeCount:number}} stroke */
   stroke(stroke) {
+    if (this.state === 'MENU') {
+      // Dra för att starta förslaget, direkt till nedräkningen.
+      if (this.menuFor < STROKE_GRACE_S) return;
+      this.choose(this.suggested);
+      this.startCountdown();
+      return;
+    }
+    if (this.state === 'FINISHED') {
+      // Efter en övning: dra för att gå tillbaka till menyn.
+      if (this.exercise && this.finishedFor >= STROKE_GRACE_S) this.#toMenu();
+      return;
+    }
     if (this.state === 'READY') {
       this.startCountdown();
       return;
@@ -145,6 +170,8 @@ export class Game {
         this.acc -= this.cfg.dt;
         this.#physicsStep();
       }
+    } else if (this.state === 'MENU') {
+      this.menuFor += dt;
     } else if (this.state === 'FINISHED') {
       this.finishedFor += dt;
       if (this.finishedFor >= this.cfg.resultDisplayS) this.#afterResult();

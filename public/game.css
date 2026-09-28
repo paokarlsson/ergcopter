@@ -691,6 +691,20 @@ select {
   color: var(--good);
   font-weight: 700;
 }
+.menu-item.suggested {
+  border-color: var(--good);
+  box-shadow: inset 0 0 0 2px var(--good);
+}
+.menu-pull {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--good);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
 .menu-item.free {
   margin-top: 8px;
 }

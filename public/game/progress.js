@@ -50,3 +50,8 @@ function safeStorage() {
     return null;
   }
 }
+
+/** Förslaget i menyn: första övningen som inte är godkänd, annars null (fri flygning). */
+export function nextExercise(exercises, passed) {
+  return exercises.find((ex) => !passed.has(ex.id)) ?? null;
+}

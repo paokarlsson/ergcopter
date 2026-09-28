@@ -60,6 +60,7 @@ export class GameUI {
       readyGoal: $('ready-goal'),
       menuName: $('menu-name'),
       menuList: $('menu-list'),
+      menuLead: $('menu-lead'),
       drill: $('drill'),
       drillName: $('drill-name'),
       drillStep: $('drill-step'),
@@ -209,29 +210,35 @@ export class GameUI {
 
   /**
    * Menyn efter inmatningen: övningarna (med bock för godkända) och fri flygning.
-   * Siffertangenterna väljer: 1–N övningarna, N+1 fri flygning.
+   * Förslaget startar med ett drag; siffertangenterna eller ett tryck väljer något annat
+   * (1–N övningarna, N+1 fri flygning).
+   * @param {object|null} suggested  övningen ett drag startar, null = fri flygning
    * @param {(exercise: object|null) => void} onChoose
    */
-  renderMenu(name, exercises, passed, onChoose) {
+  renderMenu(name, exercises, passed, suggested, onChoose) {
     this.el.menuName.textContent = name;
-    const item = (key, title, goal, done, onClick, extraClass = '') => {
+    this.el.menuLead.textContent = `Dra för att starta ${suggested ? suggested.name : 'fri flygning'} – eller välj något annat nedan.`;
+    const item = (key, title, goal, done, onClick, extraClass = '', isSuggested = false) => {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = `menu-item ${extraClass}`.trim();
+      b.className = `menu-item ${extraClass} ${isSuggested ? 'suggested' : ''}`.trim();
       const k = Object.assign(document.createElement('span'), { className: 'menu-key', textContent: key });
       const n = Object.assign(document.createElement('span'), { className: 'menu-name', textContent: title });
       const g = Object.assign(document.createElement('span'), { className: 'menu-goal', textContent: goal });
       b.append(k, n);
-      if (done) b.append(Object.assign(document.createElement('span'), { className: 'menu-done', textContent: '✓ Godkänd' }));
+      if (isSuggested) b.append(Object.assign(document.createElement('span'), { className: 'menu-pull', textContent: 'Dra för att starta' }));
+      else if (done) b.append(Object.assign(document.createElement('span'), { className: 'menu-done', textContent: '✓ Godkänd' }));
       b.append(g);
       b.addEventListener('click', onClick);
       li.append(b);
       return li;
     };
     this.el.menuList.replaceChildren(
-      ...exercises.map((ex, i) => item(String(i + 1), ex.name, ex.goal, passed.has(ex.id), () => onChoose(ex))),
-      item(String(exercises.length + 1), 'Fri flygning', 'Så högt du kan – topplistan', false, () => onChoose(null), 'free')
+      ...exercises.map((ex, i) =>
+        item(String(i + 1), ex.name, ex.goal, passed.has(ex.id), () => onChoose(ex), '', ex === suggested)
+      ),
+      item(String(exercises.length + 1), 'Fri flygning', 'Så högt du kan – topplistan', false, () => onChoose(null), 'free', !suggested)
     );
   }
 
@@ -283,7 +290,7 @@ export class GameUI {
     this.el.finHeight.textContent = { passed: 'Godkänd!', failed: 'Underkänd', aborted: 'Avbruten' }[status];
     this.el.finHeight.dataset.status = status;
     this.el.finRank.textContent = status === 'failed' ? ex.failReason : describeResults(ex.results);
-    this.el.finMilestone.textContent = `Tid ${formatClock(result.duration)} · tillbaka till övningarna`;
+    this.el.finMilestone.textContent = `Tid ${formatClock(result.duration)} · dra för att fortsätta öva`;
   }
 
   // --- Instrument --------------------------------------------------------------------
