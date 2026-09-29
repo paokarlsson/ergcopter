@@ -1,7 +1,8 @@
 // Spelflödet (spec §7, plan.md §8):
 //   IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE
-// I MENU väljer deltagaren en övning eller fri flygning (så högt som möjligt).
-// Efter en övning går FINISHED tillbaka till MENU, så att man kan fortsätta öva.
+// I MENU väljer deltagaren en övning, lektion, uppflygningen (lessons.js) eller fri
+// flygning (så högt som möjligt). Efter en övning går FINISHED tillbaka till MENU,
+// så att man kan fortsätta öva.
 // Den som står på ergen behöver inte röra skärmen: ett drag i MENU startar det
 // föreslagna valet, och ett drag efter en övnings resultat går tillbaka till MENU.
 // Ren logik utan DOM. Tiden kommer utifrån via tick(t) i sekunder.
@@ -24,12 +25,15 @@ export const ANONYMOUS_NAME = 'Anonym';
 const MAX_TICK_S = 2; // längre glapp (t.ex. datorn sov) räknas inte som speltid
 
 export class Game {
-  constructor(cfg) {
+  /** @param {{ rand?: () => number }} [opts]  slump till övningarna (t.ex. motorstopp), fast i tester */
+  constructor(cfg, { rand = Math.random } = {}) {
     this.cfg = cfg;
+    this.rand = rand;
     this.state = 'IDLE';
     this.player = null; // { name, anonymous, mass, klass }
-    this.exercise = null; // vald övning, null = fri flygning
+    this.exercise = null; // vald övning, lektion eller uppflygning, null = fri flygning
     this.helicopter = null; // helikoptertyp, null = standard
+    this.ownHelicopter = null; // deltagarens egen helikopter i fri flygning (efter uppflygningen)
     this.run = null; // ExerciseRun under en övning
     this.suggested = null; // förslaget i menyn som ett drag startar, null = fri flygning
     this.menuFor = 0; // s i MENU
@@ -91,13 +95,19 @@ export class Game {
     this.suggested = exercise ?? null;
   }
 
+  /** Helikoptern deltagaren flyger fri flygning med, null = standard. */
+  setOwnHelicopter(heli) {
+    this.ownHelicopter = heli ?? null;
+  }
+
   /**
-   * Val i menyn: en övning (från EXERCISES) eller null för fri flygning.
+   * Val i menyn: en övning (EXERCISES), lektion eller uppflygningen (lessons.js),
+   * eller null för fri flygning. Skolan flygs med skolhelikoptern.
    */
   choose(exercise) {
     if (this.state !== 'MENU') return;
     this.exercise = exercise ?? null;
-    this.helicopter = exercise ? getHelicopter(EXERCISE_HELICOPTER) : null;
+    this.helicopter = exercise ? getHelicopter(EXERCISE_HELICOPTER) : this.ownHelicopter;
     this.#set('READY');
   }
 
@@ -146,13 +156,16 @@ export class Game {
       return;
     }
     if (this.state !== 'FLYING' || this.paused) return; // drag under nedräkningen ignoreras
+    if (this.run?.engineOff) return; // motorstopp: dragen gör ingenting
     // Speltiden (flight.t) används så att paus och bakgrundsflik inte påverkar.
     if (this.smoother.push({ ...stroke, t: this.flight.t })) this.lastStrokeT = this.flight.t;
   }
 
-  /** P_smooth just nu (0 utanför FLYING). */
+  /** Effekten som lyfter helikoptern just nu (0 utanför FLYING): P_smooth, eller 0 vid motorstopp och minst instruktörens när hen tagit över. */
   get power() {
-    return this.state === 'FLYING' ? this.smoother.value(this.flight.t) : 0;
+    if (this.state !== 'FLYING') return 0;
+    const power = this.smoother.value(this.flight.t);
+    return this.run ? this.run.effectivePower(power, this.flight) : power;
   }
 
   // --- Tid ----------------------------------------------------------------------
@@ -175,7 +188,10 @@ export class Game {
       this.menuFor += dt;
     } else if (this.state === 'FINISHED') {
       this.finishedFor += dt;
-      if (this.finishedFor >= this.cfg.resultDisplayS) this.#afterResult();
+      // Certifikatet efter en godkänd uppflygning får synas längre.
+      const ex = this.result?.exercise;
+      const hold = ex?.kind === 'exam' && ex.status === 'passed' ? 3 : 1;
+      if (this.finishedFor >= this.cfg.resultDisplayS * hold) this.#afterResult();
     }
   }
 
@@ -191,7 +207,7 @@ export class Game {
 
   #takeOff() {
     this.flight = new Flight(this.flightConfig, this.player.mass);
-    this.run = this.exercise ? new ExerciseRun(this.exercise) : null;
+    this.run = this.exercise ? new ExerciseRun(this.exercise, { rand: this.rand }) : null;
     this.smoother = new StrokeSmoother(this.cfg);
     this.acc = 0;
     this.lastStrokeT = 0;
@@ -205,14 +221,20 @@ export class Game {
     const f = this.flight;
     const power = this.smoother.value(f.t);
     this.prevH = f.h;
-    f.step(power);
 
     if (this.run) {
-      this.run.update(f, power);
-      if (this.run.status !== 'running') this.#finish(this.run.status);
+      const run = this.run;
+      const off = run.engineOff;
+      f.step(run.effectivePower(power, f));
+      run.update(f, power);
+      // Motorn stannar eller startar: dragen från före eller under stoppet räknas inte.
+      if (run.engineOff !== off) this.smoother.reset();
+      for (const e of run.takeEvents()) this.#emit('drill', e);
+      if (run.status !== 'running') this.#finish(run.status);
       return; // övningen avgör när passet är slut
     }
 
+    f.step(power);
     for (const m of this.cfg.milestones) {
       if (!this.passed.has(m.name) && f.h >= m.h) {
         this.passed.add(m.name);
@@ -249,9 +271,12 @@ export class Game {
         ? {
             id: this.exercise.id,
             name: this.exercise.name,
+            kind: this.run.program.kind, // 'exercise' | 'lesson' | 'exam'
             status: this.run.status, // 'running' om passet avbröts
             failReason: this.run.failReason,
-            results: this.run.results,
+            results: this.run.moments.at(-1)?.results ?? this.run.results,
+            moments: this.run.moments, // avslutade moment med stjärnor
+            plan: this.run.program.moments.map((x) => ({ id: x.id, name: x.name })), // alla moment, även de som inte hanns
           }
         : null,
     };

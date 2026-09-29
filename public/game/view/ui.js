@@ -4,7 +4,8 @@
 import { CONFIG_SCHEMA, CLASSES, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from '../core/config.js';
 import { preview, CALIBRATION_STEPS, CALIBRATION_ACTIONS, PERSON_SECONDS, BALANCE_MASS } from '../core/calibration.js';
 import { fmtM } from './render.js';
-import { describeResults } from '../core/exercise.js';
+import { describeResults, starText, programOf } from '../core/exercise.js';
+import { drawHelicopter } from './heli-draw.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -61,8 +62,14 @@ export class GameUI {
       childReminder: $('child-reminder'),
       readyName: $('ready-name'),
       readyGoal: $('ready-goal'),
+      readyBest: $('ready-best'),
       menuName: $('menu-name'),
+      menuTitle: $('menu-title'),
+      menuLogbook: $('menu-logbook'),
+      menuAlarm: $('menu-alarm'),
+      menuSchool: $('menu-school'),
       menuList: $('menu-list'),
+      menuFree: $('menu-free'),
       menuLead: $('menu-lead'),
       drill: $('drill'),
       drillName: $('drill-name'),
@@ -71,11 +78,16 @@ export class GameUI {
       drillBar: $('drill-bar'),
       drillBarFill: $('drill-bar-fill'),
       drillSink: $('drill-sink'),
+      drillNote: $('drill-note'),
       countdown: $('countdown'),
       finName: $('fin-name'),
       finReason: $('fin-reason'),
       finHeight: $('fin-height'),
       finRank: $('fin-rank'),
+      finStars: $('fin-stars'),
+      finList: $('fin-list'),
+      finNote: $('fin-note'),
+      certificate: $('certificate'),
       finMilestone: $('fin-milestone'),
       disc: $('screen-disconnected'),
       discMessage: $('disc-message'),
@@ -205,58 +217,105 @@ export class GameUI {
     });
   }
 
-  /** @param {object|null} exercise  vald övning, null = fri flygning */
-  showReady(name, exercise = null) {
+  /**
+   * @param {object|null} item  vald övning, lektion eller uppflygning, null = fri flygning
+   * @param {{ stars: number, summary: string }|null} [best]  bästa resultatet i övningen
+   */
+  showReady(name, item = null, best = null) {
     this.el.readyName.textContent = name;
-    this.el.readyGoal.hidden = !exercise;
-    if (exercise) this.el.readyGoal.textContent = `${exercise.name}: ${exercise.goal}`;
+    this.el.readyGoal.hidden = !item;
+    this.el.readyBest.hidden = !item;
+    if (!item) return;
+    this.el.readyGoal.textContent = `${item.name}: ${item.goal}`;
+    if (item.moments) {
+      const names = programOf(item).moments.map((m) => m.name);
+      this.el.readyBest.textContent = `${item.intro} Moment: ${names.join(' · ')}.`;
+    } else {
+      this.el.readyBest.textContent = best
+        ? `Ditt bästa: ${starText(best.stars)}${best.summary ? ` – ${best.summary}` : ''}`
+        : 'Första gången – lycka till!';
+    }
   }
 
   /**
-   * Menyn efter inmatningen: övningarna (med bock för godkända) och fri flygning.
-   * Förslaget startar med ett drag; siffertangenterna eller ett tryck väljer något annat
-   * (1–N övningarna, N+1 fri flygning).
-   * @param {object|null} suggested  övningen ett drag startar, null = fri flygning
-   * @param {(exercise: object|null) => void} onChoose
+   * Menyn efter inmatningen: flygskolan (lektioner och uppflygningen), övningarna
+   * med stjärnor och fri flygning. Förslaget startar med ett drag; piltangenterna
+   * och Enter eller ett tryck väljer något annat.
+   * @param {object} m
+   * @param {string} m.name, m.title, m.logbook
+   * @param {{ item, title, sub, state }[]} m.school   state: done | next | tomorrow | later | open | passed
+   * @param {{ item, stars: number|null }[]} m.exercises
+   * @param {object|null} m.suggested  det ett drag startar, null = fri flygning
+   * @param {string|null} m.alarm      text om larmen (junior)
+   * @param {(item: object|null) => void} onChoose
    */
-  renderMenu(name, exercises, passed, suggested, onChoose) {
-    this.el.menuName.textContent = name;
-    this.el.menuLead.textContent = `Dra för att starta ${suggested ? suggested.name : 'fri flygning'} – eller välj något annat nedan.`;
-    const item = (key, title, goal, done, onClick, extraClass = '', isSuggested = false) => {
+  renderMenu(m, onChoose) {
+    const e = this.el;
+    e.menuName.textContent = m.name;
+    e.menuTitle.textContent = m.title;
+    e.menuLogbook.textContent = m.logbook;
+    e.menuLead.textContent = `Dra för att starta ${m.suggested ? m.suggested.name : 'fri flygning'} – eller välj något annat nedan.`;
+    e.menuAlarm.hidden = !m.alarm;
+    e.menuAlarm.textContent = m.alarm ?? '';
+
+    const pill = (text, cls) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
+    const button = (cls, item, disabled, parts) => {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = `menu-item ${extraClass} ${isSuggested ? 'suggested' : ''}`.trim();
-      const k = Object.assign(document.createElement('span'), { className: 'menu-key', textContent: key });
-      const n = Object.assign(document.createElement('span'), { className: 'menu-name', textContent: title });
-      const g = Object.assign(document.createElement('span'), { className: 'menu-goal', textContent: goal });
-      b.append(k, n);
-      if (isSuggested) b.append(Object.assign(document.createElement('span'), { className: 'menu-pull', textContent: 'Dra för att starta' }));
-      else if (done) b.append(Object.assign(document.createElement('span'), { className: 'menu-done', textContent: '✓ Godkänd' }));
-      b.append(g);
-      b.addEventListener('click', onClick);
+      b.className = `menu-item ${cls} ${item === m.suggested ? 'suggested' : ''}`.trim();
+      b.disabled = disabled;
+      b.append(...parts);
+      if (item === m.suggested) b.append(pill('Dra för att starta', 'menu-pull'));
+      b.addEventListener('click', () => onChoose(item));
       li.append(b);
       return li;
     };
-    this.el.menuList.replaceChildren(
-      ...exercises.map((ex, i) =>
-        item(String(i + 1), ex.name, ex.goal, passed.has(ex.id), () => onChoose(ex), '', ex === suggested)
-      ),
-      item(String(exercises.length + 1), 'Fri flygning', 'Så högt du kan – topplistan', false, () => onChoose(null), 'free', !suggested)
+    const STATE = {
+      done: ['✓ Genomförd', 'menu-done'],
+      next: ['Nästa', 'menu-state'],
+      tomorrow: ['I morgon', 'menu-state wait'],
+      later: ['Låst', 'menu-state wait'],
+      open: ['Öppen', 'menu-state'],
+      passed: ['✓ Godkänd', 'menu-done'],
+      retry: ['Omprov i morgon', 'menu-state wait'],
+    };
+    e.menuSchool.replaceChildren(
+      ...m.school.map((x) => {
+        const [text, cls] = STATE[x.state];
+        const parts = [
+          pill(x.title, 'menu-name'),
+          pill(x.sub, 'menu-goal'),
+          ...(x.item === m.suggested ? [] : [pill(text, cls)]),
+        ];
+        return button(`school ${x.item.kind === 'exam' ? 'exam' : ''}`, x.item, ['tomorrow', 'later', 'retry'].includes(x.state), parts);
+      })
+    );
+    e.menuList.replaceChildren(
+      ...m.exercises.map(({ item, stars }) =>
+        button('tile', item, false, [
+          pill(item.name, 'menu-name'),
+          pill(stars ? starText(stars) : '–', `menu-stars ${stars ? '' : 'none'}`.trim()),
+          pill(item.goal, 'menu-goal'),
+        ])
+      )
+    );
+    e.menuFree.replaceChildren(
+      button('free', null, false, [pill('Fri flygning', 'menu-name'), pill('Så högt du kan – topplistan', 'menu-goal')])
     );
   }
 
   /**
    * Övningens panel under flygningen. null döljer den.
-   * @param {{ name, stepText, step, steps, progress?, sink? }|null} d
-   *   sink: { speed, max } visas under landningen
+   * @param {{ name, stepText, stepLabel, progress?, sink?, note? }|null} d
+   *   sink: { speed, max } visas under landningen, note är instruktörens kommentar
    */
   updateDrill(d) {
     const e = this.el;
     e.drill.hidden = !d;
     if (!d) return;
     setText(e.drillName, d.name);
-    setText(e.drillStep, d.steps > 1 ? `Steg ${d.step} av ${d.steps}` : '');
+    setText(e.drillStep, d.stepLabel);
     setText(e.drillText, d.stepText);
     e.drillBar.hidden = d.progress == null;
     if (d.progress != null) e.drillBarFill.style.width = `${Math.round(d.progress * 100)}%`;
@@ -266,6 +325,8 @@ export class GameUI {
       setText(e.drillSink, `Sjunker ${dec(Math.max(0, d.sink.speed))} m/s · max ${dec(d.sink.max)}`);
       e.drillSink.dataset.ok = String(d.sink.speed <= d.sink.max);
     }
+    e.drillNote.hidden = !d.note;
+    if (d.note) setText(e.drillNote, d.note);
   }
 
   setCountdown(n) {
@@ -273,28 +334,90 @@ export class GameUI {
     if (this.el.countdown.textContent !== text) this.el.countdown.textContent = text;
   }
 
-  /** rank/total gäller inom deltagarens klass. */
-  showFinished(result, rank, total) {
-    this.el.finName.textContent = result.klass ? `${result.name} · ${result.klass}` : result.name;
-    delete this.el.finHeight.dataset.status;
-    if (result.exercise) return this.#showExerciseResult(result);
-    this.el.finReason.textContent = REASONS[result.reason] ?? '';
-    this.el.finHeight.textContent = `${fmtM(result.hMax)} m`;
-    this.el.finRank.textContent = result.klass ? `Plats ${rank} av ${total} i klassen` : `Plats ${rank} av ${total}`;
+  /**
+   * rank/total gäller inom deltagarens klass.
+   * @param {object} [extra]  från profilen: { bests, promoted, teaser, next, heliName, date }
+   *   next: text om vad som väntar (t.ex. "Nästa lektion i morgon")
+   */
+  showFinished(result, rank, total, extra = {}) {
+    const e = this.el;
+    e.finName.textContent = result.klass ? `${result.name} · ${result.klass}` : result.name;
+    delete e.finHeight.dataset.status;
+    e.finStars.hidden = true;
+    e.finList.hidden = true;
+    e.finNote.hidden = true;
+    e.certificate.hidden = true;
+    if (result.exercise) return this.#showExerciseResult(result, extra);
+    e.finReason.textContent = REASONS[result.reason] ?? '';
+    e.finHeight.textContent = `${fmtM(result.hMax)} m`;
+    e.finRank.textContent = result.klass ? `Plats ${rank} av ${total} i klassen` : `Plats ${rank} av ${total}`;
     const m = result.milestone;
-    this.el.finMilestone.textContent = m
+    e.finMilestone.textContent = m
       ? `Högsta milstolpe: ${m.name} (${[m.area, `${fmtM(m.h)} m`].filter(Boolean).join(', ')})`
       : 'Ingen milstolpe den här gången';
   }
 
-  #showExerciseResult(result) {
+  #showExerciseResult(result, extra) {
+    const e = this.el;
     const ex = result.exercise;
     const status = ex.status === 'running' ? 'aborted' : ex.status;
-    this.el.finReason.textContent = `Övning: ${ex.name}`;
-    this.el.finHeight.textContent = { passed: 'Godkänd!', failed: 'Underkänd', aborted: 'Avbruten' }[status];
-    this.el.finHeight.dataset.status = status;
-    this.el.finRank.textContent = status === 'failed' ? ex.failReason : describeResults(ex.results);
-    this.el.finMilestone.textContent = `Tid ${formatClock(result.duration)} · dra för att fortsätta öva`;
+    const note = (text) => {
+      e.finNote.hidden = !text;
+      e.finNote.textContent = text ?? '';
+    };
+    e.finHeight.dataset.status = status;
+    e.finMilestone.textContent = `Tid ${formatClock(result.duration)} · dra för att fortsätta`;
+
+    if (ex.kind === 'exercise') {
+      const m = ex.moments[0];
+      e.finReason.textContent = `Övning: ${ex.name}`;
+      e.finHeight.textContent = { passed: 'Godkänd!', failed: 'Underkänd', aborted: 'Avbruten' }[status];
+      e.finStars.hidden = status !== 'passed';
+      e.finStars.textContent = m ? starText(m.stars) : '';
+      e.finRank.textContent = status === 'failed' ? ex.failReason : describeResults(ex.results);
+      const best = extra.bests?.find((b) => b.id === ex.id);
+      note(best?.prev ? `Nytt personbästa! Förra bästa: ${starText(best.prev.stars)}${best.prev.summary ? ` – ${best.prev.summary}` : ''}` : null);
+      return;
+    }
+
+    // Lektion eller uppflygning: ett protokoll med alla moment.
+    const exam = ex.kind === 'exam';
+    e.finReason.textContent = ex.name;
+    e.finHeight.textContent =
+      status === 'aborted' ? 'Avbruten' : exam ? (status === 'passed' ? 'Godkänd!' : 'Underkänd') : 'Lektionen klar!';
+    if (!exam && status !== 'aborted') e.finHeight.dataset.status = 'passed';
+    const stars = ex.moments.reduce((a, m) => a + m.stars, 0);
+    e.finStars.hidden = exam || status === 'aborted';
+    e.finStars.textContent = `${stars} av ${ex.plan.length * 3} ★`;
+    e.finRank.textContent = '';
+    e.finList.hidden = false;
+    e.finList.replaceChildren(
+      ...ex.plan.map((p) => {
+        const m = ex.moments.find((x) => x.id === p.id);
+        const li = document.createElement('li');
+        li.dataset.status = m?.status ?? 'skipped';
+        const head = Object.assign(document.createElement('span'), {
+          className: 'fin-moment',
+          textContent: `${m ? (m.status === 'passed' ? '✓' : '✗') : '–'} ${p.name}`,
+        });
+        const detail = Object.assign(document.createElement('span'), {
+          className: 'fin-detail',
+          textContent: !m ? 'inte flugen' : m.status === 'passed' ? `${starText(m.stars)} ${describeResults(m.results)}` : m.failReason,
+        });
+        if (extra.bests?.some((b) => b.id === p.id && b.prev)) detail.textContent += ' · nytt personbästa!';
+        li.append(head, detail);
+        return li;
+      })
+    );
+    if (exam && status === 'passed' && extra.promoted) {
+      e.finList.hidden = true;
+      e.certificate.hidden = false;
+      $('cert-name').textContent = result.name;
+      $('cert-heli-name').textContent = extra.heliName ?? '';
+      $('cert-date').textContent = extra.date ?? '';
+      drawCertificateHeli($('cert-heli'), extra.livery);
+    }
+    note([status === 'aborted' ? null : extra.teaser, extra.next].filter(Boolean).join(' ') || null);
   }
 
   // --- Instrument --------------------------------------------------------------------
@@ -595,6 +718,20 @@ function row(cells) {
 }
 
 const fmtW = (w) => (Math.round(w * 10) / 10).toLocaleString('sv-SE');
+
+/** Den nya helikoptern på certifikatet, stilla på marken. */
+function drawCertificateHeli(canvas, livery) {
+  const ctx = canvas.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const v = (name) => css.getPropertyValue(name).trim();
+  const c = { body: v('--heli-body'), glass: v('--heli-glass'), metal: v('--heli-metal'), rotor: v('--heli-rotor') };
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width / 2 + 10, 92);
+  ctx.scale(1.3, 1.3);
+  drawHelicopter(ctx, { blur: 0, angle: 0.3, tailAngle: 0.5 }, c, livery);
+  ctx.restore();
+}
 
 function setText(el, text) {
   if (el.textContent !== text) el.textContent = text;

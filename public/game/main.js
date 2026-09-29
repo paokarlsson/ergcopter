@@ -4,11 +4,14 @@ import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } fro
 import { Game } from './core/game.js';
 import { StrokeSmoother } from './core/signal.js';
 import { Leaderboard } from './core/leaderboard.js';
-import { Progress, nextExercise } from './core/progress.js';
-import { EXERCISES, stepGuides } from './core/exercise.js';
+import { Progress, dayOf, formatFlightTime } from './core/progress.js';
+import { EXERCISES, stepGuides, starText, describeResults } from './core/exercise.js';
+import { LESSONS, EXAM, GRADES, FIRST_ALARM, careerState, findProgram } from './core/lessons.js';
+import { getHelicopter, INSTRUCTOR_LIVERY } from './core/helicopters.js';
+import { autopilot } from './core/autopilot.js';
 import { Rotor } from './view/rotor.js';
 import { attractFlight } from './view/attract.js';
-import { GameRenderer, fmtM } from './view/render.js';
+import { GameRenderer, fmtM, RING_SPEED_PX } from './view/render.js';
 import { GameUI, download } from './view/ui.js';
 import { Replay, landingTrajectory } from './core/replay.js';
 import { RotorSound } from './view/audio.js';
@@ -41,6 +44,7 @@ let source = null;
 let sourceKind = null;
 let replay = null;
 let todayBest = null; // dagens rekord i den aktuella deltagarens klass
+let parkedLivery = null; // räddningshelikoptern som väntar vid verkstan tills uppflygningen är klar
 const BOARD_ROTATE_MS = 8000;
 let boardTab = 0;
 let boardTimer = null;
@@ -87,7 +91,9 @@ function attach(kind) {
     preview.push(s);
     game.stroke(s);
   });
-  source.on('force', (samples) => rotor.addForces(samples));
+  source.on('force', (samples) => {
+    if (!game.run?.engineOff) rotor.addForces(samples); // motorstopp: rotorn saktar in
+  });
   source.on('status', onStatus);
   source.on('raw', (line) => {
     ui.debug(line);
@@ -122,8 +128,8 @@ function onStatus(status) {
 
 const connected = () => source?.status.state === 'connected';
 
-// ?demo: Mock-källan flyger en demospelare (80 kg) efter en effektprofil, utan erg.
-// ?demo=<övnings-id> väljer en övning i stället för fri flygning.
+// ?demo: Mock-källan flyger en demospelare (80 kg) utan erg. Fri flygning följer
+// en effektprofil; ?demo=<id> (övning, lektion eller exam) flygs av autopiloten.
 const DEMO_PROFILE = [
   [8, 60],
   [40, 280],
@@ -134,10 +140,17 @@ async function runDemo() {
   await connect('mock');
   game.openSetup();
   ui.setupError(game.submitSetup({ name: 'Demo', mass: 80, klass: 'Vuxen' }));
-  // ?demo=hover osv. flyger en övning, annars fri flygning.
-  game.choose(EXERCISES.find((e) => e.id === new URLSearchParams(location.search).get('demo')) ?? null);
+  const program = findProgram(new URLSearchParams(location.search).get('demo'));
+  game.choose(program);
+  const pilot = autopilot();
   const start = now();
   setInterval(() => {
+    if (program) {
+      // Utanför flygningen drar demospelaren lugnt, så att menyn och resultatet går vidare.
+      const run = game.state === 'FLYING' ? game.run : null;
+      source.setPower(run?.step ? pilot({ flight: game.flight, run, step: run.step }) ?? 0 : 60);
+      return;
+    }
     let t = now() - start;
     let watts = 0;
     for (const [s, w] of DEMO_PROFILE) {
@@ -186,16 +199,47 @@ game.on('state', ({ to }) => {
     renderMenu();
   } else if (to === 'READY') {
     todayBest = game.exercise ? null : board.todayBest(Date.now(), game.player.klass);
-    ui.showReady(game.player.name, game.exercise);
+    const best = game.exercise ? progress().profile(game.player.name).best[game.exercise.id] ?? null : null;
+    ui.showReady(game.player.name, game.exercise, best);
   }
 });
 
-/** Menyn med ett förslag som startar med ett drag – man ska inte behöva röra skärmen. */
+/** Skolan (lektioner och uppflygningen) för deltagaren i dag. */
+function career() {
+  return careerState(progress().profile(game.player.name), dayOf(Date.now()), cfg);
+}
+
+/**
+ * Menyn med ett förslag som startar med ett drag – man ska inte behöva röra skärmen.
+ * Efter uppflygningen flyger deltagaren fri flygning med sin räddningshelikopter.
+ */
 function renderMenu() {
-  const passed = progress().passed(game.player.name);
-  const suggested = nextExercise(EXERCISES, passed);
-  game.suggest(suggested);
-  ui.renderMenu(game.player.name, EXERCISES, passed, suggested, (ex) => game.choose(ex));
+  const name = game.player.name;
+  const profile = progress().profile(name);
+  const c = career();
+  const junior = profile.grade !== 'aspirant';
+  game.setOwnHelicopter(junior ? getHelicopter('rescue') : null);
+  parkedLivery = junior ? null : getHelicopter('rescue').livery;
+  game.suggest(c.suggestion);
+  const days = progress().daysThisWeek(name, Date.now());
+  const school = [
+    ...c.lessons.map(({ lesson, state }) => ({ item: lesson, title: `Lektion ${lesson.number}`, sub: lesson.goal, state })),
+    { item: EXAM, title: 'Uppflygning', sub: 'Krävs för att bli junior', state: c.exam === 'tomorrow' ? 'retry' : c.exam },
+  ];
+  ui.renderMenu(
+    {
+      name,
+      title: junior ? `${GRADES[profile.grade]} · Basen` : `${GRADES.aspirant} · Flygskolan`,
+      logbook: `Loggbok: ${formatFlightTime(profile.flightS)} flygtid · ${
+        days ? `flugit ${days} ${days === 1 ? 'dag' : 'dagar'} den här veckan` : 'ingen flygning än den här veckan'
+      }`,
+      alarm: junior ? `Första larmet kommer snart: ${FIRST_ALARM}` : null,
+      school,
+      exercises: EXERCISES.map((item) => ({ item, stars: profile.best[item.id]?.stars ?? null })),
+      suggested: c.suggestion,
+    },
+    (item) => game.choose(item)
+  );
 }
 
 // Under en övning är det instruktionen som gäller – inga notiser om toppar.
@@ -203,11 +247,63 @@ game.on('milestone', (m) => {
   if (!game.run) ui.toast(m.name, [`${fmtM(m.h)} m`, m.area].filter(Boolean).join(' · '), 'Topp passerad');
 });
 
+// Händelser i övningen: motorstopp, övertagande, last och avklarade moment.
+game.on('drill', (e) => {
+  const who = game.run?.program.kind === 'exam' ? 'Examinatorn' : 'Instruktören';
+  if (e.type === 'engineCut') ui.toast('Motorstopp!', 'Motorn startar om strax – var beredd', who);
+  else if (e.type === 'engineRestart') ui.toast('Motorn går igen', 'Hämta upp!', who);
+  else if (e.type === 'takeover') ui.toast(`${who} tar över`, 'Dra för att ta tillbaka kontrollen', who);
+  else if (e.type === 'loaded') ui.toast('Sandsäcken är ombord', 'Nu är helikoptern tyngre', who);
+  // Sista momentet syns på resultatet i stället.
+  else if (e.type === 'moment' && game.run?.program.moments.length > 1 && game.run.status === 'running') {
+    const m = e.moment;
+    ui.toast(`${m.status === 'passed' ? '✓' : '✗'} ${m.name}`, m.status === 'passed' ? starText(m.stars) : m.failReason, who);
+  }
+});
+
+/** För in flygningen i profilen och loggboken; returnerar det resultatskärmen visar utöver resultatet. */
+function recordFlight(result) {
+  const ex = result.exercise;
+  const out = progress().record(
+    result.name,
+    {
+      kind: ex?.kind ?? 'free',
+      id: ex?.id,
+      status: ex?.status,
+      flightS: result.duration,
+      moments: (ex?.moments ?? []).map((m) => ({ ...m, summary: describeResults(m.results) })),
+    },
+    Date.now()
+  );
+  if (!ex || ex.kind === 'exercise') return out;
+  const c = career();
+  let next = null;
+  if (ex.kind === 'lesson' && ex.status === 'passed') {
+    const upcoming = c.lessons.find((l) => l.state === 'next' || l.state === 'tomorrow');
+    if (upcoming?.state === 'tomorrow') next = `Lektion ${upcoming.lesson.number} väntar i morgon.`;
+    else if (!upcoming && c.exam === 'open') next = 'Uppflygningen är öppen när du känner dig redo.';
+  }
+  if (ex.kind === 'exam' && ex.status === 'failed') {
+    next = c.exam === 'tomorrow' ? 'Omprov i morgon. Öva under tiden – lektionerna och övningarna är öppna.' : 'Försök igen när du är redo.';
+  }
+  const rescue = getHelicopter('rescue');
+  const program = ex.kind === 'lesson' ? LESSONS.find((l) => l.id === ex.id) : EXAM;
+  return {
+    ...out,
+    teaser: ex.kind === 'lesson' || ex.status === 'passed' ? program?.teaser : null,
+    next,
+    heliName: rescue.name,
+    livery: rescue.livery,
+    date: new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' }),
+  };
+}
+
 game.on('finish', (result) => {
   replay = result.endH > 0 ? new Replay(landingTrajectory(game.flight), cfg.dt, cfg.replayMaxS) : null;
+  const extra = recordFlight(result);
   if (result.exercise) {
-    if (result.exercise.status === 'passed') progress().markPassed(result.name, result.exercise.id);
-    ui.showFinished(result);
+    ui.showFinished(result, 0, 0, extra);
+    if (extra.promoted) renderer.celebrate();
     return; // övningar hamnar inte på topplistan
   }
   const { entry } = board.add(result);
@@ -293,13 +389,17 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (game.state === 'FINISHED' && !['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return game.dismissResult();
-  if (game.state === 'MENU' && /^[1-9]$/.test(key)) {
-    const i = Number(key) - 1;
-    if (i < EXERCISES.length) game.choose(EXERCISES[i]);
-    else if (i === EXERCISES.length) game.choose(null);
+  if (game.state === 'MENU' && key.startsWith('Arrow')) {
+    // Piltangenterna flyttar mellan valen i menyn, Enter väljer.
+    const items = [...document.querySelectorAll('#screen-menu .menu-item:not(:disabled)')];
+    const i = items.indexOf(document.activeElement);
+    const step = key === 'ArrowDown' || key === 'ArrowRight' ? 1 : -1;
+    items[i < 0 ? (step > 0 ? 0 : items.length - 1) : (i + step + items.length) % items.length]?.focus();
+    e.preventDefault();
     return;
   }
   if (key === 'Enter') {
+    if (game.state === 'MENU') return game.choose(game.suggested);
     if (game.state === 'IDLE') game.openSetup();
     else if (game.state === 'READY') game.startCountdown();
   }
@@ -338,7 +438,8 @@ function frame() {
 
   const P0 = f?.P0 ?? (game.player ? liftPower(cfg, game.player.mass) : cfg.P_ref);
   const run = game.state === 'FLYING' ? game.run : null;
-  const guides = stepGuides(run?.step);
+  const guides = stepGuides(run?.step, f?.t);
+  const rings = run?.step?.type === 'rings'; // ringbanan flygs framåt i jämn fart
   const power = game.state === 'FLYING' ? game.power : preview.value(now());
   rotor.step(dt, power / P0);
   // På startskärmen flyger helikoptern en demotur bakom titeln och topplistan.
@@ -348,20 +449,26 @@ function frame() {
     attractRotor.step(dt, ATTRACT_LIFT);
   }
   const shownRotor = attract ? attractRotor : rotor;
-  renderer.advance(dt, shownRotor, h, !game.exercise || attract);
+  const school = Boolean(game.exercise) && !attract;
+  renderer.advance(dt, shownRotor, h, !school || rings, rings ? RING_SPEED_PX : null);
   renderer.draw({
     h,
     vy,
     rotor: shownRotor,
-    hMax: game.exercise || attract ? 0 : f?.hMax ?? 0,
+    hMax: school || attract ? 0 : f?.hMax ?? 0,
     todayBest: attract ? null : todayBest,
-    milestones: cfg.milestones,
+    milestones: school ? [] : cfg.milestones,
     avoid: attract ? ui.idleRects() : ui.hudRects(),
     flying: game.state === 'FLYING' || attract,
     guides: guides.lines,
     landingPad: guides.landingPad,
-    workshop: Boolean(game.exercise),
-    livery: game.helicopter?.livery,
+    blind: guides.blind,
+    workshop: school,
+    // Aspiranten ser räddningshelikoptern som väntar vid verkstan.
+    parked: school ? parkedLivery : null,
+    buddyLivery: INSTRUCTOR_LIVERY,
+    winch: winchInfo(run, f),
+    livery: attract ? null : game.helicopter?.livery,
   });
   ui.updateDrill(run?.step ? drillInfo(run, f) : null);
   sound.update(power / P0, rotor.omega);
@@ -427,17 +534,40 @@ showBoard(0);
 startBoardRotation();
 requestAnimationFrame(frame);
 
+const NOTE_S = 6; // så länge instruktörens kommentar efter ett moment syns
+const INTRO_S = 10; // och hälsningen i början av en lektion
+
 /** Övningspanelens innehåll för det aktuella steget. */
 function drillInfo(run, f) {
   const step = run.step;
+  const moments = run.program.moments.length;
+  const steps = run.moment.steps.length;
+  const who = run.program.kind === 'exam' ? 'Examinatorn' : 'Instruktören';
+  const last = run.lastMoment;
+  let note = null;
+  if (last && f.t - last.endT < NOTE_S) {
+    note = last.status === 'passed' ? `✓ ${last.name} ${starText(last.stars)}` : `✗ ${last.name}: ${last.failReason}`;
+  } else if (moments > 1 && f.t < INTRO_S) note = `${who}: ${run.exercise.intro}`;
+  let done = null; // andel av steget, för stapeln
+  if (step.type === 'hover' || step.type === 'winch') done = step.held / step.holdS;
+  else if (step.type === 'follow') done = step.elapsed / step.path.at(-1)[0];
+  else if (step.type === 'rings') done = step.outcomes.length / step.rings.length;
+  else if (step.type === 'freefall' && (step.reps ?? 1) > 1) done = step.catches.length / step.reps;
   return {
-    name: run.exercise.name,
-    step: run.index + 1,
-    steps: run.exercise.steps.length,
+    name: moments > 1 ? `${run.exercise.name.replace(/^Lektion (\d+):.*/, 'Lektion $1')} · ${run.moment.name}` : run.moment.name,
+    stepLabel: moments > 1 ? `Moment ${run.momentIndex + 1} av ${moments}` : steps > 1 ? `Steg ${run.index + 1} av ${steps}` : '',
     stepText: run.instruction,
-    progress: step.type === 'hover' ? Math.min(1, step.held / step.holdS) : null,
+    progress: done === null ? null : Math.min(1, done),
     sink: step.type === 'land' ? { speed: -f.v, max: step.maxSpeed } : null,
+    note,
   };
+}
+
+/** Vinschen: linan går ned medan man hovrar, sedan hänger sandsäcken under helikoptern. */
+function winchInfo(run, f) {
+  if (!run || !f) return null;
+  if (run.step?.type === 'winch') return { progress: run.step.held / run.step.holdS, loaded: false };
+  return f.load > 0 ? { progress: 1, loaded: true } : null;
 }
 
 function dateStamp() {

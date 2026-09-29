@@ -36,26 +36,31 @@ export function runPhysicsOnly(cfg, bodyMass, profile) {
 /**
  * Kör en övning headless med en pilot som bestämmer varje drag.
  * `pilot(state)` anropas var 60/spm sekund och returnerar effekten för draget,
- * eller null för att inte dra alls.
+ * eller null för att inte dra alls. Fungerar också för lektioner och uppflygningen.
  * @param {object} cfg  konfiguration, t.ex. från helicopterConfig
  * @returns {ExerciseRun}
  */
-export function runExercise(cfg, bodyMass, exercise, pilot, { spm = 40 } = {}) {
-  const run = new ExerciseRun(exercise);
+export function runExercise(cfg, bodyMass, exercise, pilot, { spm = 40, rand = () => 0.5 } = {}) {
+  const run = new ExerciseRun(exercise, { rand });
   const smoother = new StrokeSmoother(cfg);
   const flight = new Flight(cfg, bodyMass);
   const interval = 60 / spm;
   let nextStroke = interval;
   let count = 0;
+  let engineOff = false;
   while (run.status === 'running') {
     if (flight.t >= nextStroke - 1e-9) {
       nextStroke += interval;
       const power = pilot({ flight, run, step: run.step });
-      if (power !== null) smoother.push({ t: flight.t, power, strokeCount: ++count });
+      // Vid motorstopp räknas inga drag (som i game.js).
+      if (power !== null && !run.engineOff) smoother.push({ t: flight.t, power, strokeCount: ++count });
     }
     const power = smoother.value(flight.t);
-    flight.step(power);
+    flight.step(run.effectivePower(power, flight));
     run.update(flight, power);
+    if (run.engineOff !== engineOff) smoother.reset();
+    engineOff = run.engineOff;
+    run.takeEvents();
   }
   return run;
 }

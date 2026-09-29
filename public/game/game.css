@@ -770,79 +770,239 @@ select {
 .drill-sink[data-ok='false'] {
   color: #ff8a80;
 }
+.drill-note {
+  margin-top: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #ffe28a;
+}
 
-/* --- Menyn: övningar ------------------------------------------------------ */
+/* --- Menyn: flygskolan och övningar (plan.md §2–3) ------------------------- */
 
-.menu-list {
+.card.menu-card {
+  width: min(1000px, 100%);
+}
+.logbook {
+  margin: -8px 0 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.menu-section {
+  margin: 18px 0 8px;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.menu-section .small {
+  font-family: system-ui, sans-serif;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.menu-list,
+.menu-school,
+.menu-grid {
   display: grid;
   gap: 8px;
-  margin: 16px 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
+.menu-school {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.menu-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+.menu-list {
+  margin-top: 16px;
+}
 .menu-item {
   display: grid;
-  grid-template-columns: 2.2em 1fr auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 2px 12px;
+  align-content: start;
+  gap: 2px 10px;
   width: 100%;
-  padding: 8px 14px;
+  height: 100%;
+  padding: 8px 12px;
   background: var(--panel-solid);
   color: var(--text);
   text-align: left;
   cursor: pointer;
 }
-.menu-item:hover,
+.menu-item:hover:not(:disabled),
 .menu-item:focus-visible {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 2px var(--accent);
   outline: none;
 }
-.menu-key {
-  display: grid;
-  place-items: center;
-  width: 1.9em;
-  height: 1.9em;
-  border-radius: 8px;
-  background: var(--border);
-  font-weight: 700;
+.menu-item:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .menu-name {
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
 }
 .menu-goal {
-  grid-column: 2;
+  grid-column: 1 / -1;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+.menu-done,
+.menu-state,
+.menu-stars,
+.menu-pull {
+  grid-row: 1;
+  grid-column: 2;
+  white-space: nowrap;
+  font-weight: 700;
 }
 .menu-done {
-  grid-row: 1 / span 2;
-  grid-column: 3;
   color: var(--good);
-  font-weight: 700;
+}
+.menu-state {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+.menu-state.wait {
+  color: var(--muted);
+}
+.menu-stars {
+  color: var(--line-record);
+  letter-spacing: 0.05em;
+}
+.menu-stars.none {
+  color: var(--muted);
+}
+.menu-item.school .menu-done,
+.menu-item.school .menu-state,
+.menu-item.school .menu-pull {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 4px;
+}
+.menu-item.exam {
+  border-color: var(--line-record);
 }
 .menu-item.suggested {
   border-color: var(--good);
   box-shadow: inset 0 0 0 2px var(--good);
 }
 .menu-pull {
-  grid-row: 1 / span 2;
-  grid-column: 3;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: var(--good);
   color: #fff;
-  font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
-.menu-item.free {
-  margin-top: 8px;
+.menu-alarm {
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  border-left: 6px solid #d7263d;
+  border-radius: 8px;
+  background: var(--panel-solid);
+  font-weight: 700;
 }
 .ready-goal {
   margin: 4px 0 8px;
   color: var(--muted);
   font-size: 1.2rem;
+}
+.ready-best {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.fin-stars {
+  margin: 0 0 8px;
+  font-size: 2.2rem;
+  color: var(--line-record);
+  letter-spacing: 0.08em;
+}
+.fin-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px auto 12px;
+  padding: 0;
+  max-width: 560px;
+  list-style: none;
+  text-align: left;
+}
+.fin-list li {
+  display: grid;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--panel-solid);
+  border-left: 5px solid var(--border);
+}
+.fin-list li[data-status='passed'] {
+  border-left-color: var(--good);
+}
+.fin-list li[data-status='failed'] {
+  border-left-color: var(--bad);
+}
+.fin-moment {
+  font-weight: 700;
+}
+.fin-detail {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.fin-note {
+  margin: 8px 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+/* Certifikatet efter godkänd uppflygning: papper i båda temana */
+.certificate {
+  margin: 12px auto;
+  max-width: 460px;
+  padding: 16px 20px;
+  border: 6px double #b08d57;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #3b2a18;
+}
+.certificate p {
+  margin: 4px 0;
+}
+.cert-kicker {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.cert-title,
+.cert-grade {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.cert-title {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.cert-name {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+.cert-grade {
+  font-size: 1.8rem;
+  color: #d7263d;
+}
+.cert-heli {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  margin: 4px auto;
+}
+.certificate .cert-date {
+  color: #7a6a55;
 }
 .result output[data-status] {
   font-size: clamp(2.4rem, 7vw, 4.2rem);

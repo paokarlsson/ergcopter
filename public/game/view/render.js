@@ -2,6 +2,7 @@
 // molntäcke som visar hur högt man är (scenery.js), fjälltoppar som kommer in från
 // höger och passerar under helikoptern, moln i världen, marken när man är låg,
 // fartstreck och konfetti (effects.js), höjdlinjer och en sidoskala över hela höjden.
+// I skolan också övningarnas hjälplinjer, instruktörens helikopter, ringar, moln och vinschen.
 // Siffror och mätare ligger i DOM (ui.js).
 
 import { drawHelicopter, drawCloud, drawTree } from './heli-draw.js';
@@ -30,6 +31,8 @@ const ZOOM_OUT_MAX = 0.35; // kameran visar så här mycket mer när det går so
 const ZOOM_TIME_S = 1.2;
 const FAST_CLIMB_MS = 50; // m/s där fartstreck och utzoomning är fullt påslagna
 const DOWNWASH_M = 30; // rotorvinden blåser upp damm under den här höjden
+export const RING_SPEED_PX = 320; // ringbanan: landskapet och ringarna rullar i jämn fart
+const BUDDY_DX = 200; // instruktörens helikopter flyger så här långt framför (px vid skala 1)
 
 export class GameRenderer {
   constructor(canvas) {
@@ -39,11 +42,14 @@ export class GameRenderer {
     this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
     this.speed = 0; // px/s just nu
+    this.cruise = 0; // px/s i luften, utan upprampningen vid lyftet
     this.signAlpha = new Map(); // namn → 0–1, skyltarnas intoning
     this.lastDraw = null;
     this.zoom = 1; // > 1 när kameran zoomat ut i hög fart
     this.effects = new Effects();
     this.celebrated = new Set(); // toppar som fått konfetti under passet
+    this.buddyRotor = { angle: 0, tailAngle: 0, blur: 1 }; // instruktörens helikopter
+    this.lastH = 0;
     this.colors = null;
     const refresh = () => (this.colors = readColors(canvas));
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refresh);
@@ -52,11 +58,13 @@ export class GameRenderer {
 
   /**
    * Rullar landskapet framåt efter rotorvarv, bara i luften. Övningarna flygs
-   * rakt upp och ned vid verkstan, utan framåtfart (forward = false).
+   * rakt upp och ned vid verkstan, utan framåtfart (forward = false). Ringbanan
+   * rullar i jämn fart (fixedSpeed), så att ringarna kommer när övningen säger.
    */
-  advance(dt, rotor, h, forward = true) {
+  advance(dt, rotor, h, forward = true, fixedSpeed = null) {
     const airborne = Math.min(1, h / 3);
-    this.speed = forward ? Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) * airborne : 0;
+    this.cruise = forward ? fixedSpeed ?? Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) : 0;
+    this.speed = this.cruise * airborne;
     this.distance += this.speed * dt;
   }
 
@@ -70,13 +78,23 @@ export class GameRenderer {
     this.effects.clear();
   }
 
+  /** Konfetti kring helikoptern, t.ex. när uppflygningen är godkänd. */
+  celebrate() {
+    const c = this.colors;
+    const x = (this.canvas.clientWidth || 0) * HELI_X;
+    for (const dx of [-120, 0, 120]) this.effects.burst(x + dx, this.lastH + 25, [c.body, c.record, c.guide, c.signBoard, '#d7263d']);
+  }
+
   /**
    * Skickar in berg från höger så att de når helikoptern ungefär när den når
    * toppens höjd (förutsagt från stighastigheten). Då flyger man över toppen
    * precis när milstolpen passeras. Berg som kommer tätt köar med mellanrum.
+   * Förutsägelsen räknar med farten i luften: vid lyftet är farten nästan noll,
+   * och då skulle alla berg skickas in direkt och passera långt under toppen.
    */
   #sendMountains(v, W, H, y) {
     if (!v.flying || this.speed <= 0) return;
+    const speed = this.cruise;
     const hx = W * HELI_X;
     const climb = Math.max(0, v.vy);
     const reach = (m) => mountainReach(H + MOUNTAIN_BOTTOM_PX - y(m.h));
@@ -87,7 +105,7 @@ export class GameRenderer {
     this.mountains = this.mountains.filter((item) => {
       const sx = W + item.entry - (this.distance - item.startAt);
       if (sx - reach(item.m) <= W) return true;
-      const reachable = v.h + climb * ((sx - hx) / this.speed) >= item.m.h - MOUNTAIN_WITHDRAW_M;
+      const reachable = v.h + climb * ((sx - hx) / speed) >= item.m.h - MOUNTAIN_WITHDRAW_M;
       if (reachable) return true;
       this.sent.delete(item.m.name);
       return false;
@@ -100,11 +118,11 @@ export class GameRenderer {
       const last = this.mountains.at(-1);
       const queued = last ? W + last.entry - (this.distance - last.startAt) + MOUNTAIN_GAP_PX : -Infinity;
       const startSx = Math.max(W + Math.max(MOUNTAIN_ENTRY_PX, reach(m)), queued);
-      if (m.h > v.h + climb * ((startSx - hx) / this.speed)) continue;
+      if (m.h > v.h + climb * ((startSx - hx) / speed)) continue;
       this.sent.add(m.name);
       if (m.h < v.h - MOUNTAIN_SKIP_BELOW_M) continue; // redan långt under – skulle passera utanför bild
       // Är berget redan sent ute (t.ex. vid en snabb stigning) startar det närmare, som förr.
-      const due = climb > 0 ? hx + ((m.h - v.h) / climb) * this.speed : Infinity;
+      const due = climb > 0 ? hx + ((m.h - v.h) / climb) * speed : Infinity;
       const sx = Math.max(W + MOUNTAIN_ENTRY_PX, queued, Math.min(startSx, due));
       this.mountains.push({ m, startAt: this.distance, entry: sx - W });
     }
@@ -123,6 +141,10 @@ export class GameRenderer {
    * @param {object[]} [v.guides]        övningens hjälplinjer (exercise.js stepGuides)
    * @param {boolean} [v.landingPad]     markera landningsplatsen under helikoptern
    * @param {boolean} [v.workshop]       verkstaden vid startplatsen (övningar)
+   * @param {boolean} [v.blind]          i moln: bara helikoptern syns, inga linjer eller skalor
+   * @param {object} [v.parked]          helikopter som står parkerad vid verkstan (livery)
+   * @param {object} [v.buddyLivery]     instruktörens helikopter i "Följ instruktören"
+   * @param {{progress:number, loaded:boolean}} [v.winch]  vinschens lina och sandsäcken
    * @param {object} [v.livery]          helikopterns utseende
    */
   draw(v) {
@@ -153,6 +175,7 @@ export class GameRenderer {
     const scale = Math.max(0.6, Math.min(1.6, W / 1100));
     const hx = W * HELI_X;
     const airborne = Math.min(1, v.h / 3);
+    this.lastH = v.h;
 
     this.effects.update(dt, this.speed);
     if (v.h < DOWNWASH_M && v.rotor.blur > 0.25 && y(0) < H) {
@@ -168,9 +191,10 @@ export class GameRenderer {
     this.#clouds(ctx, W, H, cam, pxPerM, y);
     if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v);
     drawFog(ctx, W, H, fogAmount(cam), c);
-    this.#altitudeTicks(ctx, W, H, cam, y, c);
+    if (v.blind) drawCloudBank(ctx, W, H, t, this.distance, c);
+    else this.#altitudeTicks(ctx, W, H, cam, y, c);
     this.#lines(ctx, W, H, v, y, c);
-    this.#guides(ctx, W, H, v, y, c);
+    this.#guides(ctx, W, H, v, y, c, dt, scale);
     this.effects.drawStreaks(ctx, W, H, dt, this.speed, v.vy * pxPerM, fast ** 1.5, c.streak);
     this.effects.drawParticles(ctx, y);
 
@@ -179,6 +203,7 @@ export class GameRenderer {
     const shake = 2.5 * clamp01((v.vy - 25) / 40);
     const hy =
       y(v.h) - 32 * scale + airborne * 2.5 * Math.sin(t * 2.1) + shake * (Math.sin(t * 43) + Math.sin(t * 71)) * 0.5;
+    if (v.winch) drawWinch(ctx, hx, hy + 20 * scale, Math.min(H + 20, y(0)), v.winch, scale, c);
     ctx.fillStyle = c.shadow;
     if (y(0) < H) {
       const sw = 60 * scale * Math.max(0.2, 1 - v.h / 120);
@@ -195,7 +220,7 @@ export class GameRenderer {
     drawHelicopter(ctx, v.rotor, c, v.livery);
     ctx.restore();
 
-    this.#gauge(ctx, W, H, v, c);
+    if (!v.blind) this.#gauge(ctx, W, H, v, c);
   }
 
   #sky(ctx, W, H, cam, time) {
@@ -329,6 +354,7 @@ export class GameRenderer {
     for (let i = -1; i < W / 110 + 1; i++) drawTree(ctx, i * 110 - mod(this.distance, 110) + 55, groundY, c);
     const padX = W * HELI_X - this.distance;
     if (v.workshop && padX > -420) drawWorkshop(ctx, padX - 310, groundY, c);
+    if (v.parked && padX > -700) drawParked(ctx, padX + 300, groundY, v.parked, c);
     if (padX > -120) {
       ctx.fillStyle = c.pad;
       ctx.fillRect(padX - 80, groundY - 3, 160, 5);
@@ -340,11 +366,33 @@ export class GameRenderer {
    * Övningens hjälplinjer: målhöjder som streckade linjer och zoner som band,
    * med etikett till vänster. Hovringsbandet fylls på medan man håller sig i det.
    */
-  #guides(ctx, W, H, v, y, c) {
+  #guides(ctx, W, H, v, y, c, dt, scale) {
     const right = W - GAUGE_COLUMN_PX;
     const left = 100; // höjdskalans siffror får vara ifred
+    const hx = W * HELI_X;
     for (const g of v.guides ?? []) {
-      if (g.kind === 'band') {
+      if (g.kind === 'ring') {
+        const x = hx + g.inS * RING_SPEED_PX;
+        if (x < -80 || x > W + 80) continue;
+        drawRing(ctx, x, y(g.h + g.tol), y(g.h - g.tol), g.hit, c);
+      } else if (g.kind === 'buddy') {
+        // Bandet runt instruktören och hens helikopter lite framför vår.
+        const top = y(g.hi);
+        const bottom = y(g.lo);
+        ctx.fillStyle = c.guideBand;
+        ctx.fillRect(0, top, right, bottom - top);
+        dashed(ctx, 0, right, top, c.guide);
+        dashed(ctx, 0, right, bottom, c.guide);
+        const r = this.buddyRotor;
+        r.angle = (r.angle + 16 * dt) % (Math.PI * 2);
+        r.tailAngle = (r.tailAngle + 48 * dt) % (Math.PI * 2);
+        ctx.save();
+        ctx.translate(hx + BUDDY_DX * scale, y(g.h) - 32 * scale);
+        ctx.scale(scale * 0.85, scale * 0.85);
+        drawHelicopter(ctx, r, c, v.buddyLivery);
+        ctx.restore();
+        guideLabel(ctx, 'Instruktören', left, top - 6, c);
+      } else if (g.kind === 'band') {
         const top = y(g.hi);
         const bottom = y(g.lo);
         if (bottom < -20 || top > H + 20) continue;
@@ -602,6 +650,69 @@ function drawWorkshop(ctx, x, groundY, c) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('VERKSTAN', x, groundY - 61);
+}
+
+/** En ring i ringbanan: grön efter träff, röd efter miss. */
+function drawRing(ctx, x, top, bottom, hit, c) {
+  const ry = (bottom - top) / 2;
+  ctx.save();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = hit === true ? '#3fb950' : hit === false ? '#ff6b6b' : c.guide;
+  ctx.beginPath();
+  ctx.ellipse(x, top + ry, Math.max(10, ry * 0.35), ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Molnet i molnflygningen: nästan vitt, med tjockare stråk som driver förbi. */
+function drawCloudBank(ctx, W, H, t, distance, c) {
+  drawFog(ctx, W, H, 1, c);
+  ctx.fillStyle = c.cloud;
+  for (let i = 0; i < 9; i++) {
+    ctx.globalAlpha = 0.35 + 0.3 * rand(i * 3.7);
+    const x = mod(rand(i) * W * 1.6 - t * (20 + 30 * rand(i + 4)) - distance * 0.3, W + 400) - 200;
+    drawCloud(ctx, x, rand(i + 9) * H, 3 + 3 * rand(i + 2));
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Vinschen: lina från helikoptern och sandsäcken som hissas upp. */
+function drawWinch(ctx, x, top, groundY, winch, scale, c) {
+  const hang = 70 * scale;
+  const lifted = winch.loaded ? top + hang : groundY - 10 + (top + hang - (groundY - 10)) * winch.progress;
+  const bagY = Math.min(lifted, groundY - 24 * scale); // säcken står på marken när man landar
+  ctx.strokeStyle = c.metal;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, top);
+  ctx.lineTo(x, bagY);
+  ctx.stroke();
+  ctx.fillStyle = '#c8a26a';
+  ctx.strokeStyle = '#7a5a2e';
+  ctx.beginPath();
+  ctx.roundRect(x - 14 * scale, bagY, 28 * scale, 24 * scale, 6 * scale);
+  ctx.fill();
+  ctx.stroke();
+}
+
+/** Räddningshelikoptern som väntar vid verkstan tills uppflygningen är klar. */
+function drawParked(ctx, x, groundY, livery, c) {
+  ctx.save();
+  ctx.translate(x, groundY - 32 * 0.8);
+  ctx.scale(0.8, 0.8);
+  drawHelicopter(ctx, { blur: 0, angle: 0.3, tailAngle: 0.5 }, c, livery);
+  ctx.restore();
+  ctx.font = '700 13px system-ui, sans-serif';
+  const text = 'Väntar på dig efter uppflygningen';
+  const w = ctx.measureText(text).width + 16;
+  ctx.fillStyle = c.guideLabelBg;
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, groundY - 96, w, 22, 6);
+  ctx.fill();
+  ctx.fillStyle = c.guideLabelText;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, groundY - 85);
 }
 
 /** Landningsplatta med H under helikoptern. */

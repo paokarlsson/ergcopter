@@ -114,7 +114,7 @@ test('godkända övningar sparas per namn, oberoende av skiftläge och mellansla
   assert.deepEqual([...p.passed(' kim ')], ['hover']);
   assert.deepEqual([...new Progress(storage).passed('KIM')], ['hover']);
   assert.equal(new Progress(storage).passed('Alex').size, 0);
-  assert.doesNotMatch(storage.getItem('skierg.progress.v1'), /80|kg/);
+  assert.doesNotMatch(storage.getItem('skierg.progress.v2'), /80|kg/);
 });
 
 test('trasig lagring ger tom progress', () => {
@@ -169,10 +169,127 @@ test('efter fri flygning gör drag ingenting i resultatet', () => {
   assert.equal(game.state, 'FINISHED');
 });
 
-test('förslaget är första ej godkända övningen, sedan fri flygning', async () => {
+test('nextExercise: första ej godkända övningen, annars null', async () => {
   const { nextExercise } = await import('../public/game/core/progress.js');
   const { EXERCISES } = await import('../public/game/core/exercise.js');
   assert.equal(nextExercise(EXERCISES, new Set()).id, 'first-lift');
-  assert.equal(nextExercise(EXERCISES, new Set(['first-lift', 'altitude'])).id, 'hover');
+  assert.equal(nextExercise(EXERCISES, new Set(['first-lift', 'altitude'])).id, 'bounce');
   assert.equal(nextExercise(EXERCISES, new Set(EXERCISES.map((e) => e.id))), null);
+});
+
+const DAY = 24 * 3600 * 1000;
+const MON = new Date(2026, 8, 28, 18).getTime(); // måndag 28 september 2026 kl. 18
+
+/** En avklarad flygning som Progress.record vill ha den. */
+function flown(kind, id, moments, status = 'passed', flightS = 600) {
+  return { kind, id, status, flightS, moments: moments.map(([mid, stars, score = 0]) => ({ id: mid, name: mid, status: stars ? 'passed' : 'failed', stars, score, summary: '' })) };
+}
+
+test('profilen: loggbok, personbästa och lektioner per namn', () => {
+  const storage = fakeStorage();
+  const p = new Progress(storage);
+  let out = p.record('Kim', flown('exercise', 'hover', [['hover', 2, -0.4]]), MON);
+  assert.deepEqual(out.bests.map((b) => [b.id, b.stars, b.prev]), [['hover', 2, null]]);
+  out = p.record('Kim', flown('exercise', 'hover', [['hover', 2, -0.5]]), MON);
+  assert.equal(out.bests.length, 0, 'sämre än förra bästa');
+  out = p.record('Kim', flown('exercise', 'hover', [['hover', 2, -0.2]]), MON + DAY);
+  assert.equal(out.bests[0].prev.stars, 2, 'samma stjärnor men bättre');
+  out = p.record('Kim', flown('lesson', 'lesson-1', [['first-lift', 3], ['bounce', 0], ['hover', 3]]), MON + DAY);
+  assert.equal(out.lessonDone, true);
+  const prof = new Progress(storage).profile('kim');
+  assert.equal(prof.flightS, 2400);
+  assert.deepEqual([...prof.passed].sort(), ['first-lift', 'hover']);
+  assert.equal(prof.best.hover.stars, 3);
+  assert.equal(prof.lessons['lesson-1'], '2026-09-29');
+  assert.equal(new Progress(storage).daysThisWeek('Kim', MON + 3 * DAY), 2);
+  assert.equal(new Progress(storage).daysThisWeek('Kim', MON + 7 * DAY), 0, 'ny vecka');
+});
+
+test('profilen: godkänd uppflygning ger graden junior', () => {
+  const p = new Progress(null);
+  let out = p.record('Kim', flown('exam', 'exam', [['exam-hover', 2], ['exam-freefall', 0]], 'failed'), MON);
+  assert.equal(out.promoted, false);
+  assert.deepEqual([p.profile('Kim').grade, p.profile('Kim').exam.lastTry, p.profile('Kim').exam.tries], ['aspirant', '2026-09-28', 1]);
+  out = p.record('Kim', flown('exam', 'exam', [['exam-hover', 3]], 'passed'), MON + DAY);
+  assert.equal(out.promoted, true);
+  assert.equal(p.profile('Kim').grade, 'junior');
+  assert.equal(p.record('Kim', flown('exam', 'exam', [], 'passed'), MON + 2 * DAY).promoted, false, 'bara en gång');
+});
+
+test('profilen: avbruten uppflygning räknas inte som försök', () => {
+  const p = new Progress(null);
+  p.record('Kim', flown('exam', 'exam', [], 'running'), MON);
+  assert.equal(p.profile('Kim').exam.lastTry, null);
+});
+
+test('profilen: den första versionen (bara godkända övningar) läses in', () => {
+  const storage = fakeStorage();
+  storage.setItem('skierg.progress.v1', JSON.stringify({ kim: ['hover', 'altitude'] }));
+  const prof = new Progress(storage).profile('Kim');
+  assert.deepEqual([...prof.passed], ['hover', 'altitude']);
+  assert.equal(prof.grade, 'aspirant');
+});
+
+test('karriären: en ny lektion per dag och ett försök på uppflygningen per dag', async () => {
+  const { careerState, LESSONS, EXAM } = await import('../public/game/core/lessons.js');
+  const p = new Progress(null);
+  const today = '2026-09-28';
+  let c = careerState(p.profile('Kim'), today);
+  assert.deepEqual(c.lessons.map((l) => l.state), ['next', 'later', 'later', 'later']);
+  assert.equal(c.suggestion, LESSONS[0]);
+  assert.equal(c.exam, 'open', 'lektionerna är valfria');
+
+  p.record('Kim', flown('lesson', 'lesson-1', [['first-lift', 3]]), MON);
+  c = careerState(p.profile('Kim'), today);
+  assert.deepEqual(c.lessons.map((l) => l.state), ['done', 'tomorrow', 'later', 'later']);
+  assert.equal(c.suggestion.id, 'bounce', 'i väntan på nästa lektion: en övning som inte är godkänd');
+  assert.equal(careerState(p.profile('Kim'), today, { lessonPerDay: false }).lessons[1].state, 'next');
+  assert.equal(careerState(p.profile('Kim'), '2026-09-29').suggestion, LESSONS[1]);
+
+  p.record('Kim', flown('exam', 'exam', [], 'failed'), MON);
+  assert.equal(careerState(p.profile('Kim'), today).exam, 'tomorrow');
+  assert.equal(careerState(p.profile('Kim'), '2026-09-29').exam, 'open');
+
+  for (const l of LESSONS) p.record('Kim', flown('lesson', l.id, []), MON - DAY);
+  assert.equal(careerState(p.profile('Kim'), '2026-09-29').suggestion, EXAM, 'alla lektioner klara: uppflygningen');
+
+  p.record('Kim', flown('exam', 'exam', [], 'passed'), MON + DAY);
+  c = careerState(p.profile('Kim'), '2026-09-30');
+  assert.deepEqual([c.exam, c.suggestion], ['passed', null]);
+});
+
+test('findProgram hittar övningar, lektioner och uppflygningen', async () => {
+  const { findProgram } = await import('../public/game/core/lessons.js');
+  assert.equal(findProgram('hover').name, 'Hovring');
+  assert.equal(findProgram('lesson-2').number, 2);
+  assert.equal(findProgram('exam').kind, 'exam');
+  assert.equal(findProgram('nope'), null);
+});
+
+test('lektion och uppflygning flygs med skolhelikoptern, fri flygning med den egna', async () => {
+  const { LESSONS } = await import('../public/game/core/lessons.js');
+  const { getHelicopter } = await import('../public/game/core/helicopters.js');
+  const { game } = inMenu();
+  game.choose(LESSONS[0]);
+  assert.equal(game.helicopter.id, 'school');
+  game.escape();
+  game.setOwnHelicopter(getHelicopter('rescue'));
+  game.choose(null);
+  assert.equal(game.helicopter.id, 'rescue');
+});
+
+test('motorstopp i spelet: dragen räknas inte och effekten är noll', () => {
+  const { game, clock } = inMenu();
+  game.rand = () => 0;
+  game.choose(getExercise('engine'));
+  takeOff(game, clock);
+  const hold = (f) => f.requiredPower(400) + f.P0 * Math.max(-0.3, Math.min(0.3, (400 - f.h) / 120));
+  const events = [];
+  game.on('drill', (e) => events.push(e.type));
+  for (let i = 0; i < 400 && !game.run.engineOff && game.state === 'FLYING'; i++) clock.row(hold, 1.5);
+  assert.equal(game.run.engineOff, true);
+  assert.equal(game.power, 0);
+  game.stroke({ t: 0, power: 500, strokeCount: 9999 });
+  assert.equal(game.power, 0, 'draget gör ingenting');
+  assert.ok(events.includes('engineCut'));
 });
