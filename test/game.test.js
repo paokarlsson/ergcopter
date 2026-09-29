@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Game, ANONYMOUS_NAME } from '../public/game/game.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { Game, ANONYMOUS_NAME } from '../public/game/core/game.js';
 
 const cfg = { ...DEFAULT_CONFIG };
 

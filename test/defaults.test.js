@@ -1,12 +1,12 @@
-// Tillägget "standardvärden för blandad publik" §6.
+// Standardvärden för blandad publik (spec §12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES } from '../public/game/config.js';
-import { analyticHeight } from '../public/game/physics.js';
-import { runPhysicsOnly } from '../public/game/sim.js';
-import { preview, heightAfter } from '../public/game/calibration.js';
-import { Game } from '../public/game/game.js';
-import { Leaderboard } from '../public/game/leaderboard.js';
+import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES } from '../public/game/core/config.js';
+import { analyticHeight } from '../public/game/core/physics.js';
+import { runPhysicsOnly } from '../public/game/core/sim.js';
+import { preview, heightAfter } from '../public/game/core/calibration.js';
+import { Game } from '../public/game/core/game.js';
+import { Leaderboard } from '../public/game/core/leaderboard.js';
 
 const cfg = sanitize({ ...DEFAULT_CONFIG });
 const nearW = (actual, expected) =>
@@ -19,7 +19,7 @@ test('nya standardvärden: P_ref 60, H_air 1800, G 20, τ 90 s, 480 s, k = 1', (
   assert.equal(cfg.H_air / cfg.G, 90);
 });
 
-test('P0-tabellen (§1)', () => {
+test('P0-tabellen (§12.1)', () => {
   const table = [[15, 11.25], [20, 15], [30, 22.5], [50, 37.5], [60, 45], [80, 60], [100, 75], [120, 90]];
   for (const [kg, w] of table) nearW(liftPower(cfg, kg), w);
 });
@@ -28,7 +28,7 @@ test('k = 2/3 och 30 kg: P0 = 31,2 W', () => {
   nearW(liftPower({ ...cfg, weightMode: 'fair' }, 30), 31.2);
 });
 
-// §4 förväntat utfall: maxhöjd efter 240 s jämn effekt
+// §12.3 förväntat utfall: maxhöjd efter 240 s jämn effekt
 const OUTCOME = [
   ['Barn', 30, 40, 1303],
   ['Otränad vuxen', 70, 110, 1834],
@@ -43,7 +43,7 @@ for (const [who, kg, w, expected] of OUTCOME) {
   });
 }
 
-// §4 balanskontroll: stark person, 80 kg
+// §12.3 balanskontroll: stark person, 80 kg
 const BALANCE = [
   [30, 450, 3317],
   [180, 320, 6744],

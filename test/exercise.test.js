@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Flight } from '../public/game/physics.js';
-import { EXERCISES, ExerciseRun, getExercise } from '../public/game/exercise.js';
-import { getHelicopter, helicopterConfig } from '../public/game/helicopters.js';
-import { runExercise } from '../public/game/sim.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { Flight } from '../public/game/core/physics.js';
+import { EXERCISES, ExerciseRun, getExercise } from '../public/game/core/exercise.js';
+import { getHelicopter, helicopterConfig } from '../public/game/core/helicopters.js';
+import { runExercise } from '../public/game/core/sim.js';
 import { autopilot } from '../tools/autopilot.js';
 
 const school = helicopterConfig(DEFAULT_CONFIG, getHelicopter('school'));
@@ -149,7 +149,7 @@ test('flera steg kan klaras i samma tidssteg', () => {
 });
 
 test('hjälplinjer per steg', async () => {
-  const { stepGuides } = await import('../public/game/exercise.js');
+  const { stepGuides } = await import('../public/game/core/exercise.js');
   assert.deepEqual(stepGuides(null), { lines: [], landingPad: false });
   assert.equal(stepGuides({ type: 'climb', to: 50 }).lines[0].h, 50);
   const hover = stepGuides({ type: 'hover', at: 300, tol: 25, holdS: 30, held: 15 }).lines[0];

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { StrokeSmoother } from '../public/game/signal.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { StrokeSmoother } from '../public/game/core/signal.js';
 
 const cfg = { ...DEFAULT_CONFIG }; // 3 drag, timeout 3 s, nedtoning 1 s
 

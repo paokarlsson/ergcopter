@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Strategisimulator (spec §10, tillägg §4): kör effektprofiler genom samma
+// Strategisimulator (spec §10, §12.3): kör effektprofiler genom samma
 // signalbehandling och fysik som spelet och skriver ut h_max. maxSessionS
 // ignoreras här.
 //
 //   node tools/simulate.js [--mode linear|fair] [--spm 40] [--P_ref 60] [--H_air 1800] [--G 20]
 
-import { DEFAULT_CONFIG, liftPower, sanitize } from '../public/game/config.js';
-import { heightAfter, PERSONS, PERSON_SECONDS, BALANCE, BALANCE_MASS, tau } from '../public/game/calibration.js';
-import { runProfile, runPhysicsOnly } from '../public/game/sim.js';
+import { DEFAULT_CONFIG, liftPower, sanitize } from '../public/game/core/config.js';
+import { heightAfter, PERSONS, PERSON_SECONDS, BALANCE, BALANCE_MASS, tau } from '../public/game/core/calibration.js';
+import { runProfile, runPhysicsOnly } from '../public/game/core/sim.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, a, i, all) => (a.startsWith('--') ? [...pairs, [a.slice(2), all[i + 1]]] : pairs), [])
@@ -39,7 +39,7 @@ function row(label, mass, profile, analytic) {
   console.log(`${label.padEnd(50)} ${analytic === null ? '      –' : m(analytic)}   ${m(physics.hMax)} ${m(game.hMax)}  ${time(game.tHMax)}`);
 }
 
-console.log(`\nFörväntat utfall efter ${PERSON_SECONDS} s jämn effekt (tillägg §4)`);
+console.log(`\nFörväntat utfall efter ${PERSON_SECONDS} s jämn effekt (spec §12.3)`);
 console.log(header('Person'));
 console.log('-'.repeat(94));
 for (const p of PERSONS) {
@@ -47,7 +47,7 @@ for (const p of PERSONS) {
   row(label, p.mass, [{ s: PERSON_SECONDS, w: p.power }], heightAfter(cfg, p.mass, p.power, PERSON_SECONDS));
 }
 
-console.log(`\nBalanskontroll, ${BALANCE_MASS} kg (tillägg §4) – bästa insatsen ska ligga på 3–5 min`);
+console.log(`\nBalanskontroll, ${BALANCE_MASS} kg (spec §12.3) – bästa insatsen ska ligga på 3–5 min`);
 console.log(header('Insats'));
 console.log('-'.repeat(94));
 for (const b of BALANCE) {

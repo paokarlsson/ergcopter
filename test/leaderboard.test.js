@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Leaderboard } from '../public/game/leaderboard.js';
+import { Leaderboard } from '../public/game/core/leaderboard.js';
 
 function memoryStorage() {
   const data = new Map();

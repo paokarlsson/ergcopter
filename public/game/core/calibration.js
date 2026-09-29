@@ -1,10 +1,10 @@
-// Förhandsvisning för kalibrering (tillägg §4–5): förväntat utfall och
+// Förhandsvisning för kalibrering (spec §12.3–12.4): förväntat utfall och
 // balanskontroll omräknade med aktuella parametrar. Analytisk lösning:
 //   h(t) = H_air · (P/P0 − 1) · (1 − exp(−t/τ)),  τ = H_air / G
 
 import { liftPower } from './config.js';
 
-/** Förväntat utfall efter 240 s jämn effekt (tillägg §4). */
+/** Förväntat utfall efter 240 s jämn effekt (spec §12.3). */
 export const PERSONS = [
   { name: 'Barn', mass: 30, power: 40 },
   { name: 'Otränad vuxen', mass: 70, power: 110 },
@@ -14,7 +14,7 @@ export const PERSONS = [
 ];
 export const PERSON_SECONDS = 240;
 
-/** Balanskontroll: stark person på 80 kg (tillägg §4). */
+/** Balanskontroll: stark person på 80 kg (spec §12.3). */
 export const BALANCE_MASS = 80;
 export const BALANCE = [
   { label: '30 s', s: 30, power: 450 },
@@ -45,7 +45,7 @@ export function preview(cfg) {
   };
 }
 
-/** Kalibreringsprocedur för operatören (tillägg §5), visas som hjälptext. */
+/** Kalibreringsprocedur för operatören (spec §12.4), visas som hjälptext. */
 export const CALIBRATION_STEPS = [
   'Kör själv ett fyraminuterspass och notera maxhöjden.',
   'Testa med minst en otränad vuxen och ett barn.',

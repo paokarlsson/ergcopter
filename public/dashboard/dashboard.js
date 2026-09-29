@@ -1,8 +1,8 @@
 // Dashboard: siffror och kraftkurva från PM via USB. Samma datakälla som spelet.
-import { le, CMD, PM } from './csafe.js';
+import { le, CMD, PM } from '../shared/csafe.js';
 import { StrokeTracker, ForceChart, strokeStats } from './forcecurve.js';
-import { UsbPm5Source } from './game/sources/usb.js';
-import { mountScreenControls } from './screen.js';
+import { UsbPm5Source } from '../shared/sources/usb.js';
+import { mountScreenControls } from '../shared/screen.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {

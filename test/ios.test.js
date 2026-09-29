@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isIOS, unsupportedMessage } from '../public/game/sources/source.js';
+import { isIOS, unsupportedMessage } from '../public/shared/sources/source.js';
 
 const iphone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) CriOS/130.0', platform: 'iPhone', maxTouchPoints: 5 };
 const ipad = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 };

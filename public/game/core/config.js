@@ -1,10 +1,10 @@
 // Samlat konfigurationsobjekt (spec §5, §7, §9). Allt som går att trimma finns här.
-// Standardvärdena följer tillägget "standardvärden för blandad publik".
+// Standardvärdena följer "standardvärden för blandad publik" (spec §12).
 
 import { DEFAULT_MILESTONES, LEGACY_MILESTONES } from './milestones.js';
 
 export const DEFAULT_CONFIG = Object.freeze({
-  // Fysik (spec §5, tillägg §1)
+  // Fysik (spec §5, §12.1)
   P_ref: 60, // W, lyfteffekt vid referensvikten (0,75 W/kg vid 80 kg)
   m_ref: 80, // kg
   weightMode: 'linear', // 'linear' (k = 1, standard) | 'fair' (k = 2/3)
@@ -18,7 +18,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   strokeTimeoutS: 3,
   fadeOutS: 1,
 
-  // Spelflöde (spec §7, tillägg §1)
+  // Spelflöde (spec §7, §12.1)
   countdownS: 3,
   groundEndS: 5,
   idleEndS: 10,
@@ -26,17 +26,17 @@ export const DEFAULT_CONFIG = Object.freeze({
   resultDisplayS: 15,
   replayMaxS: 3,
 
-  // Visning (spec §6, §8, tillägg §2)
+  // Visning (spec §6, §8, §12.2)
   showRawWatts: false,
   showCombinedBoard: false, // sammanlagd topplista som extra flik
   sound: false,
   milestones: DEFAULT_MILESTONES, // se milestones.js
 });
 
-/** Standardvärden före tillägget – sparade värden som är exakt dessa byts mot de nya. */
+/** Grundspelets standardvärden (spec §5) – sparade värden som är exakt dessa byts mot de nya (spec §12.1). */
 const PREVIOUS_DEFAULTS = { P_ref: 100, H_air: 2700, G: 22.5, maxSessionS: 600 };
 
-/** Klasser (tillägg §2). Bara klassen sparas, aldrig åldern. */
+/** Klasser (spec §12.2). Bara klassen sparas, aldrig åldern. */
 export const CLASSES = [
   { name: 'Barn', ages: 'till och med 12 år' },
   { name: 'Ungdom', ages: '13–17 år' },
