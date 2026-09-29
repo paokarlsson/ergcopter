@@ -1,12 +1,12 @@
 // Standardvärden för blandad publik (spec §12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES } from '../public/game/config.js';
-import { analyticHeight } from '../public/game/physics.js';
-import { runPhysicsOnly } from '../public/game/sim.js';
-import { preview, heightAfter } from '../public/game/calibration.js';
-import { Game } from '../public/game/game.js';
-import { Leaderboard } from '../public/game/leaderboard.js';
+import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES } from '../public/game/core/config.js';
+import { analyticHeight } from '../public/game/core/physics.js';
+import { runPhysicsOnly } from '../public/game/core/sim.js';
+import { preview, heightAfter } from '../public/game/core/calibration.js';
+import { Game } from '../public/game/core/game.js';
+import { Leaderboard } from '../public/game/core/leaderboard.js';
 
 const cfg = sanitize({ ...DEFAULT_CONFIG });
 const nearW = (actual, expected) =>

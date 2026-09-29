@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG, loadConfig, saveConfig, parseMilestones, formatMilestones, sanitize } from '../public/game/config.js';
-import { DEFAULT_MILESTONES, LEGACY_MILESTONES } from '../public/game/milestones.js';
+import { DEFAULT_CONFIG, loadConfig, saveConfig, parseMilestones, formatMilestones, sanitize } from '../public/game/core/config.js';
+import { DEFAULT_MILESTONES, LEGACY_MILESTONES } from '../public/game/core/milestones.js';
 
 function memoryStorage(initial = {}) {
   const data = new Map(Object.entries(initial));

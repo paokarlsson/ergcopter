@@ -5,9 +5,9 @@
 //
 //   node tools/simulate.js [--mode linear|fair] [--spm 40] [--P_ref 60] [--H_air 1800] [--G 20]
 
-import { DEFAULT_CONFIG, liftPower, sanitize } from '../public/game/config.js';
-import { heightAfter, PERSONS, PERSON_SECONDS, BALANCE, BALANCE_MASS, tau } from '../public/game/calibration.js';
-import { runProfile, runPhysicsOnly } from '../public/game/sim.js';
+import { DEFAULT_CONFIG, liftPower, sanitize } from '../public/game/core/config.js';
+import { heightAfter, PERSONS, PERSON_SECONDS, BALANCE, BALANCE_MASS, tau } from '../public/game/core/calibration.js';
+import { runProfile, runPhysicsOnly } from '../public/game/core/sim.js';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, a, i, all) => (a.startsWith('--') ? [...pairs, [a.slice(2), all[i + 1]]] : pairs), [])

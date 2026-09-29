@@ -4,8 +4,8 @@
 // lämnar drivfasen; effekten (GETPOWER) tas från nästa svar så att PM:en hunnit
 // uppdatera den för draget som just avslutades.
 
-import { buildFrame, parseFrame, le, CMD, PM } from '../../csafe.js';
-import { PM5 } from '../../pm5.js';
+import { buildFrame, parseFrame, le, CMD, PM } from '../csafe.js';
+import { PM5 } from '../pm5.js';
 import { SourceBase, now, unsupportedMessage } from './source.js';
 
 export const LBF_TO_N = 4.44822;

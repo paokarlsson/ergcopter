@@ -17,8 +17,8 @@ Object.assign(globalThis, {
   getComputedStyle: () => ({ getPropertyValue: () => '#808080' }),
   devicePixelRatio: 1,
 });
-const { GameRenderer } = await import('../public/game/render.js');
-const { DEFAULT_MILESTONES } = await import('../public/game/milestones.js');
+const { GameRenderer } = await import('../public/game/view/render.js');
+const { DEFAULT_MILESTONES } = await import('../public/game/core/milestones.js');
 
 const W = 1600;
 const H = 900;

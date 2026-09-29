@@ -1,21 +1,21 @@
 // Kopplar ihop spelet: datakälla → spel (fysik) → rendering och instrument.
 
-import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } from './config.js';
-import { Game } from './game.js';
-import { StrokeSmoother } from './signal.js';
-import { Leaderboard } from './leaderboard.js';
-import { Progress, nextExercise } from './progress.js';
-import { EXERCISES, stepGuides } from './exercise.js';
-import { Rotor } from './rotor.js';
-import { GameRenderer, fmtM } from './render.js';
-import { GameUI, download } from './ui.js';
-import { Replay, landingTrajectory } from './replay.js';
-import { RotorSound } from './audio.js';
-import { now } from './sources/source.js';
-import { MockSource } from './sources/mock.js';
-import { UsbPm5Source } from './sources/usb.js';
-import { Pm5Source } from './sources/ble.js';
-import { mountScreenControls, toggleFullscreen } from '../screen.js';
+import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } from './core/config.js';
+import { Game } from './core/game.js';
+import { StrokeSmoother } from './core/signal.js';
+import { Leaderboard } from './core/leaderboard.js';
+import { Progress, nextExercise } from './core/progress.js';
+import { EXERCISES, stepGuides } from './core/exercise.js';
+import { Rotor } from './view/rotor.js';
+import { GameRenderer, fmtM } from './view/render.js';
+import { GameUI, download } from './view/ui.js';
+import { Replay, landingTrajectory } from './core/replay.js';
+import { RotorSound } from './view/audio.js';
+import { now } from '../shared/sources/source.js';
+import { MockSource } from '../shared/sources/mock.js';
+import { UsbPm5Source } from '../shared/sources/usb.js';
+import { Pm5Source } from '../shared/sources/ble.js';
+import { mountScreenControls, toggleFullscreen } from '../shared/screen.js';
 
 const SOURCE_KEY = 'skierg.source';
 

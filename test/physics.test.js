@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Flight, analyticHeight } from '../public/game/physics.js';
-import { runPhysicsOnly } from '../public/game/sim.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { Flight, analyticHeight } from '../public/game/core/physics.js';
+import { runPhysicsOnly } from '../public/game/core/sim.js';
 
 // Grundspelets parametrar (spec §5). Standardvärdena för blandad publik
 // (spec §12) testas i defaults.test.js.

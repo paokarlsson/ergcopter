@@ -4,10 +4,10 @@
 //
 //   node tools/exercises.js [--heli school] [--mass 80] [--spm 40]
 
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { EXERCISES } from '../public/game/exercise.js';
-import { getHelicopter, helicopterConfig } from '../public/game/helicopters.js';
-import { runExercise } from '../public/game/sim.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { EXERCISES } from '../public/game/core/exercise.js';
+import { getHelicopter, helicopterConfig } from '../public/game/core/helicopters.js';
+import { runExercise } from '../public/game/core/sim.js';
 import { autopilot } from './autopilot.js';
 
 const args = Object.fromEntries(

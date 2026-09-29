@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HelicopterSound, driveGain } from '../public/game/helicopter-sound.js';
+import { HelicopterSound, driveGain } from '../public/game/view/helicopter-sound.js';
 
 /** Kör fysiken (utan WebAudio) tills den står still vid given gas. */
 function settle(throttle) {

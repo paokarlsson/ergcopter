@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Game, STROKE_GRACE_S } from '../public/game/game.js';
-import { getExercise } from '../public/game/exercise.js';
-import { Progress } from '../public/game/progress.js';
+import { DEFAULT_CONFIG } from '../public/game/core/config.js';
+import { Game, STROKE_GRACE_S } from '../public/game/core/game.js';
+import { getExercise } from '../public/game/core/exercise.js';
+import { Progress } from '../public/game/core/progress.js';
 
 /** Deltagare på 80 kg i MENU, med kontrollerad klocka. */
 function inMenu() {
@@ -170,8 +170,8 @@ test('efter fri flygning gör drag ingenting i resultatet', () => {
 });
 
 test('förslaget är första ej godkända övningen, sedan fri flygning', async () => {
-  const { nextExercise } = await import('../public/game/progress.js');
-  const { EXERCISES } = await import('../public/game/exercise.js');
+  const { nextExercise } = await import('../public/game/core/progress.js');
+  const { EXERCISES } = await import('../public/game/core/exercise.js');
   assert.equal(nextExercise(EXERCISES, new Set()).id, 'first-lift');
   assert.equal(nextExercise(EXERCISES, new Set(['first-lift', 'altitude'])).id, 'hover');
   assert.equal(nextExercise(EXERCISES, new Set(EXERCISES.map((e) => e.id))), null);

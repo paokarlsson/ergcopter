@@ -1,10 +1,10 @@
 // DOM-delen av spelet: skärmar, instrument, topplista, inställningar, debug.
 // All text från användare eller datakällor sätts med textContent.
 
-import { CONFIG_SCHEMA, CLASSES, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from './config.js';
-import { preview, CALIBRATION_STEPS, CALIBRATION_ACTIONS, PERSON_SECONDS, BALANCE_MASS } from './calibration.js';
+import { CONFIG_SCHEMA, CLASSES, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from '../core/config.js';
+import { preview, CALIBRATION_STEPS, CALIBRATION_ACTIONS, PERSON_SECONDS, BALANCE_MASS } from '../core/calibration.js';
 import { fmtM } from './render.js';
-import { describeResults } from './exercise.js';
+import { describeResults } from '../core/exercise.js';
 
 const $ = (id) => document.getElementById(id);
 

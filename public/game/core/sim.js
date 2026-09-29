@@ -2,7 +2,7 @@
 
 import { Flight } from './physics.js';
 import { StrokeSmoother } from './signal.js';
-import { ScriptedSource } from './sources/scripted.js';
+import { ScriptedSource } from '../../shared/sources/scripted.js';
 import { ExerciseRun } from './exercise.js';
 
 /**

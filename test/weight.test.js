@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG, liftPower } from '../public/game/config.js';
+import { DEFAULT_CONFIG, liftPower } from '../public/game/core/config.js';
 
 const near = (actual, expected) =>
   assert.ok(Math.abs(actual - expected) <= 0.1, `${actual.toFixed(3)} W, väntat ${expected} W ±0,1`);

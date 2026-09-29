@@ -4,7 +4,7 @@
 // anropas vid klick/tangent.
 
 import { HelicopterSound } from './helicopter-sound.js';
-import { now } from './sources/source.js';
+import { now } from '../../shared/sources/source.js';
 
 const VOLUME = 0.7;
 const MAX_RATIO = 3;
