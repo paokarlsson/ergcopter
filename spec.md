@@ -101,11 +101,18 @@ All effekt uttrycks relativt deltagarens personliga lyfteffekt `P0`. Då skalar 
 ```
 P0       = P_ref * (bodyMass / m_ref) ^ k      // effekt som krävs för att sväva vid marken
 P_req(h) = P0 * (1 + h / H_air)                // effekt som krävs för att hålla höjden h
-dh/dt    = G * (P_smooth - P_req(h)) / P0      // stig- eller sjunkhastighet (m/s)
+v_mål    = G * (P_smooth - P_req(h)) / P0      // farten effekten drar mot (m/s)
+dv/dt    = (v_mål - v) / T                      // tröghet, T = inertiaS
+dh/dt    = v                                    // stig- eller sjunkhastighet (m/s)
 ```
 
+- **Tröghet:** effekten bestämmer accelerationen, inte farten direkt. Farten närmar sig `v_mål` med tidskonstanten `T`, som om helikoptern hade ett luftmotstånd som växer linjärt med farten. I fritt fall accelererar man alltså nedåt tills luftmotståndet tar ut tyngden (sluthastigheten är `v_mål` vid 0 W), och drar man grönt i hög fart fortsätter helikoptern nedåt en stund innan den vänder. Bromssträckan är ungefär `|v| · T`.
+- Med `T = G / 9,81` (≈ 2 s med standardvärdena) börjar ett fritt fall från hovring nära marken med jordens tyngdacceleration.
+- I jämvikt är `v = v_mål`, så jämviktshöjden och τ är desamma som utan tröghet. Långa insatser ändras under 1 %. Korta spurter tappar lite, eftersom helikoptern först måste komma upp i fart (30 s @ 450 W ungefär −4 %, bara fysiken).
+- Farten uppdateras med den exakta lösningen över tidssteget, `v ← v_mål + (v − v_mål) · exp(−dt / T)`, som är stabil för alla `dt`. `T = 0` ger modellen utan tröghet, där `dh/dt = v_mål`.
+
 - Integration med fast tidssteg `dt` = 0,05 s (20 Hz). Explicit Euler räcker.
-- Markvillkor: om `h <= 0` och `dh/dt < 0` sätts `h = 0` och `dh/dt = 0`. Helikoptern står då kvar på marken tills `P_smooth > P0`.
+- Markvillkor: om `h <= 0` och `dh/dt < 0` sätts `h = 0` och `dh/dt = 0`. Helikoptern står då kvar på marken tills `P_smooth > P0`. Vid sättningen sparas farten i nedslaget och farten nollställs.
 - Valfritt: `maxSinkRate` begränsar sjunkhastigheten. Av som standard.
 - `h_max` uppdateras varje tidssteg.
 
@@ -120,6 +127,7 @@ Tabellen visar grundspelets värden. Standard i koden är värdena för blandad 
 | `k` | 1.0 | Viktexponent. 1.0 = ren W/kg ("linjär"), 0.667 = "rättvis" (se avsnitt 6) |
 | `H_air` | 2700 m | Hur fort luften tunnas ut. Vid `h = H_air` krävs dubbla lyfteffekten. 2700 m ger samma lutning som originalidén: 180 W vid marken och 200 W på 300 m |
 | `G` | 22,5 m/s | Stigförmåga. Stighastighet när effekten ligger en hel `P0` över det som krävs |
+| `inertiaS` | 2 s | Tröghet `T`: tidskonstanten för hur fort farten följer effekten. 0 = ingen tröghet |
 | `maxSinkRate` | av | Maximal sjunkhastighet (m/s) |
 | `dt` | 0,05 s | Fysikens tidssteg |
 | `smoothingStrokes` | 3 | Antal drag i medelvärdet |
@@ -134,7 +142,7 @@ Tabellen visar grundspelets värden. Standard i koden är värdena för blandad 
 
 ### Analytisk lösning och referensvärden
 
-Från marken med konstant effekt `P > P0`:
+Från marken med konstant effekt `P > P0`, utan tröghet (`T = 0`). Med tröghet ligger insatser från 3 minuter och uppåt inom 1 % av den:
 
 ```
 h(t) = H_air * (P / P0 - 1) * (1 - exp(-t * G / H_air))
