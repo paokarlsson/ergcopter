@@ -52,6 +52,12 @@ for (const rate of [8, 34]) {
   });
 }
 
+test('från marken: bergen skickas inte in medan farten framåt ökar vid lyftet', () => {
+  const diffs = fly(() => 15, 70, 0);
+  assert.ok(diffs.length >= 1, 'ingen topp passerade');
+  for (const d of diffs) assert.ok(d >= -5 && d <= 80, `topp passerade ${Math.round(d)} m från helikoptern`);
+});
+
 test('svävar man skickas inga nya berg in över helikoptern', () => {
   const diffs = fly((t) => (t < 12 ? 34 : 0), 60);
   const late = fly((t) => (t < 12 ? 34 : 0), 12).length;

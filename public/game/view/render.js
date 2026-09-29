@@ -39,6 +39,7 @@ export class GameRenderer {
     this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
     this.speed = 0; // px/s just nu
+    this.cruise = 0; // px/s i luften, utan upprampningen vid lyftet
     this.signAlpha = new Map(); // namn → 0–1, skyltarnas intoning
     this.lastDraw = null;
     this.zoom = 1; // > 1 när kameran zoomat ut i hög fart
@@ -56,7 +57,8 @@ export class GameRenderer {
    */
   advance(dt, rotor, h, forward = true) {
     const airborne = Math.min(1, h / 3);
-    this.speed = forward ? Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) * airborne : 0;
+    this.cruise = forward ? Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) : 0;
+    this.speed = this.cruise * airborne;
     this.distance += this.speed * dt;
   }
 
@@ -74,9 +76,12 @@ export class GameRenderer {
    * Skickar in berg från höger så att de når helikoptern ungefär när den når
    * toppens höjd (förutsagt från stighastigheten). Då flyger man över toppen
    * precis när milstolpen passeras. Berg som kommer tätt köar med mellanrum.
+   * Förutsägelsen räknar med farten i luften: vid lyftet är farten nästan noll,
+   * och då skulle alla berg skickas in direkt och passera långt under toppen.
    */
   #sendMountains(v, W, H, y) {
     if (!v.flying || this.speed <= 0) return;
+    const speed = this.cruise;
     const hx = W * HELI_X;
     const climb = Math.max(0, v.vy);
     const reach = (m) => mountainReach(H + MOUNTAIN_BOTTOM_PX - y(m.h));
@@ -87,7 +92,7 @@ export class GameRenderer {
     this.mountains = this.mountains.filter((item) => {
       const sx = W + item.entry - (this.distance - item.startAt);
       if (sx - reach(item.m) <= W) return true;
-      const reachable = v.h + climb * ((sx - hx) / this.speed) >= item.m.h - MOUNTAIN_WITHDRAW_M;
+      const reachable = v.h + climb * ((sx - hx) / speed) >= item.m.h - MOUNTAIN_WITHDRAW_M;
       if (reachable) return true;
       this.sent.delete(item.m.name);
       return false;
@@ -100,11 +105,11 @@ export class GameRenderer {
       const last = this.mountains.at(-1);
       const queued = last ? W + last.entry - (this.distance - last.startAt) + MOUNTAIN_GAP_PX : -Infinity;
       const startSx = Math.max(W + Math.max(MOUNTAIN_ENTRY_PX, reach(m)), queued);
-      if (m.h > v.h + climb * ((startSx - hx) / this.speed)) continue;
+      if (m.h > v.h + climb * ((startSx - hx) / speed)) continue;
       this.sent.add(m.name);
       if (m.h < v.h - MOUNTAIN_SKIP_BELOW_M) continue; // redan långt under – skulle passera utanför bild
       // Är berget redan sent ute (t.ex. vid en snabb stigning) startar det närmare, som förr.
-      const due = climb > 0 ? hx + ((m.h - v.h) / climb) * this.speed : Infinity;
+      const due = climb > 0 ? hx + ((m.h - v.h) / climb) * speed : Infinity;
       const sx = Math.max(W + MOUNTAIN_ENTRY_PX, queued, Math.min(startSx, due));
       this.mountains.push({ m, startAt: this.distance, entry: sx - W });
     }
