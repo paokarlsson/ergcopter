@@ -27,6 +27,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   resultDisplayS: 15,
   replayMaxS: 3,
 
+  // Karriär (plan.md §2–3)
+  lessonPerDay: true, // en ny lektion och ett försök på uppflygningen per dag
+
   // Visning (spec §6, §8, §12.2)
   showRawWatts: false,
   showCombinedBoard: false, // sammanlagd topplista som extra flik
@@ -80,6 +83,7 @@ export const CONFIG_SCHEMA = [
   { group: 'Spel', key: 'idleEndS', label: 'Slut efter tid utan drag (s)', type: 'number', min: 1, max: 120, step: 1 },
   { group: 'Spel', key: 'maxSessionS', label: 'Max passlängd (s, 0 = av)', type: 'number', min: 0, max: 7200, step: 10 },
   { group: 'Spel', key: 'resultDisplayS', label: 'Resultatvisning (s)', type: 'number', min: 3, max: 120, step: 1 },
+  { group: 'Karriär', key: 'lessonPerDay', label: 'En ny lektion per dag (och ett försök på uppflygningen per dag)', type: 'bool' },
   { group: 'Visning', key: 'showCombinedBoard', label: 'Visa även sammanlagd topplista', type: 'bool' },
   { group: 'Visning', key: 'showRawWatts', label: 'Visa råa watt och P0 på skärmen', type: 'bool' },
   { group: 'Visning', key: 'sound', label: 'Rotorljud', type: 'bool' },

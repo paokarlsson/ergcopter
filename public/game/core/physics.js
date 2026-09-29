@@ -15,8 +15,19 @@ export class Flight {
    */
   constructor(cfg, bodyMass) {
     this.cfg = cfg;
+    this.bodyMass = bodyMass;
     this.P0 = liftPower(cfg, bodyMass);
+    this.load = 0; // last som andel av kroppsvikten, t.ex. sandsäcken (plan.md §3)
     this.reset();
+  }
+
+  /**
+   * Last ombord som andel av kroppsvikten. Lyfteffekten räknas om från den nya
+   * vikten, så att lasten blir lika tung för alla (plan.md §1: patienten blir last).
+   */
+  setLoad(share) {
+    this.load = share;
+    this.P0 = liftPower(this.cfg, this.bodyMass * (1 + share));
   }
 
   reset() {

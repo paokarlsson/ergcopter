@@ -11,7 +11,19 @@ export const HELICOPTERS = [
     seats: 0,
     livery: { body: '#f2c230', trim: '#1f2328', label: 'SKOLA' },
   },
+  {
+    id: 'rescue',
+    name: 'Lätt räddningshelikopter',
+    // Belöningen för godkänd uppflygning. Fysiken som i fri flygning, med vinsch och plats för en patient.
+    ceiling: 0,
+    winch: true,
+    seats: 1,
+    livery: { body: '#d7263d', trim: '#ffffff', label: '112' },
+  },
 ];
+
+/** Instruktörens helikopter i "Följ instruktören". */
+export const INSTRUCTOR_LIVERY = { body: '#2f6fd0', trim: '#ffffff', label: 'INSTR' };
 
 export function getHelicopter(id) {
   const heli = HELICOPTERS.find((h) => h.id === id);

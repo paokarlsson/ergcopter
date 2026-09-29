@@ -13,13 +13,13 @@ Uppdatera dem när beteendet ändras. Kommentarer i koden hänvisar till dem, ti
 npm test                          # alla tester (node --test), inga beroenden
 node --test test/physics.test.js  # en testfil
 npm run simulate                  # strategisimulatorn: maxhöjder med aktuella parametrar
-npm run exercises                 # övningarna headless med autopilot
+npm run exercises                 # övningar, lektioner och uppflygningen headless med autopilot
 node server.js                    # http://localhost:3000 (PORT=… för annan port)
 docker compose up                 # samma server i Docker, public/ monteras live
 ```
 
-- `?demo` flyger en demospelare utan erg. `?demo=hover` flyger en övning (`first-lift`, `hover`, `altitude`, `freefall`). `dashboard.html?demo` visar dashboarden med påhittad data.
-- Tangenter i spelet: Enter start, Esc avbryt, S inställningar, D debug, F helskärm.
+- `?demo` flyger en demospelare utan erg. `?demo=<id>` låter autopiloten flyga en övning (t.ex. `hover`, `freefall`, `rings`; se `core/exercise.js`), en lektion (`lesson-1` … `lesson-4`) eller uppflygningen (`exam`). `dashboard.html?demo` visar dashboarden med påhittad data.
+- Tangenter i spelet: Enter start, Esc avbryt, S inställningar, D debug, F helskärm. I menyn flyttar piltangenterna mellan valen.
 - CI (`.github/workflows/pages.yml`) kör `node --test` och `node tools/simulate.js` och publicerar sedan `public/` på GitHub Pages vid push till `master`.
 
 ## Struktur
@@ -43,9 +43,12 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       physics.js         fysikmodellen (spec §5)
       signal.js          effekt per drag → P_smooth (spec §4)
       game.js            spelflödet, tillstånd IDLE → … → FINISHED (spec §7)
-      exercise.js        övningsmotorn (plan.md §3)
+      exercise.js        övningsmotorn och övningarna (plan.md §3)
+      lessons.js         lektionerna, uppflygningen och vad som är öppet i dag (plan.md §3)
+      autopilot.js       pilot för övningarna: tester, tools/exercises.js och ?demo=<id>
       helicopters.js     helikoptertyper (plan.md §4)
-      leaderboard.js, progress.js   topplista och godkända övningar (localStorage)
+      leaderboard.js     topplistan (localStorage)
+      progress.js        spelarprofilen: grad, stjärnor, lektioner, loggbok (localStorage)
       calibration.js     förväntat utfall och balanskontroll (spec §12)
       milestones.js      fjälltopparna, med källor
       replay.js, sim.js  snabbspolad landning och headless-körning
@@ -60,7 +63,7 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       rotor.js           rotorns animation
       audio.js, helicopter-sound.js rotorljud (Web Audio)
 test/                    node:test, en fil per område
-tools/                   simulate.js, exercises.js, autopilot.js
+tools/                   simulate.js, exercises.js
 server.js                minimal statisk server utan beroenden
 ```
 

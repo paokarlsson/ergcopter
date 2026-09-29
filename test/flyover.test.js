@@ -82,3 +82,25 @@ test('nytt pass börjar vid startplatsen', () => {
   r.clearMountains();
   assert.equal(r.distance, 0);
 });
+
+test('skolans scen ritas: instruktören, ringar, moln, vinsch och helikoptern vid verkstan', async () => {
+  const { stepGuides, getExercise } = await import('../public/game/core/exercise.js');
+  const r = new GameRenderer({ clientWidth: W, clientHeight: H, width: 0, height: 0, getContext: () => ctx });
+  const rotor = { omega: 12, blur: 0.5, angle: 0, tailAngle: 0 };
+  const follow = { ...getExercise('follow').steps[1], t0: 0 };
+  const rings = { ...getExercise('rings').steps[1], t0: 0, outcomes: [true, false] };
+  const clouds = getExercise('clouds').steps[1];
+  const views = [
+    { guides: stepGuides(follow, 10).lines, buddyLivery: { body: '#00f', trim: '#fff', label: 'INSTR' } },
+    { guides: stepGuides(rings, 12).lines },
+    { blind: stepGuides(clouds).blind },
+    { winch: { progress: 0.5, loaded: false } },
+    { winch: { progress: 1, loaded: true } },
+  ];
+  for (const extra of views) {
+    r.advance(1 / 60, rotor, 150, true, 320);
+    r.draw({ h: 150, vy: 0, rotor, hMax: 0, todayBest: null, milestones: [], avoid: [], flying: true, workshop: true, parked: { body: '#f00', trim: '#fff', label: '112' }, ...extra });
+  }
+  r.celebrate();
+  assert.ok(r.effects.particles.length > 0, 'konfetti');
+});

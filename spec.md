@@ -175,7 +175,7 @@ Effektkurvan är en uppskattning. Parametrarna ska trimmas efter tester med rikt
 
 Tillstånd: `IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE`
 
-I MENU väljer deltagaren fri flygning (det som beskrivs här) eller en övning (se `plan.md` §3). Efter en övning går FINISHED tillbaka till MENU.
+I MENU väljer deltagaren fri flygning (det som beskrivs här) eller något i flygskolan: en övning, en lektion eller uppflygningen (se `plan.md` §3). Efter skolan går FINISHED tillbaka till MENU. Alla flygningar förs in i deltagarens loggbok.
 
 - **IDLE**: vänteskärm med titeln i himlen, topplista och "Tryck för att starta". Bakom flyger helikoptern en demotur (`attract.js`): den lyfter, stiger förbi topparna och genom molntäcket till 2 300 m, sjunker och landar, om och om igen. Demoturen är bara bild, låter inte och påverkar inte topplistan.
 - **SETUP**: operatören matar in namn eller alias (valfritt, tomt blir "Anonym"), vikt och klass (avsnitt 12.2). Ergen måste vara ansluten.

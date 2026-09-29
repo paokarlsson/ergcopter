@@ -14,7 +14,7 @@ npm test            # kör testerna
 ```
 
 - Anslut PM5 med USB-kabel (WebHID) eller Bluetooth. På iPhone/iPad fungerar bara Bluetooth, via appen Bluefy.
-- Inget erg till hands? Öppna `http://localhost:3000/?demo`.
+- Inget erg till hands? Öppna `http://localhost:3000/?demo`. `?demo=lesson-1` eller `?demo=exam` låter autopiloten flyga en lektion eller uppflygningen.
 - Dashboarden med siffror och kraftkurva finns på `dashboard.html`.
 - Med Docker: `docker compose up`.
 

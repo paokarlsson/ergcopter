@@ -57,6 +57,7 @@
         <div class="drill-text" id="drill-text"></div>
         <div class="drill-bar" id="drill-bar" hidden><div class="drill-bar-fill" id="drill-bar-fill"></div></div>
         <div class="drill-sink" id="drill-sink" hidden></div>
+        <div class="drill-note" id="drill-note" hidden></div>
       </div>
     </div>
 
@@ -118,14 +119,19 @@
       </form>
     </section>
 
-    <!-- MENU: övningar eller fri flygning -->
+    <!-- MENU: flygskolan (lektioner, uppflygning, övningar) eller fri flygning (plan.md §2–3) -->
     <section id="screen-menu" class="screen" hidden>
-      <div class="card wide">
+      <div class="card wide menu-card">
         <p class="who" id="menu-name"></p>
-        <h2 id="menu-title">Aspirant · Dagens övningar</h2>
-        <p class="muted small">Övningarna flygs med skolhelikoptern från verkstan.</p>
+        <h2 id="menu-title">Aspirant · Flygskolan</h2>
+        <p class="logbook" id="menu-logbook"></p>
         <p class="lead" id="menu-lead"></p>
-        <ol class="menu-list" id="menu-list"></ol>
+        <div id="menu-alarm" class="menu-alarm" hidden></div>
+        <h3 class="menu-section">Flygskolan <span class="muted small">med skolhelikoptern från verkstan</span></h3>
+        <ol class="menu-school" id="menu-school"></ol>
+        <h3 class="menu-section">Övningar</h3>
+        <ol class="menu-grid" id="menu-list"></ol>
+        <ol class="menu-list" id="menu-free"></ol>
         <div class="row end">
           <button type="button" id="menu-cancel">Avstå<span class="keys"> (Esc)</span></button>
         </div>
@@ -137,6 +143,7 @@
       <div class="card center" id="ready-card">
         <p class="who" id="ready-name"></p>
         <p class="ready-goal" id="ready-goal" hidden></p>
+        <p class="ready-best" id="ready-best" hidden></p>
         <h1>Dra för att lyfta!</h1>
         <p class="muted keys">eller tryck Enter · Esc avbryter</p>
         <p class="muted touch">eller tryck här för att starta</p>
@@ -155,7 +162,20 @@
         <p class="who" id="fin-name"></p>
         <p class="muted" id="fin-reason"></p>
         <p class="result"><output id="fin-height">0 m</output></p>
+        <p class="fin-stars" id="fin-stars" hidden></p>
         <p class="rank" id="fin-rank"></p>
+        <ol class="fin-list" id="fin-list" hidden></ol>
+        <div class="certificate" id="certificate" hidden>
+          <p class="cert-kicker">Fjällräddningens flygskola</p>
+          <p class="cert-title">Certifikat</p>
+          <p class="cert-name" id="cert-name"></p>
+          <p>har klarat uppflygningen och är nu</p>
+          <p class="cert-grade">Junior fjällräddare</p>
+          <canvas class="cert-heli" id="cert-heli" width="360" height="150" aria-hidden="true"></canvas>
+          <p class="cert-heli-name">Din nya helikopter: <strong id="cert-heli-name"></strong></p>
+          <p class="cert-date muted" id="cert-date"></p>
+        </div>
+        <p class="fin-note" id="fin-note" hidden></p>
         <p class="milestone" id="fin-milestone"></p>
         <p class="muted"><span class="keys">Tryck valfri tangent</span><span class="touch">Tryck på skärmen</span></p>
       </div>
