@@ -43,7 +43,7 @@ test('en övning flygs med skolhelikoptern', () => {
   assert.equal(game.state, 'READY');
   assert.equal(game.helicopter.id, 'school');
   takeOff(game, clock);
-  assert.equal(game.flight.cfg.maxSinkRate, 10);
+  assert.equal(game.flight.cfg.maxSinkRate, 15);
   assert.equal(game.flight.cfg.ceiling, 1500);
 });
 

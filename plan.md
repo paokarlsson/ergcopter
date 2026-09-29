@@ -67,7 +67,7 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 - När man börjar igen syns effekten först när draget är klart. Då faller man ytterligare 30–40 m.
 - Momentet blir alltså att sluta i tid och börja igen i tid, inte bara att reagera.
 - **Byggt:** fallet börjar när effekten har tonats ned till 0. Det räknas bara om man släpper från minst `from − tol`. Helikoptern räknas som uppfångad när man vevar igen och den sjunker långsammare än 1 m/s. Då bedöms den lägsta höjden. Fångar man för tidigt eller för sent får man återkoppling och gör om: stig igen och släpp på nytt. Slår man i marken är övningen underkänd.
-- I skolhelikoptern (med fallbroms) är fallet lugnare, ungefär 50 s för 500 m. Förslag: övningen görs först i skolhelikoptern, där det är lätt att fånga upp den. Den görs sedan om som junior utan broms, där det är på riktigt. Alternativet är att instruktören slår av bromsen för övningen.
+- I skolhelikoptern (med fallbroms) är fallet lugnare, ungefär 35 s för 500 m. Förslag: övningen görs först i skolhelikoptern, där det är lätt att fånga upp den. Den görs sedan om som junior utan broms, där det är på riktigt. Alternativet är att instruktören slår av bromsen för övningen.
 
 ### 3.3 Ändringar som övningarna kräver
 
@@ -90,7 +90,7 @@ Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska 
 ### Typer
 
 1. **Skolhelikopter** (aspirant)
-   - Den förlåtande egenskapen är en fallbroms på cirka 10 m/s, så en miss straffas mildare och det blir lättare att landa mjukt.
+   - Den förlåtande egenskapen är en fallbroms på cirka 15 m/s, ungefär halva den fria fallhastigheten från 1 000 m, så en miss straffas mildare och det blir lättare att landa mjukt.
    - Ett tak på 1 500 m, där den inte stiger mer. Den klarar övningshöjderna men inte de höga topparna. Taket valdes i stället för att luften tunnas ut snabbare, eftersom det senare hade gjort övningarna på 1 000 m tyngre och gynnat styrka.
    - Den har ingen vinsch och ingen plats för patient. Det förklarar varför aspiranten bara övar.
    - Den är gul med texten SKOLA (`heli-draw.js`).
@@ -177,7 +177,7 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 ## 8. Byggordning
 
 1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
-2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms (10 m/s), tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
+2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms (15 m/s), tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
 3. ✅ **Menyskärm efter inmatningen:** "Aspirant · Dagens övningar" med godkända övningar bockade. Man väljer övning (tangent 1–4), fri flygning (5) eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
 4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på, släpphöjd och fångstzon i fritt fall, landningsplatta med sjunkhastighet mot gränsen, och verkstaden vid startplatsen. En panel under höjden visar övningens instruktion och återkoppling. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
 5. **Profiler och grader** som sparas på namnet.
