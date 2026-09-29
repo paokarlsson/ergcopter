@@ -50,14 +50,19 @@ export class GameRenderer {
     refresh();
   }
 
-  /** Rullar landskapet framåt efter rotorvarv, bara i luften. */
-  advance(dt, rotor, h) {
+  /**
+   * Rullar landskapet framåt efter rotorvarv, bara i luften. Övningarna flygs
+   * rakt upp och ned vid verkstan, utan framåtfart (forward = false).
+   */
+  advance(dt, rotor, h, forward = true) {
     const airborne = Math.min(1, h / 3);
-    this.speed = Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) * airborne;
+    this.speed = forward ? Math.max(MIN_FLY_SPEED_PX, rotor.omega * FLY_SPEED_PX) * airborne : 0;
     this.distance += this.speed * dt;
   }
 
+  /** Nytt pass: tillbaka till startplatsen, utan berg eller konfetti från förra passet eller demoturen. */
   clearMountains() {
+    this.distance = 0;
     this.mountains = [];
     this.sent.clear();
     this.signAlpha.clear();
@@ -184,7 +189,8 @@ export class GameRenderer {
     ctx.save();
     ctx.translate(hx + shake * Math.sin(t * 57) * 0.5, hy);
     // Nosen ned i framåtflykt (positiv vinkel = medurs), lite upp när den stiger fort.
-    ctx.rotate(0.08 * v.rotor.blur * airborne - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)));
+    const pitch = this.speed > 0 ? 0.08 * v.rotor.blur * airborne : 0;
+    ctx.rotate(pitch - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)));
     ctx.scale(scale, scale);
     drawHelicopter(ctx, v.rotor, c, v.livery);
     ctx.restore();

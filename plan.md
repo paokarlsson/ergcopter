@@ -44,6 +44,8 @@ Uppdrag bedöms därför på precision, säkerhet och beslut, inte på hur högt
 
 Aspiranten är inte betrodd med skarpa räddningar. Hen får öva momenten och göra testflygningar från verkstan. Varje övning tränar ett moment som kommer tillbaka i de skarpa uppdragen.
 
+Övningarna flygs rakt upp och ned vid verkstan, utan framåtfart: landskapet står still, verkstan syns hela tiden och man landar på plattan man lyfte från. Inga fjälltoppar skickas in.
+
 | # | Övning | Mål | Tränar |
 |---|---|---|---|
 | 1 | Första lyftet | Lyft till 50 m och landa igen | Att hitta lyfteffekten |

@@ -348,7 +348,7 @@ function frame() {
     attractRotor.step(dt, ATTRACT_LIFT);
   }
   const shownRotor = attract ? attractRotor : rotor;
-  renderer.advance(dt, shownRotor, h);
+  renderer.advance(dt, shownRotor, h, !game.exercise || attract);
   renderer.draw({
     h,
     vy,
