@@ -21,7 +21,9 @@ const SOURCE_KEY = 'skierg.source';
 
 let cfg = loadConfig();
 const board = new Leaderboard();
-const progress = new Progress();
+const savedProgress = new Progress();
+let anonymousProgress = new Progress(null); // anonyma: bara under passet, delas inte med nästa
+const progress = () => (game.player?.anonymous ? anonymousProgress : savedProgress);
 const game = new Game(cfg);
 const rotor = new Rotor();
 const renderer = new GameRenderer(document.getElementById('scene'));
@@ -184,7 +186,7 @@ game.on('state', ({ to }) => {
 
 /** Menyn med ett förslag som startar med ett drag – man ska inte behöva röra skärmen. */
 function renderMenu() {
-  const passed = progress.passed(game.player.name);
+  const passed = progress().passed(game.player.name);
   const suggested = nextExercise(EXERCISES, passed);
   game.suggest(suggested);
   ui.renderMenu(game.player.name, EXERCISES, passed, suggested, (ex) => game.choose(ex));
@@ -198,7 +200,7 @@ game.on('milestone', (m) => {
 game.on('finish', (result) => {
   replay = result.endH > 0 ? new Replay(landingTrajectory(game.flight), cfg.dt, cfg.replayMaxS) : null;
   if (result.exercise) {
-    if (result.exercise.status === 'passed') progress.markPassed(result.name, result.exercise.id);
+    if (result.exercise.status === 'passed') progress().markPassed(result.name, result.exercise.id);
     ui.showFinished(result);
     return; // övningar hamnar inte på topplistan
   }
@@ -221,6 +223,7 @@ ui.el.setupForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const data = ui.takeSetup();
   if (!connected()) return ui.setupError('Anslut ergen först');
+  anonymousProgress = new Progress(null);
   ui.setupError(game.submitSetup(data));
 });
 document.getElementById('screen-finished').addEventListener('click', () => game.dismissResult());

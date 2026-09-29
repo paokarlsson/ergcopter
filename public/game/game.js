@@ -19,13 +19,15 @@ export const STROKE_GRACE_S = 3;
 
 /** Helikoptern som övningarna flygs med. */
 export const EXERCISE_HELICOPTER = 'school';
+/** Namnet när deltagaren inte anger något. */
+export const ANONYMOUS_NAME = 'Anonym';
 const MAX_TICK_S = 2; // längre glapp (t.ex. datorn sov) räknas inte som speltid
 
 export class Game {
   constructor(cfg) {
     this.cfg = cfg;
     this.state = 'IDLE';
-    this.player = null; // { name, mass, klass }
+    this.player = null; // { name, anonymous, mass, klass }
     this.exercise = null; // vald övning, null = fri flygning
     this.helicopter = null; // helikoptertyp, null = standard
     this.run = null; // ExerciseRun under en övning
@@ -70,17 +72,16 @@ export class Game {
   }
 
   /**
-   * @param {{ name: string, mass: number, klass: string }} setup  klass: 'Barn' | 'Ungdom' | 'Vuxen'
+   * @param {{ name: string, mass: number, klass: string }} setup  namnet är valfritt; klass: 'Barn' | 'Ungdom' | 'Vuxen'
    * @returns {string|null} felmeddelande, eller null om det gick bra
    */
   submitSetup({ name, mass, klass = '' }) {
     if (this.state !== 'SETUP') return 'Fel läge';
     const trimmed = String(name ?? '').trim();
     const kg = Number(mass);
-    if (!trimmed) return 'Ange namn eller alias';
     if (!Number.isInteger(kg) || kg < MIN_MASS || kg > MAX_MASS) return `Vikten ska vara ett heltal ${MIN_MASS}–${MAX_MASS} kg`;
     if (!CLASSES.some((c) => c.name === klass)) return 'Välj klass';
-    this.player = { name: trimmed.slice(0, 40), mass: kg, klass };
+    this.player = { name: trimmed.slice(0, 40) || ANONYMOUS_NAME, anonymous: !trimmed, mass: kg, klass };
     this.#set('MENU');
     return null;
   }
