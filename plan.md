@@ -58,15 +58,16 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 
 ### 3.1 Mjuk landning
 
-- Sjunkhastigheten beror direkt på hur mycket effekten ligger under behovet: `dh/dt = G · (P − P_req) / P0`. Med 0 W faller man i över 20 m/s.
+- Sjunkhastigheten styrs av hur mycket effekten ligger under behovet: farten drar mot `G · (P − P_req) / P0`, med tröghet (spec §5). Med 0 W faller man i över 20 m/s.
 - För att sätta ner under 2 m/s måste man ligga inom ungefär 9 % under sin lyfteffekt. Det kräver precision snarare än kraft.
 - **Byggt:** fysiken registrerar sjunkhastigheten när helikoptern sätter ner (`flight.touchdown`). Landningssteget underkänner en landning över gränsen.
 
 ### 3.2 Fritt fall
 
-- Från 1 000 m med 0 W faller helikoptern i ungefär 27–31 m/s. De 500 metrarna tar runt 17 s.
+- Från 1 000 m med 0 W accelererar helikoptern nedåt, nära tyngdaccelerationen i början, mot en sluthastighet på ungefär 26–31 m/s. De 500 metrarna tar runt 19 s.
 - Effekten ligger kvar i 3 s efter sista draget (`strokeTimeoutS`) och tonas sedan ned under 1 s (`fadeOutS`). Man måste alltså sluta veva innan man vill börja falla.
 - När man börjar igen syns effekten först när draget är klart. Då faller man ytterligare 30–40 m.
+- Trögheten gör att helikoptern inte vänder direkt när man drar grönt. I 26 m/s blir bromssträckan ungefär 25 m med 50 % överskott och drygt 50 m om man bara lägger sig på hovringseffekt. Man måste alltså börja veva i god tid ovanför målet.
 - Momentet blir alltså att sluta i tid och börja igen i tid, inte bara att reagera.
 - **Byggt:** fallet börjar när effekten har tonats ned till 0. Det räknas bara om man släpper från minst `from − tol`. Helikoptern räknas som uppfångad när man vevar igen och den sjunker långsammare än 1 m/s. Då bedöms den lägsta höjden. Fångar man för tidigt eller för sent får man återkoppling och gör om: stig igen och släpp på nytt. Slår man i marken är övningen underkänd.
 - Skolhelikoptern har ingen fallbroms, så fallet är lika snabbt som i fri flygning. Instruktören kan slå på en broms i inställningarna (`maxSinkRate`) om övningen blir för svår.
@@ -193,7 +194,7 @@ Första bygget omfattar steg 1–4 med övningarna 1–4.
 ## 9. Öppna frågor
 
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
-- **Tröghet:** Helikoptern har ingen tröghet: så fort effekten ändras ändras farten direkt. Det gör att ett fall aldrig känns som att fart byggs upp. Tröghet påverkar balansen i hela spelet, så den väntar. Det kan bli ett senare steg om fallet känns platt.
+- **Tröghet:** Byggt (spec §5, `inertiaS`, standard 2 s). Öppet är om 2 s är rätt när riktiga spelare provar: kanske blir hovringen för svår, eller fallet för lätt. Det kan också bli en egenskap per helikopter, där den tunga helikoptern är trögare.
 - **Användning:** Ska spelet fortfarande köras på event, med många olika spelare, eller mer av samma person över tid? Det avgör hur viktig karriären med sparade profiler är.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?
 - **Namn på helikoptrarna.**

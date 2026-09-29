@@ -4,9 +4,13 @@
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
+// Sträckan helikoptern fortsätter nedåt innan trögheten har bromsat farten (spec §5).
+const brakeM = (f) => Math.max(0, -f.v) * (f.cfg.inertiaS ?? 0);
+
 /**
  * @param {{ catchLeadM?: number, landSpeed?: number }} [opts]
- *   catchLeadM: hur långt ovanför målet piloten börjar veva igen i fritt fall
+ *   catchLeadM: hur långt ovanför målet piloten börjar veva igen i fritt fall,
+ *               utöver bromssträckan som trögheten ger (ungefär fart · inertiaS)
  *   landSpeed:  sjunkhastighet (m/s) piloten siktar på vid sättningen
  */
 export function autopilot({ catchLeadM = 20, landSpeed = 0.8 } = {}) {
@@ -24,7 +28,7 @@ export function autopilot({ catchLeadM = 20, landSpeed = 0.8 } = {}) {
       }
       case 'freefall':
         if (step.phase === 'armed') return f.h < step.from - step.tol ? req(step.from + 100) : null;
-        return f.h <= step.to + catchLeadM ? hold(step.to) : null;
+        return f.h <= step.to + catchLeadM + brakeM(f) ? hold(step.to) : null;
     }
     return null;
   };

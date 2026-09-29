@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   weightMode: 'linear', // 'linear' (k = 1, standard) | 'fair' (k = 2/3)
   H_air: 1800, // m, vid h = H_air krävs dubbla lyfteffekten
   G: 20, // m/s, stighastighet vid en hel P0 överskott
+  inertiaS: 2, // s, tröghet: hur fort farten följer effekten. G / 9,81 ≈ 2 ger tyngdacceleration i fritt fall. 0 = av
   maxSinkRate: 0, // m/s, 0 = av
   dt: 0.05, // s, fysikens tidssteg
 
@@ -68,6 +69,7 @@ export const CONFIG_SCHEMA = [
   { group: 'Fysik', key: 'm_ref', label: 'm_ref – referensvikt (kg)', type: 'number', min: 15, max: 200, step: 1 },
   { group: 'Fysik', key: 'H_air', label: 'H_air – luftens uttunning (m)', type: 'number', min: 100, max: 100000, step: 10 },
   { group: 'Fysik', key: 'G', label: 'G – stigförmåga (m/s vid en P0 överskott, inte tyngdacceleration)', type: 'number', min: 0.1, max: 1000, step: 0.1 },
+  { group: 'Fysik', key: 'inertiaS', label: 'Tröghet (s, 0 = farten följer effekten direkt)', type: 'number', min: 0, max: 30, step: 0.1 },
   { group: 'Fysik', key: 'maxSinkRate', label: 'Max sjunkhastighet (m/s, 0 = av)', type: 'number', min: 0, max: 1000, step: 0.5 },
   { group: 'Fysik', key: 'dt', label: 'Tidssteg dt (s)', type: 'number', min: 0.01, max: 0.2, step: 0.01 },
   { group: 'Signal', key: 'smoothingStrokes', label: 'Drag i medelvärdet', type: 'number', min: 1, max: 20, step: 1 },
