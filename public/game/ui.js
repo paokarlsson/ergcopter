@@ -90,7 +90,7 @@ export class GameUI {
     this.settingsBase = null;
     this.#buildClassOptions();
     this.#buildCalibrationHelp();
-    // Förhandsvisningen räknas om medan operatören ändrar värden (tillägg §5).
+    // Förhandsvisningen räknas om medan operatören ändrar värden (spec §12.4).
     this.el.settingsFields.addEventListener('input', () => {
       if (this.settingsBase) this.renderPreview(sanitize(this.readSettings(this.settingsBase)));
     });
@@ -490,7 +490,7 @@ export class GameUI {
     this.renderPreview(cfg);
   }
 
-  /** Tillägg §4–5: förväntat utfall och balanskontroll med givna parametrar, plus τ. */
+  /** Spec §12.3–12.4: förväntat utfall och balanskontroll med givna parametrar, plus τ. */
   renderPreview(cfg) {
     const p = preview(cfg);
     const tauLine = document.createElement('p');

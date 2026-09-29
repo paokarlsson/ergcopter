@@ -41,7 +41,7 @@ const BOARD_ROTATE_MS = 8000;
 let boardTab = 0;
 let boardTimer = null;
 
-// --- Topplista per klass (tillägg §2) ----------------------------------------------
+// --- Topplista per klass (spec §12.2) ----------------------------------------------
 
 function boardTabs() {
   const tabs = CLASSES.map((c) => ({ label: c.name, klass: c.name }));

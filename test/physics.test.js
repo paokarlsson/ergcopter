@@ -4,8 +4,8 @@ import { DEFAULT_CONFIG } from '../public/game/config.js';
 import { Flight, analyticHeight } from '../public/game/physics.js';
 import { runPhysicsOnly } from '../public/game/sim.js';
 
-// Huvudspecens parametrar (§5). Tillägget för blandad publik har andra
-// standardvärden – de testas i addendum.test.js.
+// Grundspelets parametrar (spec §5). Standardvärdena för blandad publik
+// (spec §12) testas i defaults.test.js.
 const cfg = { ...DEFAULT_CONFIG, P_ref: 100, H_air: 2700, G: 22.5 };
 
 // Spec §5, referenstabellen (80 kg, k = 1)

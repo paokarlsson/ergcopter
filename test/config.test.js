@@ -30,7 +30,7 @@ test('egen milstolpelista behålls', () => {
   assert.deepEqual(loadConfig(storage).milestones, [{ name: 'Backen', h: 50 }]);
 });
 
-test('gamla standardvärden (P_ref 100, H_air 2700, G 22,5, 600 s) byts mot tilläggets', () => {
+test('gamla standardvärden (P_ref 100, H_air 2700, G 22,5, 600 s) byts mot de för blandad publik', () => {
   const old = { P_ref: 100, H_air: 2700, G: 22.5, maxSessionS: 600, idleEndS: 12 };
   const cfg = loadConfig(memoryStorage({ 'skierg.config.v1': JSON.stringify(old) }));
   assert.deepEqual([cfg.P_ref, cfg.H_air, cfg.G, cfg.maxSessionS], [60, 1800, 20, 480]);
