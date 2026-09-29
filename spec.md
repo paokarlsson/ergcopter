@@ -190,7 +190,9 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 - Variometer: stig- eller sjunkhastighet i m/s med pil.
 - Rotorns animationshastighet proportionell mot `P_smooth / P0`, så att deltagaren ser respons redan innan helikoptern lättar.
 - Horisontella linjer för dagens rekord, maxhöjden i passet och milstolpar.
-- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg som passerar under helikoptern. Visa en kort notis när en milstolpe passeras.
+- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg med röse och skylt som passerar under helikoptern; en topp högt över helikoptern ritas genomskinlig, som om den låg långt bort. Flyger man över en topp blir skylten grön och det sprutar konfetti. Visa en kort banderoll ("Topp passerad") när en milstolpe passeras.
+- Landskapet visar höjden utan siffror (`scenery.js`): tre fjällkedjor (granskog, fjällbjörk och hed, kalfjäll med snö) som sjunker undan när man stiger, ett molntäcke vid 1 900–2 040 m som man flyger igenom med ett molnhav ovanför, och norrsken högt upp.
+- Fartkänsla (`effects.js`): fartstreck och en lätt utzoomning när man stiger eller faller fort, damm från rotorvinden nära marken, och helikoptern gungar i luften och skakar i full stigning. Allt detta är bara bild och påverkar inte fysiken.
 - Tid sedan start.
 - Topplista per klass i IDLE och FINISHED med namn och höjd, aldrig vikt eller watt (avsnitt 12.2).
 - Valfritt ljud: helikopterljud som följer `P_smooth / P0`. Hovring (100 %) ger fullt rotorvarv; över 100 % låter det mer (bladslag, dunk, volym) upp till taket 300 %, med tydlig skillnad vid 200 %.

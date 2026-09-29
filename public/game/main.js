@@ -194,7 +194,7 @@ function renderMenu() {
 
 // Under en övning är det instruktionen som gäller – inga notiser om toppar.
 game.on('milestone', (m) => {
-  if (!game.run) ui.toast(`${m.name} ${fmtM(m.h)} m!`, m.area ?? '');
+  if (!game.run) ui.toast(m.name, [`${fmtM(m.h)} m`, m.area].filter(Boolean).join(' · '), 'Topp passerad');
 });
 
 game.on('finish', (result) => {

@@ -54,6 +54,17 @@
   --workshop-wall: #b7503a;
   --workshop-roof: #3b3f47;
   --workshop-door: #e3dfd6;
+  /* Landskapet efter höjd (scenery.js) och effekter (effects.js) */
+  --ridge-far: #8a98b8;
+  --ridge-mid: #6d8a5e;
+  --ridge-near: #2c5638;
+  --sun: #fff8e1;
+  --sun-glow: #ffe2a0;
+  --cloud-shade: #bfcadb;
+  --aurora-1: #3dffa8;
+  --aurora-2: #b36bff;
+  --streak: #ffffff;
+  --dust: #d8cbae;
   color-scheme: light;
 }
 
@@ -726,38 +737,48 @@ select {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 12%;
+  bottom: 10%;
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
-  padding: 18px 30px;
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
-  font-size: clamp(1.4rem, 3.5vw, 2.4rem);
-  font-weight: 700;
-  text-align: center;
+  padding: 14px 34px 16px 28px;
+  background: linear-gradient(100deg, rgb(12 20 38 / 0.9), rgb(28 44 78 / 0.82));
+  color: #ffffff;
+  border-left: 8px solid var(--heli-body);
+  border-radius: 6px;
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.35);
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-align: left;
   z-index: 10;
-  animation: toast 2.4s ease forwards;
+  animation: toast 2.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+.toast-kicker {
+  font-size: 0.4em;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--line-record);
 }
 .toast-sub {
   margin-top: 2px;
-  font-size: 0.55em;
+  font-size: 0.5em;
   font-weight: 600;
-  color: var(--muted);
+  color: rgb(255 255 255 / 0.75);
 }
 @keyframes toast {
   0% {
     opacity: 0;
-    transform: translate(-50%, 20px);
+    transform: translate(-80%, 0) skewX(-8deg);
   }
-  8%,
+  12%,
   85% {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, 0) skewX(0);
   }
   100% {
     opacity: 0;
+    transform: translate(-20%, 0);
   }
 }
 

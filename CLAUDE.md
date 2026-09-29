@@ -50,6 +50,9 @@ public/                  allt som publiceras, statiska filer utan byggsteg
     view/                allt som ritar, visar eller låter
       render.js          canvasen: himmel, berg, helikopter, hjälplinjer
       heli-draw.js, mountains.js    ritfunktioner
+      scenery.js         fjällkedjor, sol, molntäcke och norrsken efter höjd
+      effects.js         fartstreck, rotordamm och konfetti
+      color.js           färgblandning för canvasen
       ui.js              DOM: skärmar, HUD, formulär, inställningspanel, topplista
       rotor.js           rotorns animation
       audio.js, helicopter-sound.js rotorljud (Web Audio)

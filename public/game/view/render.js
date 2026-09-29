@@ -1,10 +1,14 @@
-// Storskärmens scen på Canvas 2D: himmel som mörknar med höjden, fjälltoppar
-// som kommer in från höger och passerar under helikoptern, moln i världen,
-// marken när man är låg, höjdlinjer och en sidoskala över hela höjden.
+// Storskärmens scen på Canvas 2D: himmel som mörknar med höjden, fjällkedjor och
+// molntäcke som visar hur högt man är (scenery.js), fjälltoppar som kommer in från
+// höger och passerar under helikoptern, moln i världen, marken när man är låg,
+// fartstreck och konfetti (effects.js), höjdlinjer och en sidoskala över hela höjden.
 // Siffror och mätare ligger i DOM (ui.js).
 
 import { drawHelicopter, drawCloud, drawTree } from './heli-draw.js';
 import { drawMountain, drawSign, signLayout, mountainReach, rand } from './mountains.js';
+import { drawSun, drawRidges, drawCloudDeck, drawFog, fogAmount, drawAurora } from './scenery.js';
+import { Effects } from './effects.js';
+import { mix } from './color.js';
 
 const VIEW_SPAN_M = 300; // höjd som syns i huvudvyn
 const GROUND_MARGIN_PX = 56; // marken så här högt upp när man står på den
@@ -22,6 +26,10 @@ const MOUNTAIN_SKIP_BELOW_M = 60; // topp som redan ligger så här långt under
 const MOUNTAIN_WITHDRAW_M = 20; // ett väntande berg dras tillbaka först när vi hamnar så här långt under toppen
 const SIGN_FADE_S = 0.25; // skyltar tonar in och ut i stället för att blinka
 const SIGN_EDGE_FADE_PX = 90; // och tonar mot kanterna av området där de får synas
+const ZOOM_OUT_MAX = 0.35; // kameran visar så här mycket mer när det går som fortast
+const ZOOM_TIME_S = 1.2;
+const FAST_CLIMB_MS = 50; // m/s där fartstreck och utzoomning är fullt påslagna
+const DOWNWASH_M = 30; // rotorvinden blåser upp damm under den här höjden
 
 export class GameRenderer {
   constructor(canvas) {
@@ -33,6 +41,9 @@ export class GameRenderer {
     this.speed = 0; // px/s just nu
     this.signAlpha = new Map(); // namn → 0–1, skyltarnas intoning
     this.lastDraw = null;
+    this.zoom = 1; // > 1 när kameran zoomat ut i hög fart
+    this.effects = new Effects();
+    this.celebrated = new Set(); // toppar som fått konfetti under passet
     this.colors = null;
     const refresh = () => (this.colors = readColors(canvas));
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refresh);
@@ -50,6 +61,8 @@ export class GameRenderer {
     this.mountains = [];
     this.sent.clear();
     this.signAlpha.clear();
+    this.celebrated.clear();
+    this.effects.clear();
   }
 
   /**
@@ -120,29 +133,47 @@ export class GameRenderer {
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const pxPerM = (H * 0.8) / VIEW_SPAN_M;
+    const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
+    const dt = this.lastDraw === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastDraw));
+    this.lastDraw = t;
+
+    // Kameran zoomar ut lite när det går fort, så att farten känns och man ser mer av det som kommer.
+    const fast = clamp01((Math.abs(v.vy) - 8) / (FAST_CLIMB_MS - 8));
+    this.zoom += (1 + ZOOM_OUT_MAX * fast - this.zoom) * Math.min(1, dt / ZOOM_TIME_S);
+    const pxPerM = (H * 0.8) / (VIEW_SPAN_M * this.zoom);
     const heliY0 = H * 0.5;
     const camGround = (H - heliY0 - GROUND_MARGIN_PX) / pxPerM;
     const cam = Math.max(v.h, camGround); // höjden som hamnar på heliY0
     const y = (alt) => heliY0 - (alt - cam) * pxPerM;
     const scale = Math.max(0.6, Math.min(1.6, W / 1100));
-    const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
-    const dt = this.lastDraw === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastDraw));
-    this.lastDraw = t;
+    const hx = W * HELI_X;
+    const airborne = Math.min(1, v.h / 3);
+
+    this.effects.update(dt, this.speed);
+    if (v.h < DOWNWASH_M && v.rotor.blur > 0.25 && y(0) < H) {
+      this.effects.downwash(dt, hx, v.rotor.blur * (1 - v.h / DOWNWASH_M), c.dust);
+    }
 
     this.#sendMountains(v, W, H, y);
-    this.#sky(ctx, W, H, cam);
+    this.#sky(ctx, W, H, cam, t);
+    const haze = mix(c.skyBottomLow, c.skyBottomHigh, Math.min(1, cam / SKY_TOP_M));
+    drawRidges(ctx, W, H, H - GROUND_MARGIN_PX, (cam - camGround) * pxPerM, this.distance, haze, c);
+    drawCloudDeck(ctx, W, H, cam, y, heliY0, pxPerM, this.distance, c);
     this.#mountains(ctx, W, H, v, y, dt, cam);
     this.#clouds(ctx, W, H, cam, pxPerM, y);
     if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v);
+    drawFog(ctx, W, H, fogAmount(cam), c);
     this.#altitudeTicks(ctx, W, H, cam, y, c);
     this.#lines(ctx, W, H, v, y, c);
     this.#guides(ctx, W, H, v, y, c);
+    this.effects.drawStreaks(ctx, W, H, dt, this.speed, v.vy * pxPerM, fast ** 1.5, c.streak);
+    this.effects.drawParticles(ctx, y);
 
-    // Helikoptern: medarna mot marken vid h = 0
-    const hx = W * HELI_X;
-    const hy = y(v.h) - 32 * scale;
-    const airborne = Math.min(1, v.h / 3);
+    // Helikoptern: medarna mot marken vid h = 0. I luften gungar den lite, och
+    // i full stigning skakar den av kraften.
+    const shake = 2.5 * clamp01((v.vy - 25) / 40);
+    const hy =
+      y(v.h) - 32 * scale + airborne * 2.5 * Math.sin(t * 2.1) + shake * (Math.sin(t * 43) + Math.sin(t * 71)) * 0.5;
     ctx.fillStyle = c.shadow;
     if (y(0) < H) {
       const sw = 60 * scale * Math.max(0.2, 1 - v.h / 120);
@@ -151,7 +182,7 @@ export class GameRenderer {
       ctx.fill();
     }
     ctx.save();
-    ctx.translate(hx, hy);
+    ctx.translate(hx + shake * Math.sin(t * 57) * 0.5, hy);
     // Nosen ned i framåtflykt (positiv vinkel = medurs), lite upp när den stiger fort.
     ctx.rotate(0.08 * v.rotor.blur * airborne - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)));
     ctx.scale(scale, scale);
@@ -161,7 +192,7 @@ export class GameRenderer {
     this.#gauge(ctx, W, H, v, c);
   }
 
-  #sky(ctx, W, H, cam) {
+  #sky(ctx, W, H, cam, time) {
     const t = Math.min(1, Math.max(0, cam / SKY_TOP_M));
     const c = this.colors;
     const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -169,6 +200,8 @@ export class GameRenderer {
     g.addColorStop(1, mix(c.skyBottomLow, c.skyBottomHigh, t));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
+    drawSun(ctx, W, H, t, c);
+    drawAurora(ctx, W, H, cam, time, c);
 
     // Stjärnor när luften blir tunn
     const stars = Math.max(0, (t - 0.45) / 0.55);
@@ -206,10 +239,25 @@ export class GameRenderer {
       }))
       .filter(({ sx, sy }) => sy < H + 20 && sx - mountainReach(bottom - sy) < W)
       .sort((a, b) => b.m.h - a.m.h);
+    // Konfetti när helikoptern flyger över en topp (inte när man passerar under den).
+    for (const { m, sx } of visible) {
+      if (sx > W * HELI_X || this.celebrated.has(m.name)) continue;
+      this.celebrated.add(m.name);
+      if (v.flying && v.h >= m.h - 30) this.effects.burst(sx, m.h, [c.body, c.record, c.guide, c.signBoard]);
+    }
     for (const { m, sx, sy, haze } of visible) {
-      const colors = { ...c, rock: mix(c.mountainRock, hazeTarget, haze), snow: mix(c.mountainSnow, hazeTarget, haze * 0.5) };
+      // En topp högt över oss är långt bort: genomskinlig, så att landskapet bakom syns
+      // i stället för en grå vägg över hela bilden.
+      ctx.globalAlpha = 1 - 0.9 * clamp01((m.h - v.h) / 150);
+      const colors = {
+        ...c,
+        rock: mix(c.mountainRock, hazeTarget, haze),
+        snow: mix(c.mountainSnow, hazeTarget, haze * 0.5),
+        valleyHaze: mix(c.skyBottomLow, c.skyBottomHigh, Math.min(1, cam / SKY_TOP_M)),
+      };
       drawMountain(ctx, m, sx, sy, bottom, colors);
     }
+    ctx.globalAlpha = 1;
 
     // Skyltarna sist; de som skulle hamna under instrumenten eller en annan skylt
     // tonas ut. Skyltar som redan syns placeras först, så att två skyltar som
@@ -477,6 +525,16 @@ function readColors(el) {
     workshopWall: v('--workshop-wall'),
     workshopRoof: v('--workshop-roof'),
     workshopDoor: v('--workshop-door'),
+    ridgeFar: v('--ridge-far'),
+    ridgeMid: v('--ridge-mid'),
+    ridgeNear: v('--ridge-near'),
+    sun: v('--sun'),
+    sunGlow: v('--sun-glow'),
+    cloudShade: v('--cloud-shade'),
+    aurora1: v('--aurora-1'),
+    aurora2: v('--aurora-2'),
+    streak: v('--streak'),
+    dust: v('--dust'),
   };
 }
 
@@ -485,20 +543,6 @@ function overlaps(a, b) {
   const bw = b.w ?? b.width;
   const bh = b.h ?? b.height;
   return a.x < b.x + bw && b.x < a.x + a.w && a.y < b.y + bh && b.y < a.y + a.h;
-}
-
-/** Blandar två färger (#rrggbb eller rgb(r g b)). */
-function mix(a, b, t) {
-  const pa = parseColor(a);
-  const pb = parseColor(b);
-  return `rgb(${pa.map((x, i) => Math.round(x + (pb[i] - x) * t)).join(' ')})`;
-}
-function parseColor(color) {
-  if (color.startsWith('#')) {
-    const s = color.slice(1);
-    return [0, 2, 4].map((i) => parseInt(s.slice(i, i + 2), 16));
-  }
-  return color.match(/[\d.]+/g).slice(0, 3).map(Number);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

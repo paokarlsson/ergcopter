@@ -338,8 +338,8 @@ export class GameUI {
     return els.filter((el) => el && el.getClientRects().length > 0).map((el) => el.getBoundingClientRect());
   }
 
-  toast(title, subtitle = '') {
-    this.toastQueue.push({ title, subtitle });
+  toast(title, subtitle = '', kicker = '') {
+    this.toastQueue.push({ title, subtitle, kicker });
     if (this.toastQueue.length > 2) this.toastQueue.splice(0, this.toastQueue.length - 2);
     if (!this.toastTimer) this.#nextToast();
   }
@@ -364,7 +364,10 @@ export class GameUI {
     const sub = document.createElement('div');
     sub.className = 'toast-sub';
     sub.textContent = item.subtitle;
-    t.replaceChildren(title, ...(item.subtitle ? [sub] : []));
+    const kicker = document.createElement('div');
+    kicker.className = 'toast-kicker';
+    kicker.textContent = item.kicker;
+    t.replaceChildren(...(item.kicker ? [kicker] : []), title, ...(item.subtitle ? [sub] : []));
     t.hidden = true;
     void t.offsetWidth; // starta om animationen
     t.hidden = false;

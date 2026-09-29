@@ -8,7 +8,7 @@ const ctx = new Proxy(
   {},
   {
     get: (_, k) =>
-      k === 'measureText' ? () => ({ width: 100 }) : k === 'createLinearGradient' ? () => ({ addColorStop: noop }) : noop,
+      k === 'measureText' ? () => ({ width: 100 }) : k.startsWith?.('create') ? () => ({ addColorStop: noop }) : noop,
     set: () => true,
   }
 );
