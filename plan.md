@@ -62,12 +62,12 @@ Senare varianter blir svårare: högre hovring, smalare band och längre tid.
 
 ### 3.2 Fritt fall
 
-- Från 1 000 m med 0 W faller helikoptern i ungefär 27–31 m/s. De 500 metrarna tar runt 17 s utan fallbroms.
+- Från 1 000 m med 0 W faller helikoptern i ungefär 27–31 m/s. De 500 metrarna tar runt 17 s.
 - Effekten ligger kvar i 3 s efter sista draget (`strokeTimeoutS`) och tonas sedan ned under 1 s (`fadeOutS`). Man måste alltså sluta veva innan man vill börja falla.
 - När man börjar igen syns effekten först när draget är klart. Då faller man ytterligare 30–40 m.
 - Momentet blir alltså att sluta i tid och börja igen i tid, inte bara att reagera.
 - **Byggt:** fallet börjar när effekten har tonats ned till 0. Det räknas bara om man släpper från minst `from − tol`. Helikoptern räknas som uppfångad när man vevar igen och den sjunker långsammare än 1 m/s. Då bedöms den lägsta höjden. Fångar man för tidigt eller för sent får man återkoppling och gör om: stig igen och släpp på nytt. Slår man i marken är övningen underkänd.
-- I skolhelikoptern (med fallbroms) är fallet lugnare, ungefär 35 s för 500 m. Förslag: övningen görs först i skolhelikoptern, där det är lätt att fånga upp den. Den görs sedan om som junior utan broms, där det är på riktigt. Alternativet är att instruktören slår av bromsen för övningen.
+- Skolhelikoptern har ingen fallbroms, så fallet är lika snabbt som i fri flygning. Instruktören kan slå på en broms i inställningarna (`maxSinkRate`) om övningen blir för svår.
 
 ### 3.3 Ändringar som övningarna kräver
 
@@ -82,7 +82,7 @@ En helikopter byggs av parametrar som redan finns:
 |---|---|---|
 | Maxhöjd | `H_air` | Lågt värde gör att helikoptern "tar slut" tidigt |
 | Stigförmåga | `G` | Lågt värde ger en trög och förlåtande helikopter |
-| Fallbroms | `maxSinkRate` (avstängd i dag) | Begränsar hur fort man kan falla, vilket gör landningen lättare |
+| Fallbroms | `maxSinkRate` (avstängd i dag, ingen helikopter använder den) | Begränsar hur fort man kan falla |
 | Last | Patientens vikt läggs på förarens | Avgör om den kan ta patient och hur många |
 
 Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska ändras utan att balansen ändras, ändras `H_air` och `G` med samma faktor.
@@ -90,13 +90,13 @@ Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska 
 ### Typer
 
 1. **Skolhelikopter** (aspirant)
-   - Den förlåtande egenskapen är en fallbroms på cirka 15 m/s, ungefär halva den fria fallhastigheten från 1 000 m, så en miss straffas mildare och det blir lättare att landa mjukt.
+   - Ingen fallbroms: den faller lika fort som de andra.
    - Ett tak på 1 500 m, där den inte stiger mer. Den klarar övningshöjderna men inte de höga topparna. Taket valdes i stället för att luften tunnas ut snabbare, eftersom det senare hade gjort övningarna på 1 000 m tyngre och gynnat styrka.
    - Den har ingen vinsch och ingen plats för patient. Det förklarar varför aspiranten bara övar.
    - Den är gul med texten SKOLA (`heli-draw.js`).
    - Ljudet får ljusare ton och snabbare rotor (`helicopter-sound.js`). Inte byggt än.
 2. **Lätt räddningshelikopter** (junior och fjällräddare)
-   - Vinsch och en patient. Ingen fallbroms längre, fysiken som i dag.
+   - Vinsch och en patient. Fysiken som i dag.
    - Räcker till fjällen i Jämtland och Härjedalen.
 3. **Tung räddningshelikopter** (senior och uppåt)
    - Högre tak och plats för två eller tre patienter.
@@ -177,7 +177,7 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 ## 8. Byggordning
 
 1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
-2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med fallbroms (15 m/s), tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
+2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med tak (1 500 m) och egen grafik. Se `public/game/helicopters.js`. Ljudet återstår.
 3. ✅ **Menyskärm efter inmatningen:** "Aspirant · Dagens övningar" med godkända övningar bockade. Man väljer övning (tangent 1–4), fri flygning (5) eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
 4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på, släpphöjd och fångstzon i fritt fall, landningsplatta med sjunkhastighet mot gränsen, och verkstaden vid startplatsen. En panel under höjden visar övningens instruktion och återkoppling. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
 5. **Profiler och grader** som sparas på namnet.
@@ -192,7 +192,6 @@ Första bygget omfattar steg 1–4 med övningarna 1–4.
 
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
 - **Tröghet:** Helikoptern har ingen tröghet: så fort effekten ändras ändras farten direkt. Det gör att ett fall aldrig känns som att fart byggs upp. Tröghet påverkar balansen i hela spelet, så den väntar. Det kan bli ett senare steg om fallet känns platt.
-- **Fritt fall i skolhelikoptern:** ska fallbromsen styra svårigheten, eller slår instruktören av den för övningen?
 - **Användning:** Ska spelet fortfarande köras på event, med många olika spelare, eller mer av samma person över tid? Det avgör hur viktig karriären med sparade profiler är.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?
 - **Namn på helikoptrarna.**

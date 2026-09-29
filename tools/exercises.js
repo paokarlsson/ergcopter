@@ -25,7 +25,7 @@ const detail = (r) =>
   : r.type === 'hover' ? `hovrade ${Math.round(r.held)} s`
   : null;
 
-console.log(`${heli.name}: fallbroms ${heli.maxSinkRate} m/s, tak ${heli.ceiling} m. ${mass} kg, ${spm} drag/min, autopilot\n`);
+console.log(`${heli.name}: tak ${heli.ceiling} m. ${mass} kg, ${spm} drag/min, autopilot\n`);
 for (const ex of EXERCISES) {
   const run = runExercise(cfg, mass, ex, autopilot(), { spm });
   const result = run.status === 'passed' ? 'Godkänd' : `Underkänd: ${run.failReason}`;
