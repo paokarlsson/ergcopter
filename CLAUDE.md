@@ -28,6 +28,7 @@ docker compose up                 # samma server i Docker, public/ monteras live
 public/                  allt som publiceras, statiska filer utan byggsteg
   index.html             spelet
   dashboard.html         dashboarden (siffror och kraftkurva via USB)
+  favicon.svg            ikonen: räddningshelikoptern framför ett fjäll
   shared/                delas av spelet och dashboarden
     csafe.js, pm5.js     CSAFE-protokollet och PM5 via WebHID
     screen.js            helskärm och "håll skärmen vaken"

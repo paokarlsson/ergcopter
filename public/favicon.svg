@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Fjällräddarens ikon: räddningshelikoptern (heli-draw.js) framför ett fjäll. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2a55" />
+      <stop offset="1" stop-color="#3d5a9e" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sky)" />
+  <path d="M0 64V50L18 34l8 7 12-15 26 24v14z" fill="#dce7f5" />
+  <g transform="translate(34 29) scale(0.27)" fill="#eb6834">
+    <path d="M-34-10L-112-5v10L-34 10z" />
+    <path d="M-98-3L-116-30h-10l8 34z" />
+    <path d="M-16 18l-6 14M16 18l6 14M-44 32h84q10 0 12-8" fill="none" stroke="#1f2328" stroke-width="7" stroke-linecap="round" />
+    <ellipse rx="48" ry="24" />
+    <path d="M22-20a22 16 0 0 1 20 22L14 9V-20z" fill="#bfe3ff" />
+    <rect x="-4" y="-32" width="8" height="12" fill="#1f2328" />
+    <path d="M-104-34H104" stroke="#1f2328" stroke-width="9" stroke-linecap="round" />
+  </g>
+</svg>
