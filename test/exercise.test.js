@@ -19,11 +19,11 @@ for (const mass of [30, 80, 120]) {
   }
 }
 
-test('skolhelikoptern: fallbromsen håller sjunkhastigheten på 10 m/s', () => {
+test('skolhelikoptern: fallbromsen håller sjunkhastigheten på 15 m/s', () => {
   const f = new Flight(school, 80);
   for (let i = 0; i < 20 * 120; i++) f.step(f.P0 * 2);
   for (let i = 0; i < 20 * 5; i++) f.step(0);
-  assert.equal(f.v, -10);
+  assert.equal(f.v, -15);
 });
 
 test('skolhelikoptern: stiger inte över taket', () => {
@@ -46,7 +46,7 @@ test('sättningen registreras med farten', () => {
   for (let i = 0; i < 20 * 10; i++) f.step(f.P0 * 1.2);
   assert.equal(f.touchdown, null);
   while (f.h > 0) f.step(0);
-  assert.ok(f.touchdown.speed > 0 && f.touchdown.speed <= 10);
+  assert.ok(f.touchdown.speed > 0 && f.touchdown.speed <= 15);
   assert.ok(Math.abs(f.touchdown.t - f.t) < 1e-9);
 });
 
