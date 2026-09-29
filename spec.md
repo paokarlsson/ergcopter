@@ -162,7 +162,7 @@ Tillstånd: `IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINI
 I MENU väljer deltagaren fri flygning (det som beskrivs här) eller en övning (se `plan.md` §3). Efter en övning går FINISHED tillbaka till MENU.
 
 - **IDLE**: vänteskärm med topplista och "Tryck för att starta".
-- **SETUP**: operatören matar in namn eller alias, vikt och eventuell klass.
+- **SETUP**: operatören matar in namn eller alias (valfritt, tomt blir "Anonym"), vikt och eventuell klass.
 - **READY**: ergen är ansluten. Visa "Dra för att lyfta!".
 - **COUNTDOWN**: 3-2-1. Drag under nedräkningen ignoreras. Fysiken nollställs.
 - **FLYING**: fysik och UI körs, tiden räknas. Passet avslutas vid det första av följande:

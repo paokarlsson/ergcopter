@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../public/game/config.js';
-import { Game } from '../public/game/game.js';
+import { Game, ANONYMOUS_NAME } from '../public/game/game.js';
 
 const cfg = { ...DEFAULT_CONFIG };
 
@@ -42,7 +42,6 @@ test('flödet IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING', () =>
   const seen = [];
   game.on('state', ({ to }) => seen.push(to));
   game.openSetup();
-  assert.match(game.submitSetup({ name: '', mass: 80, klass: 'Vuxen' }), /namn/);
   assert.match(game.submitSetup({ name: 'A', mass: 14, klass: 'Barn' }), /15–200/);
   assert.match(game.submitSetup({ name: 'A', mass: 80.5, klass: 'Vuxen' }), /heltal/);
   assert.match(game.submitSetup({ name: 'A', mass: 80, klass: '' }), /klass/);
@@ -144,4 +143,13 @@ test('ett långt glapp (datorn sov) räknas som högst 2 s', () => {
   const t = game.flight.t;
   game.tick(game.lastT + 30);
   assert.ok(game.flight.t - t <= 2 + 1e-9);
+});
+
+test('namnet är valfritt: tomt namn blir Anonym', () => {
+  const game = new Game(cfg);
+  game.openSetup();
+  assert.equal(game.submitSetup({ name: '  ', mass: 80, klass: 'Vuxen' }), null);
+  assert.equal(game.state, 'MENU');
+  assert.equal(game.player.name, ANONYMOUS_NAME);
+  assert.equal(game.player.anonymous, true);
 });

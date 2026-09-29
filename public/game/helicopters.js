@@ -5,8 +5,6 @@ export const HELICOPTERS = [
   {
     id: 'school',
     name: 'Skolhelikopter',
-    // Fallbroms: en miss straffas mildare och mjuk landning blir lättare.
-    maxSinkRate: 10, // m/s
     // Klarar övningshöjderna men inte de höga topparna.
     ceiling: 1500, // m
     winch: false, // ingen vinsch och ingen plats för patient
@@ -23,5 +21,5 @@ export function getHelicopter(id) {
 
 /** Konfigurationen med helikopterns fysikparametrar ovanpå. */
 export function helicopterConfig(cfg, heli) {
-  return { ...cfg, maxSinkRate: heli.maxSinkRate, ceiling: heli.ceiling };
+  return { ...cfg, ceiling: heli.ceiling };
 }
