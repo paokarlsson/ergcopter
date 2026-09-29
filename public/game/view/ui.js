@@ -26,6 +26,8 @@ const REASONS = {
 };
 
 const MAX_DEBUG_LINES = 200;
+const ODO_ROLL_MAX_MS = 15; // över den här farten hinner siffrorna inte rulla klart, så de byts direkt
+const LIFT_GAUGE_MAX = 300; // lyftmätarens skala i %, samma tak som ljudet (spec §8)
 const TOAST_MS = 2400; // samma som animationen i game.css
 
 export class GameUI {
@@ -38,6 +40,7 @@ export class GameUI {
       liftPct: $('lift-pct'),
       liftFill: $('lift-fill'),
       liftMeter: $('lift-meter'),
+      liftNeedle: $('lift-needle'),
       liftHint: $('lift-hint'),
       vario: $('vario'),
       timer: $('timer'),
@@ -87,6 +90,7 @@ export class GameUI {
     $('warning-close').addEventListener('click', () => (this.el.warning.hidden = true));
     this.toastTimer = null;
     this.toastQueue = [];
+    this.altShape = null; // höjdmätarens teckenmönster, byggs om när antalet siffror ändras
     this.settingsBase = null;
     this.#buildClassOptions();
     this.#buildCalibrationHelp();
@@ -303,14 +307,18 @@ export class GameUI {
    */
   updateHud(v) {
     const e = this.el;
-    setText(e.alt, `${fmtM(v.h)} m`);
+    this.#setAltitude(fmtM(v.h));
+    e.alt.classList.toggle('fast', Math.abs(v.vy) > ODO_ROLL_MAX_MS);
     setText(e.altMax, `${fmtM(v.hMax)} m`);
 
     const pct = Math.round(v.lift * 100);
+    const shown = Math.min(LIFT_GAUGE_MAX, Math.max(0, pct));
     setText(e.liftPct, `${pct} %`);
-    e.liftFill.style.width = `${Math.min(200, Math.max(0, pct)) / 2}%`;
+    e.liftFill.style.strokeDasharray = `${shown} ${LIFT_GAUGE_MAX}`;
+    e.liftNeedle.style.transform = `rotate(${(shown / LIFT_GAUGE_MAX) * 180 - 90}deg)`;
     e.liftMeter.setAttribute('aria-valuenow', String(pct));
     e.lift.classList.toggle('good', pct >= 100);
+    e.lift.classList.toggle('strong', pct >= 200);
     setText(e.liftHint, v.onGround ? 'På marken: över 100 % lyfter du' : '100 % = håller höjden');
 
     const vy = Math.abs(v.vy) < 0.05 ? 0 : v.vy;
@@ -326,6 +334,43 @@ export class GameUI {
   }
 
   /**
+   * Höjdmätaren: varje siffra är en remsa 0–9 som rullar till rätt läge, som
+   * en mekanisk räknare. Remsorna byggs om bara när antalet tecken ändras.
+   */
+  #setAltitude(text) {
+    const el = this.el.alt;
+    const shape = text.replace(/\d/g, '0');
+    if (shape !== this.altShape) {
+      this.altShape = shape;
+      const parts = [...text].map((ch) => {
+        if (!/\d/.test(ch)) return Object.assign(document.createElement('span'), { className: 'odo-sep', textContent: ch });
+        const digit = document.createElement('span');
+        digit.className = 'odo-digit';
+        const strip = document.createElement('span');
+        strip.className = 'odo-strip';
+        for (let d = 0; d <= 9; d++) strip.append(Object.assign(document.createElement('span'), { textContent: String(d) }));
+        digit.append(strip);
+        return digit;
+      });
+      const unit = Object.assign(document.createElement('span'), { className: 'odo-unit', textContent: ' m' });
+      el.replaceChildren(...parts, unit);
+    }
+    el.setAttribute('aria-label', `${text} meter`);
+    const digits = [...text].filter((ch) => /\d/.test(ch));
+    el.querySelectorAll('.odo-strip').forEach((strip, i) => {
+      const y = `translateY(${-Number(digits[i])}em)`;
+      if (strip.style.transform !== y) strip.style.transform = y;
+    });
+  }
+
+  /** Synliga rutor på startskärmen, så att bergens skyltar inte hamnar under dem. */
+  idleRects() {
+    const idle = $('screen-idle');
+    if (idle.hidden) return [];
+    return [...idle.querySelectorAll('.title, .board-panel, .start-cta')].map((el) => el.getBoundingClientRect());
+  }
+
+  /**
    * Notis, t.ex. en passerad milstolpe. Köas så att snabba passager inte skriver
    * över varandra; vid lång kö hoppas de äldsta över.
    */
@@ -338,8 +383,8 @@ export class GameUI {
     return els.filter((el) => el && el.getClientRects().length > 0).map((el) => el.getBoundingClientRect());
   }
 
-  toast(title, subtitle = '') {
-    this.toastQueue.push({ title, subtitle });
+  toast(title, subtitle = '', kicker = '') {
+    this.toastQueue.push({ title, subtitle, kicker });
     if (this.toastQueue.length > 2) this.toastQueue.splice(0, this.toastQueue.length - 2);
     if (!this.toastTimer) this.#nextToast();
   }
@@ -364,7 +409,10 @@ export class GameUI {
     const sub = document.createElement('div');
     sub.className = 'toast-sub';
     sub.textContent = item.subtitle;
-    t.replaceChildren(title, ...(item.subtitle ? [sub] : []));
+    const kicker = document.createElement('div');
+    kicker.className = 'toast-kicker';
+    kicker.textContent = item.kicker;
+    t.replaceChildren(...(item.kicker ? [kicker] : []), title, ...(item.subtitle ? [sub] : []));
     t.hidden = true;
     void t.offsetWidth; // starta om animationen
     t.hidden = false;

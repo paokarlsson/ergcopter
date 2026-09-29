@@ -33,6 +33,7 @@ public/                  allt som publiceras, statiska filer utan byggsteg
     screen.js            helskärm och "håll skärmen vaken"
     sources/             datakällor: usb, ble (Bluetooth), mock (?demo), scripted (tester)
   dashboard/             dashboard.js, forcecurve.js, dashboard.css
+  fonts/                 Barlow Condensed (woff2) med licens (OFL.txt)
   game/
     main.js              kopplar ihop allt: källa → spel → rendering, knappar, tangenter, loop
     game.css
@@ -50,6 +51,10 @@ public/                  allt som publiceras, statiska filer utan byggsteg
     view/                allt som ritar, visar eller låter
       render.js          canvasen: himmel, berg, helikopter, hjälplinjer
       heli-draw.js, mountains.js    ritfunktioner
+      scenery.js         fjällkedjor, sol, molntäcke och norrsken efter höjd
+      effects.js         fartstreck, rotordamm och konfetti
+      attract.js         startskärmens demotur
+      color.js           färgblandning för canvasen
       ui.js              DOM: skärmar, HUD, formulär, inställningspanel, topplista
       rotor.js           rotorns animation
       audio.js, helicopter-sound.js rotorljud (Web Audio)

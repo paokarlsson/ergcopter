@@ -1,5 +1,8 @@
-// Fjälltoppar i scenen: silhuett med snötäcke och en skylt med namn och höjd
-// på toppen. Allt i skärmkoordinater; formen är deterministisk per topp.
+// Fjälltoppar i scenen: silhuett med ljus och skugga, raviner, snötäcke, ett
+// röse och en skylt med namn och höjd på toppen. Allt i skärmkoordinater;
+// formen är deterministisk per topp.
+
+import { mix, alpha } from './color.js';
 
 const RIDGE_STEPS = 16;
 const MAX_SLOPE = 0.95; // största kMin + kSpan nedan
@@ -43,9 +46,29 @@ export function drawMountain(ctx, m, sx, sy, bottom, c) {
   for (const [x, y] of right) ctx.lineTo(x, y);
   for (let i = left.length - 1; i >= 0; i--) ctx.lineTo(left[i][0], left[i][1]);
   ctx.closePath();
-  ctx.fillStyle = c.rock;
+  // Ljusare mot toppen och disigare ned mot dalen
+  const g = ctx.createLinearGradient(0, sy, 0, bottom);
+  g.addColorStop(0, mix(c.rock, '#ffffff', 0.12));
+  g.addColorStop(1, mix(c.rock, c.valleyHaze, 0.45));
+  ctx.fillStyle = g;
   ctx.fill();
   ctx.clip();
+
+  // Raviner: mörka streck som löper nedför sluttningarna från krönet
+  ctx.strokeStyle = alpha('#0b1220', 0.18);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 7; i++) {
+    const side = i % 2 ? 1 : -1;
+    const start = 0.08 + 0.5 * rand(seed + i * 9.1);
+    const k = (kMin + kSpan * rand(seed + i * 2.3)) * (0.35 + 0.5 * rand(seed + i * 4.4));
+    const x0 = sx + side * start * depth * k * 1.6;
+    const y0 = sy + start * depth;
+    ctx.lineWidth = 2 + 3 * rand(seed + i);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x0 + side * 25, y0 + depth * 0.2, x0 + side * depth * 0.18, y0 + depth * 0.45);
+    ctx.stroke();
+  }
 
   // Snötäcke: ett band med taggig underkant, klippt till silhuetten
   const snow = Math.max(35, Math.min(170, (m.h - 500) / 14));
@@ -72,6 +95,14 @@ export function drawMountain(ctx, m, sx, sy, bottom, c) {
   ctx.fillStyle = c.mountainShade;
   ctx.fill();
   ctx.restore();
+
+  // Röse på toppen, som skylten står i
+  ctx.fillStyle = mix(c.rock, '#1b2230', 0.35);
+  for (const [dx, dy, r] of [[-7, -3, 6], [6, -3, 6], [0, -10, 5.5], [0, -17, 4]]) {
+    ctx.beginPath();
+    ctx.ellipse(sx + dx, sy + dy, r * 1.2, r, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /** Skyltens mått och text. Används både för att rita och för att undvika krockar. */

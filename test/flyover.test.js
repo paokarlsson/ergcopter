@@ -8,7 +8,7 @@ const ctx = new Proxy(
   {},
   {
     get: (_, k) =>
-      k === 'measureText' ? () => ({ width: 100 }) : k === 'createLinearGradient' ? () => ({ addColorStop: noop }) : noop,
+      k === 'measureText' ? () => ({ width: 100 }) : k.startsWith?.('create') ? () => ({ addColorStop: noop }) : noop,
     set: () => true,
   }
 );
@@ -56,4 +56,23 @@ test('svävar man skickas inga nya berg in över helikoptern', () => {
   const diffs = fly((t) => (t < 12 ? 34 : 0), 60);
   const late = fly((t) => (t < 12 ? 34 : 0), 12).length;
   assert.equal(diffs.length - late <= 6, true); // bara de som redan var på väg in
+});
+
+test('övningar flygs utan framåtfart: landskapet och verkstan står still, inga berg', () => {
+  const r = new GameRenderer({ clientWidth: W, clientHeight: H, width: 0, height: 0, getContext: () => ctx });
+  const rotor = { omega: 12, blur: 0.5, angle: 0, tailAngle: 0 };
+  for (let h = 0; h < 300; h += 1) {
+    r.advance(1 / 60, rotor, h, false);
+    r.draw({ h, vy: 60, rotor, hMax: h, todayBest: null, milestones: DEFAULT_MILESTONES, avoid: [], flying: true });
+  }
+  assert.equal(r.distance, 0);
+  assert.equal(r.mountains.length, 0);
+});
+
+test('nytt pass börjar vid startplatsen', () => {
+  const r = new GameRenderer({ clientWidth: W, clientHeight: H, width: 0, height: 0, getContext: () => ctx });
+  r.advance(1, { omega: 12 }, 100);
+  assert.ok(r.distance > 0);
+  r.clearMountains();
+  assert.equal(r.distance, 0);
 });

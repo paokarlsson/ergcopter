@@ -1,4 +1,23 @@
+/* Barlow Condensed (SIL OFL, se fonts/OFL.txt): smalt och fett, för siffror och rubriker.
+   Ligger lokalt så att spelet fungerar utan nät. */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-weight: 800;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-800.woff2') format('woff2');
+}
+
 :root {
+  --font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --brand: #eb6834; /* räddningsorange, samma som helikoptern */
+  --hud-glass: rgb(10 18 34 / 0.55);
+  --hud-edge: rgb(255 255 255 / 0.14);
   /* Gränssnitt */
   --bg: #0f1115;
   --panel: rgb(255 255 255 / 0.92);
@@ -54,6 +73,17 @@
   --workshop-wall: #b7503a;
   --workshop-roof: #3b3f47;
   --workshop-door: #e3dfd6;
+  /* Landskapet efter höjd (scenery.js) och effekter (effects.js) */
+  --ridge-far: #8a98b8;
+  --ridge-mid: #6d8a5e;
+  --ridge-near: #2c5638;
+  --sun: #fff8e1;
+  --sun-glow: #ffe2a0;
+  --cloud-shade: #bfcadb;
+  --aurora-1: #3dffa8;
+  --aurora-2: #b36bff;
+  --streak: #ffffff;
+  --dust: #d8cbae;
   color-scheme: light;
 }
 
@@ -208,10 +238,19 @@ select {
 }
 .card h1 {
   margin: 0 0 4px;
-  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
 }
 .card h2 {
   margin: 0 0 16px;
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 .lead {
   margin: 0 0 20px;
@@ -308,15 +347,18 @@ select {
   font-weight: 600;
 }
 .countdown {
-  font-size: clamp(8rem, 30vw, 20rem);
+  font-family: var(--font-display);
+  font-size: clamp(10rem, 36vw, 26rem);
   font-weight: 800;
   color: #fff;
   text-shadow: 0 6px 30px rgb(0 0 0 / 0.4);
 }
 .result {
   margin: 8px 0;
-  font-size: clamp(3rem, 10vw, 6rem);
+  font-family: var(--font-display);
+  font-size: clamp(4rem, 13vw, 8rem);
   font-weight: 800;
+  line-height: 1;
 }
 .rank {
   margin: 0;
@@ -493,88 +535,177 @@ select {
   pointer-events: none;
   color: #fff;
   text-shadow: 0 2px 10px rgb(0 0 0 / 0.45);
+  font-family: var(--font-display);
+}
+.hud-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.8;
 }
 .hud-alt {
   position: absolute;
   left: 110px;
-  top: 24px;
+  top: 18px;
 }
+/* Höjdmätaren: rullande siffror (ui.js #setAltitude) */
 .alt-big {
-  display: block;
-  font-size: clamp(3.5rem, 9vw, 7rem);
+  display: flex;
+  align-items: baseline;
+  font-size: clamp(4.5rem, 12vw, 9.5rem);
   font-weight: 800;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.odo-digit {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+}
+.odo-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: transform 0.15s ease-out;
+}
+.odo-strip > span {
+  height: 1em;
+}
+/* Entalssiffran, och alla siffror i hög fart, byts för fort för att hinna rulla */
+.odo-digit:nth-last-child(2) .odo-strip,
+.alt-big.fast .odo-strip {
+  transition: none;
+}
+.odo-sep {
+  white-space: pre;
+}
+.odo-unit {
+  margin-left: 0.12em;
+  font-size: 0.45em;
+  font-weight: 600;
+  opacity: 0.85;
 }
 .alt-max {
-  margin-top: 6px;
-  font-size: clamp(1.1rem, 2.4vw, 1.8rem);
+  margin-top: 2px;
+  font-size: clamp(1.2rem, 2.4vw, 1.9rem);
+  font-weight: 600;
   opacity: 0.9;
 }
 .hud-side {
   position: absolute;
   right: 240px;
   top: 24px;
-  width: min(340px, 36vw);
+  width: min(360px, 38vw);
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
-.lift {
-  padding: 14px 16px;
-  background: rgb(0 0 0 / 0.35);
-  border-radius: 14px;
+.lift,
+.hud-row {
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-edge);
+  border-radius: 16px;
+  backdrop-filter: blur(4px);
   text-shadow: none;
 }
-.lift-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-weight: 600;
+.lift {
+  display: grid;
+  grid-template-columns: 52% 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 10px;
 }
-.lift-label output {
-  font-size: 2rem;
+.lift-gauge svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.gauge-track,
+.gauge-low,
+.gauge-fill {
+  fill: none;
+  stroke-width: 16;
+}
+.gauge-track {
+  stroke: rgb(255 255 255 / 0.16);
+}
+/* Under 100 % sjunker man: den delen av skalan är svagt röd */
+.gauge-low {
+  stroke: rgb(227 73 72 / 0.35);
+  stroke-dasharray: 100 300;
+}
+.gauge-fill {
+  stroke: #e34948;
+  stroke-dasharray: 0 300;
+  transition: stroke-dasharray 0.25s ease-out;
+}
+.lift.good .gauge-fill {
+  stroke: #3fb950;
+}
+.lift.strong .gauge-fill {
+  stroke: #7ee787;
+  filter: drop-shadow(0 0 6px rgb(126 231 135 / 0.8));
+}
+.gauge-tick {
+  stroke: rgb(255 255 255 / 0.6);
+  stroke-width: 3;
+}
+.gauge-tick.hold {
+  stroke: #fff;
+  stroke-width: 5;
+}
+.gauge-num {
+  fill: rgb(255 255 255 / 0.75);
+  font: 600 15px var(--font-display);
+  text-anchor: middle;
+}
+.gauge-needle {
+  fill: #fff;
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  transform: rotate(-90deg);
+  transition: transform 0.25s ease-out;
+  filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.5));
+}
+.lift-pct {
+  display: block;
+  font-size: clamp(2.6rem, 4.5vw, 3.6rem);
   font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
-.lift-track {
-  position: relative;
-  height: 18px;
-  margin: 8px 0 6px;
-  background: rgb(255 255 255 / 0.25);
-  border-radius: 9px;
-  overflow: hidden;
+.lift.good .lift-pct {
+  color: #7ee787;
 }
-.lift-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0;
-  background: #e34948;
-  border-radius: 9px;
-}
-.lift.good .lift-fill {
-  background: #3fb950;
-}
-.lift-mark {
-  position: absolute;
-  left: 50%;
-  top: -4px;
-  bottom: -4px;
-  width: 3px;
-  background: #fff;
+.lift:not(.good) .lift-pct {
+  color: #ff8a80;
 }
 .lift-hint {
-  font-size: 0.85rem;
-  opacity: 0.85;
+  margin-top: 4px;
+  font-size: 0.95rem;
+  line-height: 1.15;
+  opacity: 0.8;
 }
-.vario,
-.timer {
-  font-size: 1.8rem;
-  font-weight: 700;
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+}
+.vario output,
+.timer output {
+  display: block;
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 .timer {
-  font-size: 1.4rem;
-  opacity: 0.9;
+  text-align: right;
 }
 .raw {
+  font-family: system-ui, sans-serif;
   font-size: 1rem;
   opacity: 0.9;
 }
@@ -593,7 +724,7 @@ select {
 .drill {
   position: absolute;
   left: 110px;
-  top: calc(40px + clamp(3.5rem, 9vw, 7rem) + clamp(1.1rem, 2.4vw, 1.8rem) * 1.4);
+  top: calc(44px + 1.4rem + clamp(4.5rem, 12vw, 9.5rem) + clamp(1.2rem, 2.4vw, 1.9rem) * 1.4);
   width: min(480px, calc(100vw - 660px));
   min-width: 320px;
   padding: 14px 18px;
@@ -726,38 +857,187 @@ select {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 12%;
+  bottom: 10%;
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
-  padding: 18px 30px;
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgb(0 0 0 / 0.3);
-  font-size: clamp(1.4rem, 3.5vw, 2.4rem);
-  font-weight: 700;
-  text-align: center;
+  padding: 14px 34px 16px 28px;
+  background: linear-gradient(100deg, rgb(12 20 38 / 0.9), rgb(28 44 78 / 0.82));
+  color: #ffffff;
+  border-left: 8px solid var(--heli-body);
+  border-radius: 6px;
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.35);
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  font-weight: 800;
+  line-height: 1.05;
+  text-align: left;
   z-index: 10;
-  animation: toast 2.4s ease forwards;
+  animation: toast 2.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+.toast-kicker {
+  font-size: 0.4em;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--line-record);
 }
 .toast-sub {
   margin-top: 2px;
-  font-size: 0.55em;
+  font-size: 0.5em;
   font-weight: 600;
-  color: var(--muted);
+  color: rgb(255 255 255 / 0.75);
 }
 @keyframes toast {
   0% {
     opacity: 0;
-    transform: translate(-50%, 20px);
+    transform: translate(-80%, 0) skewX(-8deg);
   }
-  8%,
+  12%,
   85% {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, 0) skewX(0);
   }
   100% {
     opacity: 0;
+    transform: translate(-20%, 0);
+  }
+}
+
+/* --- Startskärmen ------------------------------------------------------------ */
+
+/* Ingen mörk slöja: scenen och demoturen ska synas. Titeln och listan får egna plattor. */
+.screen.attract {
+  display: block;
+  padding: 0;
+  background: linear-gradient(100deg, rgb(8 16 32 / 0.45), rgb(8 16 32 / 0) 55%);
+}
+.title {
+  position: absolute;
+  left: clamp(16px, 6vw, 110px);
+  top: clamp(24px, 8vh, 90px);
+  max-width: calc(100vw - 720px); /* fritt från topplistan till höger */
+  color: #fff;
+  font-family: var(--font-display);
+  text-shadow: 0 3px 18px rgb(0 0 0 / 0.45);
+}
+.title-kicker {
+  margin: 0;
+  color: var(--brand);
+  font-size: clamp(1rem, 1.6vw, 1.4rem);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  text-shadow: none;
+}
+.title h1 {
+  margin: 0;
+  font-size: clamp(3.6rem, min(6.6vw, 14vh), 8.5rem);
+  font-weight: 800;
+  line-height: 0.9;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+.title-lead {
+  margin: 12px 0 0;
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.92;
+}
+.board-panel {
+  position: absolute;
+  right: 250px; /* sidoskalan med topparnas namn ligger längst till höger */
+  top: 80px;
+  width: min(400px, 34vw);
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding: 18px 20px 8px;
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-edge);
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+  color: #fff;
+  --border: rgb(255 255 255 / 0.14);
+  --muted: rgb(255 255 255 / 0.7);
+}
+.board-panel h2 {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.board-panel .tab {
+  background: rgb(255 255 255 / 0.1);
+  border-color: transparent;
+  color: #fff;
+}
+.board-panel .tab[aria-selected='true'] {
+  background: var(--brand);
+}
+.board-panel .board-list li {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 600;
+}
+.board-panel .board-list li:first-child .h {
+  color: #ffd166;
+}
+.board-panel .today {
+  margin-bottom: 10px;
+}
+button.start-cta {
+  position: absolute;
+  left: 50%;
+  bottom: 7vh;
+  transform: translateX(-50%);
+  padding: 18px 40px;
+  background: var(--brand);
+  border: 0;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2.6vw, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 30px rgb(235 104 52 / 0.45);
+  animation: cta-pulse 2.2s ease-in-out infinite;
+}
+@keyframes cta-pulse {
+  50% {
+    box-shadow: 0 10px 44px rgb(235 104 52 / 0.8);
+    transform: translateX(-50%) scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.start-cta {
+    animation: none;
+  }
+}
+/* Smal skärm (mobil): allt i en kolumn */
+@media (max-width: 900px) {
+  .screen.attract {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 70px 16px 16px;
+    overflow: auto;
+  }
+  .title,
+  .board-panel,
+  button.start-cta {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    transform: none;
+  }
+  button.start-cta {
+    font-size: 1.3rem;
+  }
+  button.start-cta {
+    animation: none;
   }
 }
 
