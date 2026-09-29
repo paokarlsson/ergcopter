@@ -169,7 +169,7 @@ Tillstånd: `IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINI
 
 I MENU väljer deltagaren fri flygning (det som beskrivs här) eller en övning (se `plan.md` §3). Efter en övning går FINISHED tillbaka till MENU.
 
-- **IDLE**: vänteskärm med topplista och "Tryck för att starta".
+- **IDLE**: vänteskärm med titeln i himlen, topplista och "Tryck för att starta". Bakom flyger helikoptern en demotur (`attract.js`): den lyfter, stiger förbi topparna och genom molntäcket till 2 300 m, sjunker och landar, om och om igen. Demoturen är bara bild, låter inte och påverkar inte topplistan.
 - **SETUP**: operatören matar in namn eller alias (valfritt, tomt blir "Anonym"), vikt och klass (avsnitt 12.2). Ergen måste vara ansluten.
 - **READY**: ergen är ansluten. Visa "Dra för att lyfta!".
 - **COUNTDOWN**: 3-2-1. Drag under nedräkningen ignoreras. Fysiken nollställs.
@@ -185,8 +185,9 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 ## 8. UI (storskärm)
 
 - Vertikal höjdskala med helikoptern. Kameran följer helikoptern och visar marken när höjden är låg.
-- Stor siffra för aktuell höjd i meter och en mindre för maxhöjden i passet.
-- **Lyftmätare** (det centrala elementet): `P_smooth / P_req(h)` i procent. 100 % betyder att höjden hålls. Grön över 100 %, röd under. På marken visas `P_smooth / P0`.
+- Stor siffra för aktuell höjd i meter och en mindre för maxhöjden i passet. Höjden visas som en mekanisk räknare där siffrorna rullar; över 15 m/s byts de direkt, eftersom de ändå inte hinner rulla klart.
+- **Lyftmätare** (det centrala elementet): `P_smooth / P_req(h)` i procent. 100 % betyder att höjden hålls. Grön över 100 %, röd under. På marken visas `P_smooth / P0`. Mätaren är en halvcirkel med visare från 0 till 300 % (samma tak som ljudet) och ett tydligt streck vid 100 %; över 200 % lyser bågen.
+- Siffror och rubriker använder typsnittet Barlow Condensed (SIL OFL), som ligger i `public/fonts/` så att spelet fungerar utan nät.
 - Variometer: stig- eller sjunkhastighet i m/s med pil.
 - Rotorns animationshastighet proportionell mot `P_smooth / P0`, så att deltagaren ser respons redan innan helikoptern lättar.
 - Horisontella linjer för dagens rekord, maxhöjden i passet och milstolpar.

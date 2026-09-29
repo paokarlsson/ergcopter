@@ -13,20 +13,40 @@
     <!-- Instrument under flygning -->
     <div id="hud" hidden>
       <div class="hud-alt">
+        <div class="hud-label">Höjd</div>
         <output id="alt" class="alt-big">0 m</output>
         <div class="alt-max">Max <output id="alt-max">0 m</output></div>
       </div>
       <div class="hud-side">
+        <!-- Lyftmätaren: visare 0–300 %, 100 % håller höjden (spec §8) -->
         <div class="lift">
-          <div class="lift-label"><span>Lyft</span><output id="lift-pct">0 %</output></div>
-          <div class="lift-track" role="meter" aria-label="Lyft" aria-valuemin="0" aria-valuemax="200" id="lift-meter">
-            <div class="lift-fill" id="lift-fill"></div>
-            <div class="lift-mark"></div>
+          <div class="lift-gauge" role="meter" aria-label="Lyft" aria-valuemin="0" aria-valuemax="300" id="lift-meter">
+            <svg viewBox="0 0 200 112" aria-hidden="true">
+              <path class="gauge-track" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
+              <path class="gauge-low" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
+              <path class="gauge-fill" id="lift-fill" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
+              <line class="gauge-tick" x1="30" y1="100" x2="10" y2="100" />
+              <line class="gauge-tick hold" x1="65" y1="39.4" x2="52.5" y2="17.7" />
+              <line class="gauge-tick" x1="135" y1="39.4" x2="145" y2="22.1" />
+              <line class="gauge-tick" x1="170" y1="100" x2="190" y2="100" />
+              <text class="gauge-num" x="74" y="56">100</text>
+              <text class="gauge-num" x="126" y="56">200</text>
+              <g class="gauge-needle" id="lift-needle">
+                <path d="M 96 100 L 100 30 L 104 100 Z" />
+                <circle cx="100" cy="100" r="8" />
+              </g>
+            </svg>
           </div>
-          <div class="lift-hint" id="lift-hint">100 % = håller höjden</div>
+          <div class="lift-read">
+            <div class="hud-label">Lyft</div>
+            <output id="lift-pct" class="lift-pct">0 %</output>
+            <div class="lift-hint" id="lift-hint">100 % = håller höjden</div>
+          </div>
         </div>
-        <div class="vario"><output id="vario">· 0,0 m/s</output></div>
-        <div class="timer"><output id="timer">0:00</output></div>
+        <div class="hud-row">
+          <div class="vario"><div class="hud-label">Stigning</div><output id="vario">· 0,0 m/s</output></div>
+          <div class="timer"><div class="hud-label">Tid</div><output id="timer">0:00</output></div>
+        </div>
         <div class="raw" id="raw" hidden></div>
       </div>
       <div class="replay-badge" id="replay-badge" hidden></div>
@@ -45,20 +65,22 @@
     <div id="screen-controls" class="screen-controls"></div>
 
     <!-- IDLE -->
-    <section id="screen-idle" class="screen" hidden>
-      <div class="card wide">
+    <!-- Startskärmen: titeln i himlen, helikoptern flyger en demotur bakom (view/attract.js) -->
+    <section id="screen-idle" class="screen attract" hidden>
+      <header class="title">
+        <p class="title-kicker">SkiErg · Fjällräddningen</p>
         <h1>Fjällräddaren</h1>
-        <p class="lead">Börja som aspirant i fjällräddningen och öva med skolhelikoptern – eller flyg så högt du kan på SkiErgen.</p>
-        <div class="board">
-          <div class="board-head">
-            <h2>Topplista · fri flygning</h2>
-            <div class="tabs" role="tablist" id="board-tabs" aria-label="Klass"></div>
-          </div>
-          <ol id="board-idle" class="board-list" role="tabpanel"></ol>
-          <p class="today" id="today-idle"></p>
+        <p class="title-lead">Börja som aspirant och öva med skolhelikoptern – eller flyg så högt du kan.</p>
+      </header>
+      <div class="board board-panel">
+        <div class="board-head">
+          <h2>Topplista · fri flygning</h2>
+          <div class="tabs" role="tablist" id="board-tabs" aria-label="Klass"></div>
         </div>
-        <button class="primary big" id="start"><span class="keys">Tryck Enter för att starta</span><span class="touch">Tryck här för att starta</span></button>
+        <ol id="board-idle" class="board-list" role="tabpanel"></ol>
+        <p class="today" id="today-idle"></p>
       </div>
+      <button class="primary big start-cta" id="start"><span class="keys">Tryck Enter för att starta</span><span class="touch">Tryck här för att starta</span></button>
     </section>
 
     <!-- SETUP -->

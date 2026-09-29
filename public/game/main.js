@@ -7,6 +7,7 @@ import { Leaderboard } from './core/leaderboard.js';
 import { Progress, nextExercise } from './core/progress.js';
 import { EXERCISES, stepGuides } from './core/exercise.js';
 import { Rotor } from './view/rotor.js';
+import { attractFlight } from './view/attract.js';
 import { GameRenderer, fmtM } from './view/render.js';
 import { GameUI, download } from './view/ui.js';
 import { Replay, landingTrajectory } from './core/replay.js';
@@ -26,6 +27,9 @@ let anonymousProgress = new Progress(null); // anonyma: bara under passet, delas
 const progress = () => (game.player?.anonymous ? anonymousProgress : savedProgress);
 const game = new Game(cfg);
 const rotor = new Rotor();
+const attractRotor = new Rotor(); // startskärmens demotur har en egen rotor; den riktiga följer ergen
+const ATTRACT_LIFT = 1.4; // demoturens rotorvarv, som P_smooth/P0
+let attractStart = now();
 const renderer = new GameRenderer(document.getElementById('scene'));
 const ui = new GameUI();
 const sound = new RotorSound();
@@ -167,8 +171,10 @@ else (async () => {
 game.on('state', ({ to }) => {
   ui.showState(to);
   if (to === 'IDLE' || to === 'READY') ui.clearToasts();
-  if (to === 'IDLE' || to === 'COUNTDOWN') renderer.clearMountains();
+  // Demoturens berg och konfetti ska inte ligga kvar när någon tar över.
+  if (to === 'IDLE' || to === 'SETUP' || to === 'COUNTDOWN') renderer.clearMountains();
   if (to === 'IDLE') {
+    attractStart = now();
     replay = null;
     showBoard();
     startBoardRotation();
@@ -335,16 +341,23 @@ function frame() {
   const guides = stepGuides(run?.step);
   const power = game.state === 'FLYING' ? game.power : preview.value(now());
   rotor.step(dt, power / P0);
-  renderer.advance(dt, rotor, h);
+  // På startskärmen flyger helikoptern en demotur bakom titeln och topplistan.
+  const attract = game.state === 'IDLE';
+  if (attract) {
+    ({ h, vy } = attractFlight(t - attractStart));
+    attractRotor.step(dt, ATTRACT_LIFT);
+  }
+  const shownRotor = attract ? attractRotor : rotor;
+  renderer.advance(dt, shownRotor, h);
   renderer.draw({
     h,
     vy,
-    rotor,
-    hMax: game.exercise ? 0 : f?.hMax ?? 0,
-    todayBest,
+    rotor: shownRotor,
+    hMax: game.exercise || attract ? 0 : f?.hMax ?? 0,
+    todayBest: attract ? null : todayBest,
     milestones: cfg.milestones,
-    avoid: ui.hudRects(),
-    flying: game.state === 'FLYING',
+    avoid: attract ? ui.idleRects() : ui.hudRects(),
+    flying: game.state === 'FLYING' || attract,
     guides: guides.lines,
     landingPad: guides.landingPad,
     workshop: Boolean(game.exercise),
