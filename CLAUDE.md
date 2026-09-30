@@ -14,12 +14,14 @@ npm test                          # alla tester (node --test), inga beroenden
 node --test test/physics.test.js  # en testfil
 npm run simulate                  # strategisimulatorn: maxhöjder med aktuella parametrar
 npm run exercises                 # övningar, lektioner och uppflygningen headless med autopilot
+npm run flightlog -- logg.txt     # läser en flyglogg och spelar upp den (--set namn=värde provar andra parametrar)
 node server.js                    # http://localhost:3000 (PORT=… för annan port)
 docker compose up                 # samma server i Docker, public/ monteras live
 ```
 
 - `?demo` flyger en demospelare utan erg. `?demo=<id>` låter autopiloten flyga en övning (t.ex. `hover`, `freefall`, `rings`; se `core/exercise.js`), en lektion (`lesson-1` … `lesson-4`) eller uppflygningen (`exam`). `dashboard.html?demo` visar dashboarden med påhittad data.
-- Tangenter i spelet: Enter start, Esc avbryt, S inställningar, D debug, F helskärm. I menyn flyttar piltangenterna mellan valen.
+- Tangenter i spelet: Enter start, Esc avbryt, S inställningar, L flygloggar, D debug, F helskärm. I menyn flyttar piltangenterna mellan valen.
+- Varje flygning spelas in som en flyglogg (spec §9.1). Klistrar någon in en logg: spara den i en fil och kör `npm run flightlog -- fil` för sammanfattning, de sista dragen före varje sättning och uppspelning.
 - CI (`.github/workflows/pages.yml`) kör `node --test` och `node tools/simulate.js` och publicerar sedan `public/` på GitHub Pages vid push till `master`.
 
 ## Struktur
@@ -51,7 +53,8 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       progress.js        spelarprofilen: grad, stjärnor, lektioner, loggbok (localStorage)
       calibration.js     förväntat utfall och balanskontroll (spec §12)
       milestones.js      fjälltopparna, med källor
-      replay.js, sim.js  snabbspolad landning och headless-körning
+      flightlog.js       flygloggen: inspelning, text, tolkning och de sparade loggarna (spec §9.1)
+      replay.js, sim.js  snabbspolad landning, headless-körning och uppspelning av flygloggar
     view/                allt som ritar, visar eller låter
       render.js          canvasen: himmel, berg, helikopter, hjälplinjer
       heli-draw.js, mountains.js    ritfunktioner
@@ -63,7 +66,7 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       rotor.js           rotorns animation
       audio.js, helicopter-sound.js rotorljud (Web Audio)
 test/                    node:test, en fil per område
-tools/                   simulate.js, exercises.js
+tools/                   simulate.js, exercises.js, flightlog.js
 server.js                minimal statisk server utan beroenden
 ```
 

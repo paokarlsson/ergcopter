@@ -180,6 +180,7 @@ Effektkurvan är en uppskattning. Parametrarna ska trimmas efter tester med rikt
 - Exempel på `P0` med grundvärdet `P_ref` = 100 W: 60 kg ger 75 W (linjär) eller 82,5 W (rättvis). 100 kg ger 125 W eller 116 W. Med standardvärdena, se tabellen i avsnitt 12.1.
 - Vikten visas aldrig på storskärmen och sparas inte i topplistan.
 - `P0` och råa watt visas inte heller på storskärmen som standard. I linjärt läge går vikten att räkna ut direkt från lyfteffekten (vikt = P0 / 1,25). Använd relativa mått i stället (se avsnitt 8). Råa watt kan slås på i inställningarna.
+- Flygloggen (avsnitt 9.1) har effekten i procent av `P0` och ingen vikt. `P0` i watt tas med bara när råa watt är påslaget.
 
 ## 7. Spelflöde
 
@@ -222,6 +223,20 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 - Dold inställningspanel för operatören (tangent S) med redigering och återställning till standard. Sparas i localStorage.
 - Topplistan kan exporteras som JSON eller CSV och rensas (med bekräftelse).
 
+### 9.1 Flygloggen
+
+Varje flygning spelas in (`flightlog.js`), så att man i efterhand kan se vilka moment som är svåra och varför. Loggen är text som går att klistra in i en chatt för analys.
+
+- **Huvud:** övning, helikopter, parametrar, resultat och de slumpvärden övningen drog (när motorn stannar).
+- **Sammanfattning** per moment och steg: tid och utfall, antal drag, snitteffekt och hur mycket effekten ändras från drag till drag, höjder, vändningar (farten byter riktning) och sättningar. I ett landningssteg räknas dragen under 25 m: hur många som leder till en mjuk sjunk, hur många som får helikoptern att stiga och hur många som sjunker för fort. Kraftkurvan sammanfattas med toppkraft och hur lång tid det tar från att kraften börjar tills effekten når motorn.
+- **Händelser:** steg, instruktörens besked, lyft, sättningar med fart, motorstopp, övertagande, paus och slut.
+- **Drag:** flygtiden då motorn fick draget, effekten, höjd och fart, lyftmätaren, stigfarten draget leder till, om draget drev motorn (ok, dubblett, paus eller motorstopp) och kraftkurvan i N med tiden från första sampel (USB och demo).
+- **Spår:** höjd, fart, lyftkraft mot tyngd och motoreffekt var 0,5 s, och var 0,1 s under 25 m och när farten ändras fort (fall och hämtningar).
+- **Integritet (avsnitt 6):** effekten står i procent av lyfteffekten `P0` utan last, aldrig i watt, och vikten finns inte med.
+- **Uppspelning:** fysiken räknas relativt `P0`, så dragen och slumpvärdena räcker för att flyga samma pass igen genom spelet (`replayLog` i `sim.js`). `npm run flightlog -- logg.txt` skriver ut sammanfattningen, de sista dragen före varje sättning och hur väl uppspelningen följer loggen. Med `--set rotorTauS=1` provas samma drag med andra parametrar; spelaren hade förstås flugit annorlunda, så det är en fingervisning.
+- **I gränssnittet:** Inställningar → Flygloggar (tangent L) listar de 10 senaste flygningarna med Kopiera och Ladda ned. De sparas i localStorage (`skierg.flightlog.v1`); blir lagringen full släpps de äldsta. Går urklippet inte att använda visas loggen markerad, så att man kan kopiera den själv.
+- En övning på ett par minuter ger 20–60 kB, mest spåret nära marken och kraftkurvorna.
+
 ## 10. Tester
 
 **Fysik**
@@ -242,6 +257,14 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 - Varje drag gäller för sig, utan medelvärde, och hålls tills nästa drag.
 - Motorn stannar när nästa drag dröjer mer än 1,25 × förra perioden.
 - Dubbletter av samma `strokeCount` ignoreras.
+
+**Flygloggen** (`test/flightlog.test.js`)
+- Dragen, spåret, stegen och sättningarna spelas in. Spåret är tätt nära marken och glest högre upp.
+- Effekten står i % av `P0`; `P0` i watt bara med råa watt påslaget.
+- Drag som inte driver motorn märks: dubblett, paus och motorstopp. Kraftkurvan hör till nästa drag.
+- Texten går att läsa tillbaka, även med annan text runt omkring.
+- Uppspelningen flyger samma pass: samma utfall och sättningar, och höjden skiljer under 0,1 m.
+- De 10 senaste loggarna sparas; blir lagringen full släpps de äldsta.
 
 **Strategisimulator** (utvecklarverktyg)
 Ett headless-skript (`npm run simulate`) som kör `ScriptedSource`-profiler genom samma motor och fysik och skriver ut `h_max`. Används för trimning. Profilerna står i avsnitt 12.3.

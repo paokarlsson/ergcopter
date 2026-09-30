@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test",
     "simulate": "node tools/simulate.js",
-    "exercises": "node tools/exercises.js"
+    "exercises": "node tools/exercises.js",
+    "flightlog": "node tools/flightlog.js"
   }
 }

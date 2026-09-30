@@ -14,6 +14,7 @@ import { attractFlight } from './view/attract.js';
 import { GameRenderer, fmtM, RING_SPEED_PX } from './view/render.js';
 import { GameUI, download } from './view/ui.js';
 import { Replay, landingTrajectory } from './core/replay.js';
+import { FlightLogStore } from './core/flightlog.js';
 import { RotorSound } from './view/audio.js';
 import { now } from '../shared/sources/source.js';
 import { MockSource } from '../shared/sources/mock.js';
@@ -25,6 +26,7 @@ const SOURCE_KEY = 'skierg.source';
 
 let cfg = loadConfig();
 const board = new Leaderboard();
+const flightLogs = new FlightLogStore(); // de senaste flygningarna, för analys (spec §9.1)
 const savedProgress = new Progress();
 let anonymousProgress = new Progress(null); // anonyma: bara under passet, delas inte med nästa
 const progress = () => (game.player?.anonymous ? anonymousProgress : savedProgress);
@@ -93,6 +95,7 @@ function attach(kind) {
   });
   source.on('force', (samples) => {
     if (!game.run?.engineOff) rotor.addForces(samples); // motorstopp: rotorn saktar in
+    game.forceSamples(samples);
   });
   source.on('status', onStatus);
   source.on('raw', (line) => {
@@ -299,6 +302,11 @@ function recordFlight(result) {
 }
 
 game.on('finish', (result) => {
+  flightLogs.add({
+    ts: Date.now(),
+    title: game.log.title,
+    text: game.log.toText({ date: new Date().toLocaleString('sv-SE'), source: source?.name }),
+  });
   replay = result.endH > 0 ? new Replay(landingTrajectory(game.flight), cfg.dt, cfg.replayMaxS) : null;
   const extra = recordFlight(result);
   if (result.exercise) {
@@ -339,6 +347,25 @@ document.getElementById('ready-cancel').addEventListener('click', (e) => {
 // Inställningar
 function openSettings() {
   ui.openSettings(cfg);
+  renderLogs();
+}
+
+// Flygloggarna: kopiera och klistra in för analys (spec §9.1).
+function renderLogs() {
+  ui.renderLogs(flightLogs.logs, {
+    async copy(entry, button) {
+      try {
+        await navigator.clipboard.writeText(entry.text);
+        ui.flashButton(button, 'Kopierad ✓');
+      } catch {
+        ui.showLogText(entry.text); // urklippet går inte att använda: markera och kopiera själv
+      }
+    },
+    download(entry) {
+      const stamp = new Date(entry.ts).toLocaleString('sv-SE').slice(0, 16).replace(' ', '-').replace(':', ''); // 2026-09-30-1842
+      download(`flyglogg-${stamp}.txt`, entry.text, 'text/plain');
+    },
+  });
 }
 function applyConfig(next) {
   cfg = sanitize(next);
@@ -362,6 +389,11 @@ document.getElementById('export-json').addEventListener('click', () =>
 document.getElementById('export-csv').addEventListener('click', () =>
   download(`topplista-${dateStamp()}.csv`, board.toCSV(), 'text/csv')
 );
+document.getElementById('logs-clear').addEventListener('click', () => {
+  if (!confirm('Rensa alla flygloggar? Det går inte att ångra.')) return;
+  flightLogs.clear();
+  renderLogs();
+});
 document.getElementById('board-clear').addEventListener('click', () => {
   if (!confirm('Rensa hela topplistan? Det går inte att ångra.')) return;
   board.clear();
@@ -382,6 +414,10 @@ addEventListener('keydown', (e) => {
 
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (key === 's') return openSettings();
+  if (key === 'l') {
+    openSettings();
+    return ui.scrollToLogs();
+  }
   if (key === 'f') return toggleFullscreen();
   if (key === 'd') {
     const on = ui.toggleDebug();

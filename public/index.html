@@ -229,7 +229,22 @@
           <button type="button" id="export-csv">Exportera CSV</button>
           <button type="button" id="board-clear" class="danger">Rensa topplistan</button>
         </div>
-        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · D debug · F helskärm · <a href="dashboard.html">Dashboard</a></p>
+        <!-- Flygloggar (spec §9.1): kopieras och klistras in för analys -->
+        <h3 id="logs-title">Flygloggar</h3>
+        <p class="muted small">
+          Varje flygning spelas in: alla drag med kraftkurvan, hur helikoptern svarar och vad instruktören säger.
+          Kopiera en logg och klistra in den i en chatt med Claude för analys. Effekten står i procent av lyfteffekten,
+          aldrig i watt eller kilo. De 10 senaste flygningarna sparas i webbläsaren.
+        </p>
+        <ol class="log-list" id="log-list"></ol>
+        <p class="muted small" id="log-text-hint" hidden>
+          Urklippet gick inte att använda. Loggen är markerad nedan: kopiera den själv (Ctrl+C, eller håll inne och välj Kopiera).
+        </p>
+        <textarea class="log-text" id="log-text" readonly hidden aria-label="Flygloggen"></textarea>
+        <div class="row">
+          <button type="button" id="logs-clear" class="danger">Rensa flygloggarna</button>
+        </div>
+        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · L flygloggar · D debug · F helskärm · <a href="dashboard.html">Dashboard</a></p>
       </form>
     </dialog>
 
