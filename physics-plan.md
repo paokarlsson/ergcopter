@@ -38,6 +38,22 @@ Här är `E0 = 1,5 · rotorTauS · P0` rotorns energi vid hovringsvarv och `Mg =
 
 **Rotorn** är ett energilager, precis som ergens svänghjul. Den tar emot motoreffekten, förlorar energi till luften (∝ varv³) och gör arbete på helikoptern när den stiger. När helikoptern sjunker går arbetet åt andra hållet: fallet driver rotorn. Det är autorotation.
 
+**Rotorbladen har massa.** Motoreffekten byter direkt när ett nytt drag kommer, men varvet gör det inte. Bladens rörelseenergi är `E = ½·I·ω²`, och varvet ändras bara så fort som nettoeffekten hinner fylla på eller tömma den. Nettoeffekten är motorn minus luftförlusten minus arbetet på helikoptern. Lyftet följer varvet, inte effekten. `rotorTauS` är bladens massa uttryckt som tid, och tröghetsmomentet `I` väljs så att `E` vid hovringsvarv vid marken blir `1,5 · rotorTauS · P0`.
+
+Så här följer varvet när motoreffekten byts, räknat för 80 kg (`P0` = 60 W) och med helikoptern stilla på höjden. Varje ruta visar tiden tills varvet har ändrats halvvägs / till 90 %:
+
+| `rotorTauS` | 300 m, 70 → 105 W | 300 m, 105 → 70 W | 4 200 m, 200 → 300 W | 4 200 m, 300 → 200 W |
+|---|---|---|---|---|
+| 0,5 s | 0,4 s / 1,2 s | 0,4 s / 1,3 s | 1,0 s / 3,3 s | 1,2 s / 3,8 s |
+| 1 s | 0,7 s / 2,3 s | 0,8 s / 2,7 s | 2,0 s / 6,7 s | 2,3 s / 7,7 s |
+| 2 s | 1,4 s / 4,7 s | 1,6 s / 5,4 s | 4,0 s / 13,4 s | 4,6 s / 15,3 s |
+
+Varvet ändras ±13–14 % i alla fallen, eftersom varvet växer som effekten upphöjt till 1/3.
+
+- **Tunn luft gör bladen tyngre.** Högre upp bromsar luften bladen mindre och rotorn snurrar fortare. Tidskonstanten växer därför med `(1 + h / H_air)`: på 4 200 m är den 3,3 gånger så lång som vid marken.
+- **Nedvarvning går lite långsammare än uppvarvning**, eftersom luftens broms avtar när varvet sjunker.
+- **Tyngre blad jämnar ut dragen men för tillbaka fördröjningen.** Det är samma avvägning som medelvärdet i dag, men den kommer nu ur fysiken och varvet börjar ändras direkt. Med tunga blad (2 s) går det också att ge rotorn dragets energi i stötar som den faktiskt kommer (§4), utan att helikoptern hoppar mer än ±3 m.
+
 **Allt räknas relativt spelarens `P0`.** Alla flyger alltså samma helikopter, skalad efter sin egen lyfteffekt, och rättvisan i spec §6 ändras inte.
 
 ### Det som följer av modellen
@@ -47,8 +63,7 @@ Kontrollerat i en prototyp:
 - Att hovra på höjden h kräver exakt `P_req(h) = P0 · (1 + h / H_air)`, som i dag. Luftens täthet är vald så, eftersom hovringseffekten är ∝ 1/√ρ enligt rörelsemängdsteorin.
 - Stadig stigning ger `v = G · (P − P_req(h)) / P0`, samma som dagens målfart. Jämviktshöjderna och τ = `H_air / G` ändras inte. Pass från 3 min och uppåt landar inom 1 % av dagens höjder.
 - Utan motor faller helikoptern med g tills autorotationen bromsar fallet vid −G (20 m/s). Det är samma sluthastighet som i dag, men nu kommer den ur fysiken. Övningen Motorstopp blir en riktig autorotation.
-- Lyftet svarar på draget direkt: rotorvarvet följer motorn med tidskonstanten `rotorTauS`.
-- Högre upp snurrar rotorn fortare (tunnare luft) och blir trögare att varva upp.
+- Lyftet börjar ändras när draget kommer, men bara så fort som bladens massa tillåter (tabellen ovan).
 - Korta spurter tappar höjd, eftersom rotorn måste varva upp först och lyftet bara växer som effekten upphöjt till 2/3. 3 s @ 500 W går från 355 till ungefär 275 m, och 30 s @ 350 W tappar 1,5 %.
 - Explicit Euler med `dt` = 0,05 s räcker. Det ger samma maxhöjder som 0,01 s.
 
@@ -57,7 +72,7 @@ Kontrollerat i en prototyp:
 | Namn | Standard | Betydelse |
 |---|---|---|
 | `g` | 15 m/s² | Tyngdacceleration. Styr hur fort farten följer effekten, ungefär `3G / (2g)`: 2 s vid 15, 3 s vid 9,81 |
-| `rotorTauS` | 0,5 s | Rotorns tröghet: hur fort varvet följer motorn |
+| `rotorTauS` | 0,5 s | Rotorbladens massa, uttryckt som tidskonstanten för varvet vid hovring vid marken. Växer med höjden |
 | `maxStrokeS` | 3 s | Längsta tid ett drag driver motorn |
 
 - Tas bort: `smoothingStrokes`, `strokeTimeoutS`, `fadeOutS` och `inertiaS`. `sanitize` rensar sparade värden av sig själv.
@@ -122,3 +137,5 @@ Förutsättningar: 30 drag/min och hovring på 300 m. "Ett drag" betyder ett end
 - Är PM:ens effekt för första draget efter en paus rimlig? Det kontrolleras med D-loggen.
 - Är 2,9 s från sista draget tills helikoptern sjunker för långt? Att någon har slutat går inte att veta förrän nästa drag uteblir. USB ser dragfasen och skulle kunna stoppa motorn tidigare när återtaget drar ut på tiden.
 - Är förlusten för korta spurter i "så högt som möjligt" acceptabel?
+- Hur tunga ska bladen vara? 0,5 s är lätta blad och ger kvick respons. 1–2 s känns tyngre och jämnare men är långsammare. Det avgörs på ergen.
+- Ska rotorn få bli trögare högt upp? Det är fysik, men på 4 000 m och uppåt blir den tre gånger så trög som vid marken.
