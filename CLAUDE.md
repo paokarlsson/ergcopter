@@ -40,8 +40,8 @@ public/                  allt som publiceras, statiska filer utan byggsteg
     game.css
     core/                ren logik utan DOM, testbar headless
       config.js          alla parametrar: DEFAULT_CONFIG, CONFIG_SCHEMA, sanitize
-      physics.js         fysikmodellen (spec §5)
-      signal.js          effekt per drag → P_smooth (spec §4)
+      physics.js         fysikmodellen: rotor, lyftkraft och tyngd (spec §5)
+      engine.js          motorn: senaste dragets effekt tills nästa drag (spec §4)
       game.js            spelflödet, tillstånd IDLE → … → FINISHED (spec §7)
       exercise.js        övningsmotorn och övningarna (plan.md §3)
       lessons.js         lektionerna, uppflygningen och vad som är öppet i dag (plan.md §3)

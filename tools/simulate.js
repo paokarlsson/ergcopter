@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Strategisimulator (spec §10, §12.3): kör effektprofiler genom samma
-// signalbehandling och fysik som spelet och skriver ut h_max. maxSessionS
-// ignoreras här.
+// motor och fysik som spelet och skriver ut h_max. maxSessionS ignoreras här.
 //
-//   node tools/simulate.js [--mode linear|fair] [--spm 40] [--P_ref 60] [--H_air 1800] [--G 20]
+//   node tools/simulate.js [--mode linear|fair] [--spm 40] [--P_ref 60] [--H_air 1800] [--G 20] [--g 15] [--rotorTauS 0.5]
 
 import { DEFAULT_CONFIG, liftPower, sanitize } from '../public/game/core/config.js';
 import { heightAfter, PERSONS, PERSON_SECONDS, BALANCE, BALANCE_MASS, tau } from '../public/game/core/calibration.js';
@@ -20,6 +19,8 @@ const cfg = sanitize({
   P_ref: num('P_ref', DEFAULT_CONFIG.P_ref),
   H_air: num('H_air', DEFAULT_CONFIG.H_air),
   G: num('G', DEFAULT_CONFIG.G),
+  g: num('g', DEFAULT_CONFIG.g),
+  rotorTauS: num('rotorTauS', DEFAULT_CONFIG.rotorTauS),
 });
 const spm = num('spm', 40);
 
@@ -57,6 +58,6 @@ row('Slutspurt: 4 min @ 250 + 30 s @ 380', BALANCE_MASS, [{ s: 240, w: 250 }, { 
 row('För hård start: 1 min @ 380 + 3 min @ 240', BALANCE_MASS, [{ s: 60, w: 380 }, { s: 180, w: 240 }], null);
 
 console.log(
-  `\nFysik = exakt effekt enligt profilen. Spel = drag var ${(60 / spm).toFixed(1)} s genom medelvärde ` +
-    `(${cfg.smoothingStrokes} drag), håll ${cfg.strokeTimeoutS} s och nedtoning ${cfg.fadeOutS} s.`
+  `\nFysik = exakt effekt enligt profilen. Spel = drag var ${(60 / spm).toFixed(1)} s, där motorn ger senaste ` +
+    `dragets effekt. Båda med rotorbladens massa ${cfg.rotorTauS} s och g ${cfg.g} m/s², till och med uppbromsningen.`
 );

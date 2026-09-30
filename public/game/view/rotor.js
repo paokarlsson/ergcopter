@@ -1,16 +1,18 @@
 // Rotorn – bara för bilden, påverkar inte fysiken.
 //
-// Med kraftdata (USB, Mock): varje kraftsampel ger vridmoment till en tung rotor
-// som håller varvet mellan dragen. Utan kraftdata (BLE): varvet följer
-// P_smooth/P0 (spec §8), också med tröghet.
+// Under flygningen följer bilden fysikens rotorvarv (physics.js), som redan har
+// bladens massa. Utanför flygningen, med kraftdata (USB, Mock): varje kraftsampel
+// ger vridmoment till en tung rotor som håller varvet mellan dragen. Utan kraftdata
+// (BLE): varvet följer motoreffekten/P0 (spec §8), också med tröghet.
 
 const TORQUE_GAIN = 0.0003; // rad/s per N och sampel
 const DECAY_TIME_S = 8; // luftmotstånd
 const FRICTION = 0.25; // rad/s², så att den till slut stannar
 const SAMPLE_RATE_HZ = 50; // takt som köade sampel matas in
 const FORCE_FRESH_S = 4; // så länge efter senaste kraftsampel gäller kraftläget
-const OMEGA_AT_P0 = 12; // rad/s vid P_smooth = P0 i fallback-läget
+const OMEGA_AT_P0 = 12; // rad/s vid hovringsvarv, och vid effekt = P0 i fallback-läget
 const FALLBACK_RESPONSE_S = 1.5;
+const PHYSICS_RESPONSE_S = 0.1; // bara utjämning mellan bildrutorna, fysiken har tröghet
 export const VISUAL_OMEGA_MAX = 16; // ovanför detta ritas rotorn som en skiva
 
 export class Rotor {
@@ -36,11 +38,15 @@ export class Rotor {
 
   /**
    * @param {number} dt s
-   * @param {number} ratio P_smooth/P0, används när det saknas kraftdata
+   * @param {number} ratio effekt/P0 när det saknas kraftdata, eller fysikens rotorvarv när `physics`
+   * @param {boolean} [physics] ratio är fysikens rotorvarv (1 = hovringsvarv vid marken)
    */
-  step(dt, ratio) {
+  step(dt, ratio, physics = false) {
     this.time += dt;
-    if (this.forceDriven) {
+    if (physics) {
+      this.queue.length = 0;
+      this.omega += (Math.max(0, ratio) * OMEGA_AT_P0 - this.omega) * Math.min(1, dt / PHYSICS_RESPONSE_S);
+    } else if (this.forceDriven) {
       const n = Math.min(this.queue.length, Math.max(Math.round(SAMPLE_RATE_HZ * dt), Math.ceil(this.queue.length / 8)));
       for (const f of this.queue.splice(0, n)) this.omega += f * TORQUE_GAIN;
       this.omega *= Math.exp(-dt / DECAY_TIME_S);

@@ -4,6 +4,19 @@ Plan för att ersätta signalbehandlingen (spec §4) och fysikmodellen (spec §5
 
 Utgångspunkten är att varje drag redovisar rätt effekt. Då ska inget medelvärde ligga mellan draget och helikoptern. Den utjämning som finns kvar ska komma ur fysiken, alltså ur rotorns och helikopterns massa.
 
+## Status
+
+Byggt med g = 15 m/s² och rotorbladens massa 0,5 s. Spec §4–5 beskriver nu modellen och gäller före den här planen. Steg 1–9 i byggordningen (§6) är klara, men steg 10, att prova på riktig erg, återstår.
+
+Avvikelser från planen:
+
+- **Ljudet** följer motoreffekten `P / P0` som förut, inte rotorvarvet. Ljudmodulen har en egen rotor med tröghet och en gas där 1 är hovring och 3 är max. Med varvet skulle det låta som hovring även i en hård stigning, eftersom varvet är detsamma i stadig stigning som i hovring.
+- **Rotorvarv och lyftkraft** visas på raden med råa watt, som syns när operatören slår på råa watt, och inte i debugpanelen.
+- **Mjuka sättningar:** vid en mjuk sättning är lyftkraften nästan lika stor som tyngden, så helikoptern kunde skutta en bråkdel av en millimeter och skriva över landningsfarten. Ett skutt lägre än 0,1 m räknas inte längre som en ny sättning.
+- **`runPhysicsOnly`** räknar med uppbromsningen efter profilen, alltså farten helikoptern har kvar när effekten slutar, så att "Fysik" i simulatorn är samma maxhöjd som spelet ger.
+- **Autorotationen slår över:** utan motor faller helikoptern först fortare än sluthastigheten (omkring 40 m/s mot 30 m/s från 1 000 m) innan autorotationen bromsar.
+- **Fritt fall:** autopiloten hämtar nu upp ungefär 50 m under gränsen i stället för 30 m, eftersom rotorn måste varva upp. Hovringen har i stället blivit exaktare: i snitt 3 m från målet i stället för 5 m.
+
 ## 1. Varför
 
 I dag går effekten genom tre led som inte är fysik:

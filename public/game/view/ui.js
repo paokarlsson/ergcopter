@@ -425,6 +425,8 @@ export class GameUI {
   /**
    * @param {object} v
    * @param {number} v.h, v.hMax, v.vy, v.time, v.lift (andel), v.power, v.pReq, v.P0
+   * @param {number} [v.rotor]   rotorvarvet relativt hovring vid marken
+   * @param {number} [v.thrust]  lyftkraften relativt tyngden
    * @param {boolean} v.onGround, v.showRaw
    * @param {number|null} v.replaySpeed
    */
@@ -450,7 +452,8 @@ export class GameUI {
 
     e.raw.hidden = !v.showRaw;
     if (v.showRaw) {
-      setText(e.raw, `P ${Math.round(v.power)} W · krävs ${Math.round(v.pReq)} W · P0 ${Math.round(v.P0)} W`);
+      const rotor = v.rotor === undefined ? '' : ` · rotor ${Math.round(v.rotor * 100)} % · lyft ${Math.round(v.thrust * 100)} %`;
+      setText(e.raw, `P ${Math.round(v.power)} W · krävs ${Math.round(v.pReq)} W · P0 ${Math.round(v.P0)} W${rotor}`);
     }
     e.replayBadge.hidden = !v.replaySpeed;
     if (v.replaySpeed) setText(e.replayBadge, `Landning ×${Math.max(1, Math.round(v.replaySpeed))}`);
