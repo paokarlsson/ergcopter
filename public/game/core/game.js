@@ -12,6 +12,7 @@ import { Engine } from './engine.js';
 import { MIN_MASS, MAX_MASS, CLASSES } from './config.js';
 import { ExerciseRun } from './exercise.js';
 import { getHelicopter, helicopterConfig } from './helicopters.js';
+import { FlightLog } from './flightlog.js';
 
 export const STATES = ['IDLE', 'SETUP', 'MENU', 'READY', 'COUNTDOWN', 'FLYING', 'FINISHED'];
 
@@ -38,6 +39,7 @@ export class Game {
     this.suggested = null; // förslaget i menyn som ett drag startar, null = fri flygning
     this.menuFor = 0; // s i MENU
     this.flight = null;
+    this.log = null; // flygloggen för senaste flygningen (flightlog.js)
     this.engine = new Engine(cfg);
     this.paused = false;
     this.lastT = null;
@@ -132,6 +134,7 @@ export class Game {
   }
 
   setPaused(paused) {
+    if (paused !== this.paused && this.state === 'FLYING') this.log.pause(this.flight.t, paused);
     this.paused = paused;
   }
 
@@ -155,10 +158,20 @@ export class Game {
       this.startCountdown();
       return;
     }
-    if (this.state !== 'FLYING' || this.paused) return; // drag under nedräkningen ignoreras
-    if (this.run?.engineOff) return; // motorstopp: dragen gör ingenting
+    if (this.state !== 'FLYING') return; // drag under nedräkningen ignoreras
     // Speltiden (flight.t) används så att paus och bakgrundsflik inte påverkar.
-    if (this.engine.stroke({ ...stroke, t: this.flight.t })) this.lastStrokeT = this.flight.t;
+    const s = { ...stroke, t: this.flight.t };
+    let note = 'ok';
+    if (this.paused) note = 'paus';
+    else if (this.run?.engineOff) note = 'motorstopp'; // dragen gör ingenting
+    else if (this.engine.stroke(s)) this.lastStrokeT = s.t;
+    else note = 'dubblett';
+    this.log.stroke(s, this.flight, note);
+  }
+
+  /** Kraftsampel (N) från ergen, till flygloggen. */
+  forceSamples(samples) {
+    if (this.state === 'FLYING' && !this.paused) this.log.force(this.flight.t + this.acc, samples);
   }
 
   /** Motoreffekten just nu (0 utanför FLYING): senaste dragets, eller 0 vid motorstopp och minst instruktörens när hen tagit över. */
@@ -207,7 +220,18 @@ export class Game {
 
   #takeOff() {
     this.flight = new Flight(this.flightConfig, this.player.mass);
-    this.run = this.exercise ? new ExerciseRun(this.exercise, { rand: this.rand }) : null;
+    const ex = this.exercise;
+    const log = new FlightLog({
+      cfg: this.flightConfig,
+      P0: this.flight.rotorP0,
+      program: ex ? { kind: ex.steps ? 'exercise' : ex.kind ?? 'lesson', id: ex.id, name: ex.name } : null,
+      helicopter: this.helicopter?.id ?? null,
+      player: { name: this.player.name, klass: this.player.klass },
+      showRaw: this.cfg.showRawWatts,
+    });
+    this.log = log;
+    // Slumpen loggas, så att flygningen kan spelas upp igen.
+    this.run = ex ? new ExerciseRun(ex, { rand: () => log.rand(this.rand()) }) : null;
     this.engine = new Engine(this.cfg);
     this.acc = 0;
     this.lastStrokeT = 0;
@@ -229,15 +253,19 @@ export class Game {
       run.update(f, power);
       // Motorn stannar eller startar: dragen från före eller under stoppet räknas inte.
       if (run.engineOff !== off) this.engine.reset();
-      for (const e of run.takeEvents()) this.#emit('drill', e);
+      const events = run.takeEvents();
+      this.log.step(f, run, events);
+      for (const e of events) this.#emit('drill', e);
       if (run.status !== 'running') this.#finish(run.status);
       return; // övningen avgör när passet är slut
     }
 
     f.step(power);
+    this.log.step(f);
     for (const m of this.cfg.milestones) {
       if (!this.passed.has(m.name) && f.h >= m.h) {
         this.passed.add(m.name);
+        this.log.event(f.t, `topp passerad: ${m.name} ${m.h} m`);
         this.#emit('milestone', m);
       }
     }
@@ -280,6 +308,7 @@ export class Game {
           }
         : null,
     };
+    this.log.finish(this.result);
     this.finishedFor = 0;
     this.#set('FINISHED');
     this.#emit('finish', this.result);

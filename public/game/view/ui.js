@@ -595,6 +595,62 @@ export class GameUI {
     if (this.debugVisible) this.el.debug.scrollTop = this.el.debug.scrollHeight;
   }
 
+  // --- Flygloggar -----------------------------------------------------------------
+
+  /**
+   * Flygloggarna i inställningarna, nyast först (spec §9.1).
+   * @param {{ id: string, ts: number, title: string, text: string }[]} logs
+   * @param {{ copy: (entry, button: HTMLButtonElement) => void, download: (entry) => void }} actions
+   */
+  renderLogs(logs, actions) {
+    $('log-text').hidden = true;
+    $('log-text-hint').hidden = true;
+    if (!logs.length) {
+      const li = Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Inga flygningar inspelade än.' });
+      $('log-list').replaceChildren(li);
+      return;
+    }
+    const button = (text, onClick) => {
+      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: text });
+      b.addEventListener('click', () => onClick(b));
+      return b;
+    };
+    $('log-list').replaceChildren(
+      ...logs.map((entry) => {
+        const li = document.createElement('li');
+        const info = Object.assign(document.createElement('span'), { className: 'log-info' });
+        const date = new Date(entry.ts).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
+        info.append(
+          Object.assign(document.createElement('span'), { className: 'log-title', textContent: entry.title }),
+          Object.assign(document.createElement('span'), { className: 'log-meta', textContent: `${date} · ${Math.ceil(entry.text.length / 1000)} kB` })
+        );
+        li.append(info, button('Kopiera', (b) => actions.copy(entry, b)), button('Ladda ned', () => actions.download(entry)));
+        return li;
+      })
+    );
+  }
+
+  /** Visar loggen markerad när urklippet inte går att använda, så att man kan kopiera själv. */
+  showLogText(text) {
+    const area = $('log-text');
+    area.value = text;
+    area.hidden = false;
+    $('log-text-hint').hidden = false;
+    area.focus();
+    area.select();
+  }
+
+  /** Kort bekräftelse på en knapp, t.ex. "Kopierad ✓". */
+  flashButton(button, text) {
+    const original = button.textContent;
+    button.textContent = text;
+    setTimeout(() => (button.textContent = original), 2000);
+  }
+
+  scrollToLogs() {
+    $('logs-title').scrollIntoView({ block: 'start' });
+  }
+
   // --- Inställningar ------------------------------------------------------------
 
   get settingsOpen() {

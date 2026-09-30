@@ -92,6 +92,7 @@ Lektionerna sätter ihop övningar till ett längre pass i samma flygning (`core
 - Sjunkhastigheten styrs av hur mycket effekten ligger under behovet: den stadiga farten är `G · (P − P_req) / P0`, och rotorn och helikoptern tar ett par sekunder på sig att komma dit (spec §5). Med 0 W faller man i över 20 m/s.
 - För att sätta ner under 2 m/s måste man ligga inom ungefär 9 % under sin lyfteffekt. Det kräver precision snarare än kraft.
 - **Byggt:** fysiken registrerar sjunkhastigheten när helikoptern sätter ner (`flight.touchdown`). Landningssteget underkänner en landning över gränsen.
+- **Flygloggen** (spec §9.1) visar för varje landning hur många drag under 25 m som ledde till en mjuk sjunk och de sista dragen före sättningen. Loggar från riktiga spelare avgör om landningen är för svår. Spelet ska vara mer kul än svårt, så visar loggarna det förenklas landningen.
 
 ### 3.2 Fritt fall och hämtning
 
@@ -249,7 +250,7 @@ Första bygget omfattade steg 1–4 med övningarna 1–4, andra bygget steg 5�
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
 - **Tröghet:** Byggt som fysik (spec §4–5, `physics-plan.md`): motorn ger varje drags effekt utan medelvärde, rotorbladen har massa (`rotorTauS`, 0,5 s) och `g` (15 m/s²) styr hur fort farten följer. Öppet är om värdena är rätt när riktiga spelare provar, och om hämtningarna i fritt fall har blivit för svåra: autopiloten hämtar nu upp ungefär 50 m under gränsen i stället för 30 m. Rotorbladens massa kan också bli en egenskap per helikopter, där den tunga helikoptern är trögare.
 - **Användning:** Spelet körs hemma, av samma personer över tid. Därför är karriären med sparade profiler och en lektion per dag viktig. På ett event stängs `lessonPerDay` av.
-- **Svårighet i uppflygningen:** är ±15 m och 1,5 m/s lagom för att motivera några lektioner? Behöver provas av riktiga spelare.
+- **Svårighet i uppflygningen:** är ±15 m och 1,5 m/s lagom för att motivera några lektioner? Behöver provas av riktiga spelare. Flygloggarna (spec §9.1) visar vilka moment som är svåra.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?
 - **Namn på helikoptrarna.**
 - **Förvarning om luftgropar:** ska de alltid synas i förväg, eller bara hos högre grader?

@@ -16,6 +16,7 @@ npm test            # kör testerna
 - Anslut PM5 med USB-kabel (WebHID) eller Bluetooth. På iPhone/iPad fungerar bara Bluetooth, via appen Bluefy.
 - Inget erg till hands? Öppna `http://localhost:3000/?demo`. `?demo=lesson-1` eller `?demo=exam` låter autopiloten flyga en lektion eller uppflygningen.
 - Dashboarden med siffror och kraftkurva finns på `dashboard.html`.
+- Varje flygning spelas in. Tryck L (eller kugghjulet → Flygloggar) och kopiera loggen för att klistra in den för analys: alla drag med kraftkurvan och hur helikoptern svarade.
 - Med Docker: `docker compose up`.
 
 Spelet publiceras automatiskt på GitHub Pages när `master` uppdateras och testerna går igenom.
