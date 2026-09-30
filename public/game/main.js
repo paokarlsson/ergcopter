@@ -2,7 +2,7 @@
 
 import { loadConfig, saveConfig, resetConfig, sanitize, liftPower, CLASSES } from './core/config.js';
 import { Game } from './core/game.js';
-import { StrokeSmoother } from './core/signal.js';
+import { Engine } from './core/engine.js';
 import { Leaderboard } from './core/leaderboard.js';
 import { Progress, dayOf, formatFlightTime } from './core/progress.js';
 import { EXERCISES, stepGuides, starText, describeResults } from './core/exercise.js';
@@ -31,14 +31,14 @@ const progress = () => (game.player?.anonymous ? anonymousProgress : savedProgre
 const game = new Game(cfg);
 const rotor = new Rotor();
 const attractRotor = new Rotor(); // startskärmens demotur har en egen rotor; den riktiga följer ergen
-const ATTRACT_LIFT = 1.4; // demoturens rotorvarv, som P_smooth/P0
+const ATTRACT_LIFT = 1.4; // demoturens rotorvarv, som effekt/P0
 let attractStart = now();
 const renderer = new GameRenderer(document.getElementById('scene'));
 const ui = new GameUI();
 const sound = new RotorSound();
 sound.setEnabled(cfg.sound);
-// Glidande effekt även utanför passet, så att rotorn svarar redan i READY (BLE saknar kraftdata).
-const preview = new StrokeSmoother(cfg);
+// Motorn även utanför passet, så att rotorn svarar redan i READY (BLE saknar kraftdata).
+const preview = new Engine(cfg);
 
 let source = null;
 let sourceKind = null;
@@ -88,7 +88,7 @@ function attach(kind) {
   sourceKind = kind;
   source = createSource(kind);
   source.on('stroke', (s) => {
-    preview.push(s);
+    preview.stroke(s);
     game.stroke(s);
   });
   source.on('force', (samples) => {
@@ -440,8 +440,11 @@ function frame() {
   const run = game.state === 'FLYING' ? game.run : null;
   const guides = stepGuides(run?.step, f?.t);
   const rings = run?.step?.type === 'rings'; // ringbanan flygs framåt i jämn fart
-  const power = game.state === 'FLYING' ? game.power : preview.value(now());
-  rotor.step(dt, power / P0);
+  const flying = game.state === 'FLYING';
+  const power = flying ? game.power : preview.power(now());
+  // Under flygningen visar rotorn fysikens varv, annars svarar den på ergen.
+  if (flying) rotor.step(dt, f.rotorSpeed, true);
+  else rotor.step(dt, power / P0);
   // På startskärmen flyger helikoptern en demotur bakom titeln och topplistan.
   const attract = game.state === 'IDLE';
   if (attract) {
@@ -485,6 +488,8 @@ function frame() {
       power,
       pReq: f.requiredPower(),
       P0: f.P0,
+      rotor: f.rotorSpeed,
+      thrust: f.thrustRatio,
       showRaw: cfg.showRawWatts,
       replaySpeed: game.state === 'FINISHED' && replay && !replay.done ? replay.speed : null,
     });

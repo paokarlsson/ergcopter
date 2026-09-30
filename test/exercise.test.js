@@ -32,7 +32,7 @@ test('skolhelikoptern: stiger inte över taket', () => {
   for (let i = 0; i < 20 * 600; i++) f.step(f.P0 * 3);
   assert.equal(f.hMax, 1500);
   assert.equal(f.h, 1500);
-  f.step(0);
+  for (let i = 0; i < 20 * 2; i++) f.step(0);
   assert.ok(f.h < 1500, 'kan sjunka från taket');
 });
 
@@ -48,7 +48,7 @@ test('sättningen registreras med farten', () => {
   assert.equal(f.touchdown, null);
   while (f.h > 0) f.step(0);
   assert.ok(f.touchdown.speed > 0 && f.touchdown.speed <= 25);
-  assert.ok(Math.abs(f.touchdown.t - f.t) < 1e-9);
+  assert.ok(f.touchdown.t <= f.t && f.touchdown.t > f.t - school.dt);
 });
 
 test('hård landning underkänner övningen', () => {

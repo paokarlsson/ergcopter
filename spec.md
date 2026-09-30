@@ -82,37 +82,48 @@ Implementationer (`public/shared/sources/`):
 
 - **UsbPm5Source**: USB via WebHID och CSAFE-kommandon. Läser dragfas och kraftbuffert var 50:e ms och ger både drag och kraftsampel.
 - **Pm5Source**: Web Bluetooth enligt ovan.
-- **MockSource**: genererar drag i en inställbar takt (standard 40 drag/min) med aktuell effekt och en påhittad kraftkurva, så att signalbehandlingen körs precis som med riktig erg. Används av `?demo`.
+- **MockSource**: genererar drag i en inställbar takt (standard 40 drag/min) med aktuell effekt och en påhittad kraftkurva, så att motorn och fysiken körs precis som med riktig erg. Används av `?demo`.
 - **ScriptedSource**: spelar upp en fördefinierad effektprofil, till exempel "245 W i 300 s". Används av strategisimulatorn och testerna.
 
-## 4. Signalbehandling
+## 4. Motorn
 
-PM5 rapporterar effekt per drag, ungefär var 1,2–2 sekund på en SkiErg. Fysiken behöver en kontinuerlig signal:
+PM5 rapporterar effekt per drag, ungefär var 1,2–2 sekund på en SkiErg. Varje drag redovisar rätt effekt, så spelet räknar inget medelvärde. Motorn (`engine.js`) gör dragen till en motoreffekt `P` som driver rotorn (avsnitt 5):
 
 - Ett nytt drag identifieras på att `strokeCount` har ändrats. Dubbla notiser med samma räknare ignoreras.
-- `P_smooth` är medelvärdet av de senaste `smoothingStrokes` dragen (standard 3).
-- Mellan dragen hålls värdet konstant.
-- Om inget nytt drag har kommit på `strokeTimeoutS` sekunder (standard 3) tonas `P_smooth` ned linjärt till 0 under `fadeOutS` sekunder (standard 1). Därefter töms bufferten.
+- Motoreffekten är senaste dragets effekt. Den gäller tills nästa drag kommer.
+- Kommer inget drag inom 1,25 × förra dragperioden stannar motorn och `P = 0`. Första draget, och första draget efter en paus, gäller i `maxStrokeS` sekunder (standard 3).
+- Utjämningen mellan dragen kommer från rotorbladens massa, inte från motorn.
 
 ## 5. Fysikmodell
 
-All effekt uttrycks relativt deltagarens personliga lyfteffekt `P0`. Då skalar spelet automatiskt med kroppsvikten.
+Helikoptern är en människodriven helikopter med fast bladvinkel. Motorn (avsnitt 4) driver rotorn, rotorns varv ger lyftkraften och lyftkraften mot tyngden ger accelerationen (`physics.js`).
+
+All effekt uttrycks relativt deltagarens personliga lyfteffekt `P0`. Då skalar spelet automatiskt med kroppsvikten: alla flyger samma helikopter, skalad efter sin egen lyfteffekt.
 
 ```
 P0       = P_ref * (bodyMass / m_ref) ^ k      // effekt som krävs för att sväva vid marken
 P_req(h) = P0 * (1 + h / H_air)                // effekt som krävs för att hålla höjden h
-v_mål    = G * (P_smooth - P_req(h)) / P0      // farten effekten drar mot (m/s)
-dv/dt    = (v_mål - v) / T                      // tröghet, T = inertiaS
+σ(h)     = 1 / (1 + h / H_air)²                // luftens täthet relativt marken
+n        = √(E / E0)                            // rotorvarv relativt hovringsvarvet vid marken
+T / Mg   = σ * n²                               // lyftkraft relativt tyngden
+dE/dt    = P - P0 * σ * n³ - T * v              // motor − luftförlust − arbete på helikoptern
+dv/dt    = g * (T / Mg - 1)                     // acceleration
 dh/dt    = v                                    // stig- eller sjunkhastighet (m/s)
 ```
 
-- **Tröghet:** effekten bestämmer accelerationen, inte farten direkt. Farten närmar sig `v_mål` med tidskonstanten `T`, som om helikoptern hade ett luftmotstånd som växer linjärt med farten. I fritt fall accelererar man alltså nedåt tills luftmotståndet tar ut tyngden (sluthastigheten är `v_mål` vid 0 W), och drar man grönt i hög fart fortsätter helikoptern nedåt en stund innan den vänder. Bromssträckan är ungefär `|v| · T`.
-- Med `T = G / 9,81` (≈ 2 s med standardvärdena) börjar ett fritt fall från hovring nära marken med jordens tyngdacceleration.
-- I jämvikt är `v = v_mål`, så jämviktshöjden och τ är desamma som utan tröghet. Långa insatser ändras under 1 %. Korta spurter tappar lite, eftersom helikoptern först måste komma upp i fart (30 s @ 450 W ungefär −4 %, bara fysiken).
-- Farten uppdateras med den exakta lösningen över tidssteget, `v ← v_mål + (v − v_mål) · exp(−dt / T)`, som är stabil för alla `dt`. `T = 0` ger modellen utan tröghet, där `dh/dt = v_mål`.
+med `E0 = 1,5 * rotorTauS * P0` (rotorns energi vid hovringsvarv vid marken) och tyngden `Mg = P0 / G`.
 
-- Integration med fast tidssteg `dt` = 0,05 s (20 Hz). Explicit Euler räcker.
-- Markvillkor: om `h <= 0` och `dh/dt < 0` sätts `h = 0` och `dh/dt = 0`. Helikoptern står då kvar på marken tills `P_smooth > P0`. Vid sättningen sparas farten i nedslaget och farten nollställs.
+- **Rotorn** är ett energilager, som ergens svänghjul. `E` är rotorbladens rörelseenergi. Bladen har massa, så motoreffekten byter direkt vid ett drag men varvet gör det inte. Vid marken följer varvet motorn med tidskonstanten `rotorTauS`. Med standardvärdet 0,5 s har varvet kommit halvvägs efter 0,4 s och till 90 % efter 1,2 s. Högre upp snurrar rotorn fortare, och tidskonstanten växer med `1 + h / H_air`.
+- **Lyftet** följer varvet, inte effekten. Luftens täthet är vald så att hovring på höjden h kräver exakt `P_req(h)`, eftersom hovringseffekten är ∝ 1/√ρ.
+- **Stadig stigning** ger `v = G * (P - P_req(h)) / P0`, eftersom överskottet går till lägesenergi. Jämviktshöjden och τ är därför desamma som i den analytiska lösningen nedan.
+- **Farten** följer effekten på ungefär `3G / 2g` sekunder: 2 s med standardvärdet g = 15 m/s², 3 s med jordens 9,81. `g` är ett spelval, eftersom världen redan är skalad.
+- **Autorotation:** utan motor bär rotorn en kort stund, sedan faller helikoptern. När den sjunker driver fallet rotorn, eftersom arbetet `T * v` blir negativt. Fallet bromsas mot sluthastigheten `G * P_req(h) / P0`, alltså den stadiga farten vid 0 W. Farten slår först över en stund innan den lägger sig. Drar man grönt i hög fart fortsätter helikoptern nedåt en stund innan den vänder.
+- **Last** (sandsäcken, patienten) ökar massan så att hovringen kräver `P0` för den nya vikten. Rotorn är densamma, så helikoptern sjunker tills varvet har hunnit upp.
+- **Långa insatser** hamnar inom 1 % av den analytiska lösningen. Korta spurter tappar, eftersom rotorn och helikoptern först måste komma upp i fart: 30 s @ 450 W ungefär −3,5 % och 3 s nästan hälften.
+
+- Integration med fast tidssteg `dt` = 0,05 s (20 Hz), uppdelat i inre steg på 0,01 s. Explicit Euler räcker.
+- Rotorn står still när passet börjar.
+- Markvillkor: om `h <= 0` och `dh/dt < 0` sätts `h = 0` och `dh/dt = 0`. Helikoptern står då kvar på marken tills lyftkraften är större än tyngden, alltså när motoreffekten har legat över `P0` så länge att rotorn hunnit varva upp. Vid sättningen sparas farten i nedslaget och farten nollställs. Ett skutt lägre än 0,1 m efter en sättning räknas inte som en ny sättning.
 - Valfritt: `maxSinkRate` begränsar sjunkhastigheten. Av som standard.
 - `h_max` uppdateras varje tidssteg.
 
@@ -127,12 +138,11 @@ Tabellen visar grundspelets värden. Standard i koden är värdena för blandad 
 | `k` | 1.0 | Viktexponent. 1.0 = ren W/kg ("linjär"), 0.667 = "rättvis" (se avsnitt 6) |
 | `H_air` | 2700 m | Hur fort luften tunnas ut. Vid `h = H_air` krävs dubbla lyfteffekten. 2700 m ger samma lutning som originalidén: 180 W vid marken och 200 W på 300 m |
 | `G` | 22,5 m/s | Stigförmåga. Stighastighet när effekten ligger en hel `P0` över det som krävs |
-| `inertiaS` | 2 s | Tröghet `T`: tidskonstanten för hur fort farten följer effekten. 0 = ingen tröghet |
+| `g` | 15 m/s² | Tyngdacceleration. Styr hur fort farten följer effekten, ungefär `3G / 2g` |
+| `rotorTauS` | 0,5 s | Rotorbladens massa: tidskonstanten för varvet vid hovring vid marken |
 | `maxSinkRate` | av | Maximal sjunkhastighet (m/s) |
 | `dt` | 0,05 s | Fysikens tidssteg |
-| `smoothingStrokes` | 3 | Antal drag i medelvärdet |
-| `strokeTimeoutS` | 3 s | Tid utan drag innan effekten tonas ned |
-| `fadeOutS` | 1 s | Nedtoningstid |
+| `maxStrokeS` | 3 s | Längsta tid ett drag driver motorn |
 
 ### Balans och trimning
 
@@ -142,7 +152,7 @@ Tabellen visar grundspelets värden. Standard i koden är värdena för blandad 
 
 ### Analytisk lösning och referensvärden
 
-Från marken med konstant effekt `P > P0`, utan tröghet (`T = 0`). Med tröghet ligger insatser från 3 minuter och uppåt inom 1 % av den:
+Från marken med konstant effekt `P > P0`, i gränsen där rotorn och farten ställer in sig direkt. Fysiken ligger inom 1 % av den för insatser från 3 minuter och uppåt:
 
 ```
 h(t) = H_air * (P / P0 - 1) * (1 - exp(-t * G / H_air))
@@ -182,7 +192,7 @@ I MENU väljer deltagaren fri flygning (det som beskrivs här) eller något i fl
 - **READY**: ergen är ansluten. Visa "Dra för att lyfta!".
 - **COUNTDOWN**: 3-2-1. Drag under nedräkningen ignoreras. Fysiken nollställs.
 - **FLYING**: fysik och UI körs, tiden räknas. Passet avslutas vid det första av följande:
-  1. Helikoptern har varit i luften och sedan stått på marken med `P_smooth < P0` i `groundEndS` sekunder (standard 5).
+  1. Helikoptern har varit i luften och sedan stått på marken med motoreffekt under `P0` i `groundEndS` sekunder (standard 5).
   2. Inga drag på `idleEndS` sekunder (standard 10).
   3. `maxSessionS` har uppnåtts (standard 480 s, 0 = av).
   4. Operatören trycker Esc.
@@ -194,17 +204,17 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 
 - Vertikal höjdskala med helikoptern. Kameran följer helikoptern och visar marken när höjden är låg.
 - Stor siffra för aktuell höjd i meter och en mindre för maxhöjden i passet. Höjden visas som en mekanisk räknare där siffrorna rullar; över 15 m/s byts de direkt, eftersom de ändå inte hinner rulla klart.
-- **Lyftmätare** (det centrala elementet): `P_smooth / P_req(h)` i procent. 100 % betyder att höjden hålls. Grön över 100 %, röd under. På marken visas `P_smooth / P0`. Mätaren är en halvcirkel med visare från 0 till 300 % (samma tak som ljudet) och ett tydligt streck vid 100 %; över 200 % lyser bågen.
+- **Lyftmätare** (det centrala elementet): `P / P_req(h)` i procent, där `P` är motoreffekten, alltså senaste dragets effekt. Mätaren ändras vid varje drag, så att man direkt ser om draget var för lätt eller för hårt. 100 % betyder att draget håller höjden när rotorn och farten har ställt in sig. Grön över 100 %, röd under. På marken visas `P / P0`. Mätaren är en halvcirkel med visare från 0 till 300 % (samma tak som ljudet) och ett tydligt streck vid 100 %; över 200 % lyser bågen.
 - Siffror och rubriker använder typsnittet Barlow Condensed (SIL OFL), som ligger i `public/fonts/` så att spelet fungerar utan nät.
 - Variometer: stig- eller sjunkhastighet i m/s med pil.
-- Rotorns animationshastighet proportionell mot `P_smooth / P0`, så att deltagaren ser respons redan innan helikoptern lättar.
+- Rotorns animation följer fysikens rotorvarv under flygningen. Före lyftet följer den ergen (kraftkurvan, eller `P / P0` utan kraftdata), så att deltagaren ser respons redan innan helikoptern lättar.
 - Horisontella linjer för dagens rekord, maxhöjden i passet och milstolpar.
 - Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg med röse och skylt som passerar under helikoptern; en topp högt över helikoptern ritas genomskinlig, som om den låg långt bort. Flyger man över en topp blir skylten grön och det sprutar konfetti. Visa en kort banderoll ("Topp passerad") när en milstolpe passeras.
 - Landskapet visar höjden utan siffror (`scenery.js`): tre fjällkedjor (granskog, fjällbjörk och hed, kalfjäll med snö) som sjunker undan när man stiger, ett molntäcke vid 1 900–2 040 m som man flyger igenom med ett molnhav ovanför, och norrsken högt upp.
 - Fartkänsla (`effects.js`): fartstreck och en lätt utzoomning när man stiger eller faller fort, damm från rotorvinden nära marken, och helikoptern gungar i luften och skakar i full stigning. Allt detta är bara bild och påverkar inte fysiken.
 - Tid sedan start.
 - Topplista per klass i IDLE och FINISHED med namn och höjd, aldrig vikt eller watt (avsnitt 12.2).
-- Valfritt ljud: helikopterljud som följer `P_smooth / P0`. Hovring (100 %) ger fullt rotorvarv; över 100 % låter det mer (bladslag, dunk, volym) upp till taket 300 %, med tydlig skillnad vid 200 %.
+- Valfritt ljud: helikopterljud som följer motoreffekten `P / P0`. Hovring (100 %) ger fullt rotorvarv; över 100 % låter det mer (bladslag, dunk, volym) upp till taket 300 %, med tydlig skillnad vid 200 %.
 
 ## 9. Inställningar och data
 
@@ -215,22 +225,26 @@ Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 ## 10. Tester
 
 **Fysik**
-- Konstant effekt från marken jämförs med den analytiska lösningen. Tolerans 0,5 %. Använd referenstabellen i avsnitt 5.
+- Den analytiska lösningen ger referenstabellen i avsnitt 5 (tolerans 0,5 %). Fysiken ligger inom 1 % av den från 3 minuter och inom 7 % på 30 s. Korta spurter tappar.
 - 80 kg och 90 W: helikoptern lättar aldrig.
 - Höjden blir aldrig negativ.
 - Effekt och sedan 0 W: helikoptern sjunker, landar på 0 och blir stående.
+- Hovring på höjden h kräver exakt `P_req(h)`. Stadig stigning ger `G * (P - P_req) / P0`.
+- Bladen har massa: motoreffekten byter direkt, men varvet följer efter, åt båda hållen.
+- Utan motor faller helikoptern och autorotationen bromsar fallet.
+- En mjuk sättning mäts med farten i första nedslaget.
 
 **Viktskalning** (tolerans ±0,1 W)
 - `k = 1`: 60 kg → 75,0 W, 80 kg → 100,0 W, 100 kg → 125,0 W.
 - `k = 2/3`: 60 kg → 82,5 W, 100 kg → 116,0 W.
 
-**Signalbehandling**
-- Medelvärdet av de 3 senaste dragen.
+**Motorn**
+- Varje drag gäller för sig, utan medelvärde, och hålls tills nästa drag.
+- Motorn stannar när nästa drag dröjer mer än 1,25 × förra perioden.
 - Dubbletter av samma `strokeCount` ignoreras.
-- Nedtoning efter timeout.
 
 **Strategisimulator** (utvecklarverktyg)
-Ett headless-skript (`npm run simulate`) som kör `ScriptedSource`-profiler genom samma signalbehandling och fysik och skriver ut `h_max`. Används för trimning. Profilerna står i avsnitt 12.3.
+Ett headless-skript (`npm run simulate`) som kör `ScriptedSource`-profiler genom samma motor och fysik och skriver ut `h_max`. Används för trimning. Profilerna står i avsnitt 12.3.
 
 ## 11. Byggordning
 
@@ -314,7 +328,7 @@ Inställningspanelen visar förväntat utfall och balanskontroll omräknade med 
 
 ### 12.5 Tester
 
-`test/defaults.test.js` kontrollerar standardvärdena, `P0`-tabellen, förväntat utfall och balanskontrollen (±0,5 %), viktgränserna 15–200 kg, att förhandsvisningen räknas om, klasserna och topplistan per klass.
+`test/defaults.test.js` kontrollerar standardvärdena, `P0`-tabellen, förväntat utfall och balanskontrollen (analytiskt ±0,5 %, fysiken ±1 %), viktgränserna 15–200 kg, att förhandsvisningen räknas om, klasserna och topplistan per klass.
 
 ## 13. Öppna punkter
 

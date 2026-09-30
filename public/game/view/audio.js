@@ -1,4 +1,4 @@
-// Valfritt rotorljud (spec §8): helikopterljudet följer P_smooth/P0.
+// Valfritt rotorljud (spec §8): helikopterljudet följer motoreffekten/P0.
 // Hovring (100 %) är fullt rotorvarv; över 100 % låter det mer – 200 % är vanligt,
 // 300 % taket. WebAudio kräver en användargest innan ljud får spelas – unlock()
 // anropas vid klick/tangent.
@@ -37,7 +37,7 @@ export class RotorSound {
   }
 
   /**
-   * @param {number} ratio   P_smooth/P0, 1 = hovring
+   * @param {number} ratio   motoreffekten/P0, 1 = hovring vid marken
    * @param {number} omega   rotorns vinkelhastighet (rad/s); motorn går så länge rotorn snurrar
    */
   update(ratio, omega) {

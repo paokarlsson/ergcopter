@@ -39,7 +39,8 @@ const OUTCOME = [
 for (const [who, kg, w, expected] of OUTCOME) {
   test(`förväntat utfall: ${who} (${kg} kg, ${w} W, 240 s) ≈ ${expected} m`, () => {
     nearH(heightAfter(cfg, kg, w, 240), expected);
-    nearH(runPhysicsOnly(cfg, kg, [{ s: 240, w }]).hMax, expected); // samma fysik som spelet
+    const { hMax } = runPhysicsOnly(cfg, kg, [{ s: 240, w }]); // samma fysik som spelet
+    assert.ok(Math.abs(hMax - expected) / expected < 0.01, `fysiken: ${hMax.toFixed(1)} m, väntat ${expected} m ±1 %`);
   });
 }
 
@@ -53,12 +54,11 @@ const BALANCE = [
 ];
 for (const [s, w, expected] of BALANCE) {
   test(`balanskontroll: ${s} s @ ${w} W ≈ ${expected} m`, () => {
-    nearH(analyticHeight(cfg, 60, w, s), expected);
-    nearH(runPhysicsOnly({ ...cfg, inertiaS: 0 }, 80, [{ s, w }]).hMax, expected); // tabellen gäller utan tröghet
+    nearH(analyticHeight(cfg, 60, w, s), expected); // tabellen är den analytiska lösningen
   });
 }
 
-test('trögheten ändrar balanskontrollen lite: under 5 % på 30 s, under 1 % från 3 min', () => {
+test('rotorn och farten ändrar balanskontrollen lite: under 5 % på 30 s, under 1 % från 3 min', () => {
   for (const [s, w, expected] of BALANCE) {
     const h = runPhysicsOnly(cfg, 80, [{ s, w }]).hMax;
     const diff = Math.abs(h - expected) / expected;

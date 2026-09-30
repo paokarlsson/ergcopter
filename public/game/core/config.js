@@ -10,14 +10,13 @@ export const DEFAULT_CONFIG = Object.freeze({
   weightMode: 'linear', // 'linear' (k = 1, standard) | 'fair' (k = 2/3)
   H_air: 1800, // m, vid h = H_air krävs dubbla lyfteffekten
   G: 20, // m/s, stighastighet vid en hel P0 överskott
-  inertiaS: 2, // s, tröghet: hur fort farten följer effekten. G / 9,81 ≈ 2 ger tyngdacceleration i fritt fall. 0 = av
+  g: 15, // m/s², tyngdacceleration. Farten följer effekten på ungefär 3G / 2g sekunder (jorden 9,81 ger 3 s)
+  rotorTauS: 0.5, // s, rotorbladens massa: tidskonstanten för varvet vid hovring vid marken
   maxSinkRate: 0, // m/s, 0 = av
   dt: 0.05, // s, fysikens tidssteg
 
-  // Signalbehandling (spec §4)
-  smoothingStrokes: 3,
-  strokeTimeoutS: 3,
-  fadeOutS: 1,
+  // Motorn (spec §4)
+  maxStrokeS: 3, // s, längsta tid ett drag driver motorn
 
   // Spelflöde (spec §7, §12.1)
   countdownS: 3,
@@ -72,12 +71,11 @@ export const CONFIG_SCHEMA = [
   { group: 'Fysik', key: 'm_ref', label: 'm_ref – referensvikt (kg)', type: 'number', min: 15, max: 200, step: 1 },
   { group: 'Fysik', key: 'H_air', label: 'H_air – luftens uttunning (m)', type: 'number', min: 100, max: 100000, step: 10 },
   { group: 'Fysik', key: 'G', label: 'G – stigförmåga (m/s vid en P0 överskott, inte tyngdacceleration)', type: 'number', min: 0.1, max: 1000, step: 0.1 },
-  { group: 'Fysik', key: 'inertiaS', label: 'Tröghet (s, 0 = farten följer effekten direkt)', type: 'number', min: 0, max: 30, step: 0.1 },
+  { group: 'Fysik', key: 'g', label: 'g – tyngdacceleration (m/s², jorden 9,81; högre = kvickare)', type: 'number', min: 1, max: 100, step: 0.1 },
+  { group: 'Fysik', key: 'rotorTauS', label: 'Rotorbladens massa (s: hur fort varvet följer motorn vid marken)', type: 'number', min: 0.05, max: 10, step: 0.05 },
   { group: 'Fysik', key: 'maxSinkRate', label: 'Max sjunkhastighet (m/s, 0 = av)', type: 'number', min: 0, max: 1000, step: 0.5 },
   { group: 'Fysik', key: 'dt', label: 'Tidssteg dt (s)', type: 'number', min: 0.01, max: 0.2, step: 0.01 },
-  { group: 'Signal', key: 'smoothingStrokes', label: 'Drag i medelvärdet', type: 'number', min: 1, max: 20, step: 1 },
-  { group: 'Signal', key: 'strokeTimeoutS', label: 'Tid utan drag före nedtoning (s)', type: 'number', min: 0.5, max: 30, step: 0.5 },
-  { group: 'Signal', key: 'fadeOutS', label: 'Nedtoningstid (s)', type: 'number', min: 0, max: 30, step: 0.5 },
+  { group: 'Motor', key: 'maxStrokeS', label: 'Längsta tid ett drag driver motorn (s)', type: 'number', min: 1, max: 10, step: 0.5 },
   { group: 'Spel', key: 'countdownS', label: 'Nedräkning (s)', type: 'number', min: 0, max: 10, step: 1 },
   { group: 'Spel', key: 'groundEndS', label: 'Slut efter tid på marken (s)', type: 'number', min: 1, max: 60, step: 1 },
   { group: 'Spel', key: 'idleEndS', label: 'Slut efter tid utan drag (s)', type: 'number', min: 1, max: 120, step: 1 },

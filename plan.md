@@ -89,16 +89,16 @@ Lektionerna sätter ihop övningar till ett längre pass i samma flygning (`core
 
 ### 3.1 Mjuk landning
 
-- Sjunkhastigheten styrs av hur mycket effekten ligger under behovet: farten drar mot `G · (P − P_req) / P0`, med tröghet (spec §5). Med 0 W faller man i över 20 m/s.
+- Sjunkhastigheten styrs av hur mycket effekten ligger under behovet: den stadiga farten är `G · (P − P_req) / P0`, och rotorn och helikoptern tar ett par sekunder på sig att komma dit (spec §5). Med 0 W faller man i över 20 m/s.
 - För att sätta ner under 2 m/s måste man ligga inom ungefär 9 % under sin lyfteffekt. Det kräver precision snarare än kraft.
 - **Byggt:** fysiken registrerar sjunkhastigheten när helikoptern sätter ner (`flight.touchdown`). Landningssteget underkänner en landning över gränsen.
 
 ### 3.2 Fritt fall och hämtning
 
-- Från 1 000 m med 0 W accelererar helikoptern nedåt, nära tyngdaccelerationen i början, mot en sluthastighet på ungefär 26–31 m/s.
-- Effekten ligger kvar i 3 s efter sista draget (`strokeTimeoutS`) och tonas sedan ned under 1 s (`fadeOutS`). Man måste alltså sluta veva innan man vill börja falla. Fallet räknas bara om effekten når 0 ovanför släpphöjden.
+- Från 1 000 m med 0 W bär rotorn en halv sekund, sedan faller helikoptern. Autorotationen bromsar fallet mot ungefär 28–31 m/s, men farten slår först över till omkring 40 m/s.
+- Motorn går 1,25 dragperioder efter sista draget (högst `maxStrokeS`, 3 s) och stannar sedan. Man måste alltså sluta dra en stund innan man vill börja falla. Fallet räknas bara om motoreffekten når 0 ovanför släpphöjden.
 - **Hämtgränsen:** man får börja hämta upp först när man passerat en viss höjd nedåt. Ett drag ovanför gränsen är för tidigt: då blir det ett nytt försök (i uppflygningen underkänt).
-- **Hämtningen mäts:** tiden från gränsen tills helikoptern slutar sjunka (sjunker långsammare än 1 m/s) och hur djupt under gränsen den kom. När man börjar dra syns effekten först när draget är klart, och trögheten gör att helikoptern inte vänder direkt. I 26 m/s blir bromssträckan ungefär 25 m med 50 % överskott.
+- **Hämtningen mäts:** tiden från gränsen tills helikoptern slutar sjunka (sjunker långsammare än 1 m/s) och hur djupt under gränsen den kom. När man börjar dra syns effekten först när draget är klart, och rotorbladen och helikoptern har massa, så helikoptern vänder inte direkt. I drygt 30 m/s blir bromssträckan ungefär 50 m med 50 % överskott.
 - **Golvet:** hämtar man inte upp före golvhöjden tar instruktören över. Hen bromsar kraftigt (P_req + P0) och håller sedan höjden tills spelaren drar minst 80 % av behovet själv. Helikoptern kan alltså aldrig slå i marken i ett fall. Samma skydd gäller om man faller under golvet innan man släppt.
 - **Sen hämtning** har lägre gräns och mindre utrymme ned till golvet (120 m i stället för 200 m), så man måste ta i hårdare. Golvet ligger ändå kvar på 280 m.
 - **Motorstopp** vänder på det: motorn stannar vid en tidpunkt man inte kan förutse, dragen gör ingenting medan den står, och när den startar räknas bara nya drag.
@@ -247,7 +247,7 @@ Första bygget omfattade steg 1–4 med övningarna 1–4, andra bygget steg 5�
 ## 9. Öppna frågor
 
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
-- **Tröghet:** Byggt (spec §5, `inertiaS`, standard 2 s). Öppet är om 2 s är rätt när riktiga spelare provar: kanske blir hovringen för svår, eller fallet för lätt. Det kan också bli en egenskap per helikopter, där den tunga helikoptern är trögare.
+- **Tröghet:** Byggt som fysik (spec §4–5, `physics-plan.md`): motorn ger varje drags effekt utan medelvärde, rotorbladen har massa (`rotorTauS`, 0,5 s) och `g` (15 m/s²) styr hur fort farten följer. Öppet är om värdena är rätt när riktiga spelare provar, och om hämtningarna i fritt fall har blivit för svåra: autopiloten hämtar nu upp ungefär 50 m under gränsen i stället för 30 m. Rotorbladens massa kan också bli en egenskap per helikopter, där den tunga helikoptern är trögare.
 - **Användning:** Spelet körs hemma, av samma personer över tid. Därför är karriären med sparade profiler och en lektion per dag viktig. På ett event stängs `lessonPerDay` av.
 - **Svårighet i uppflygningen:** är ±15 m och 1,5 m/s lagom för att motivera några lektioner? Behöver provas av riktiga spelare.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?

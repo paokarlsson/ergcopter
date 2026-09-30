@@ -1,6 +1,5 @@
 // En enkel pilot för övningarna: headless (tester och tools/exercises.js) och ?demo=<id>.
-// Den styr med effekten per drag, precis som en spelare, och ser samma
-// fördröjning från medelvärdet över dragen.
+// Den styr med effekten per drag, precis som en spelare, genom samma motor och rotor.
 
 import { pathHeight } from './exercise.js';
 

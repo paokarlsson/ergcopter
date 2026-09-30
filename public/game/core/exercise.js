@@ -200,7 +200,7 @@ function catchStars(catches) {
 
 /**
  * Varje stegtyp: init, update (→ 'done' | { fail } | undefined) och text.
- * update(s, f, power, dt, ctx): power är spelarens effekt (P_smooth), ctx ger
+ * update(s, f, power, dt, ctx): power är spelarens motoreffekt (senaste dragets), ctx ger
  * slump, takeover() och om instruktören har kontrollen (inTakeover).
  */
 const STEPS = {
@@ -511,7 +511,7 @@ export class ExerciseRun {
     return Math.max(power, f.v < 0 ? req + f.P0 : req);
   }
 
-  /** Anropas efter varje fysiksteg med flygningen och spelarens effekt (P_smooth). */
+  /** Anropas efter varje fysiksteg med flygningen och spelarens motoreffekt. */
   update(flight, power) {
     if (this.status !== 'running') return;
     const dt = this.lastT === null ? 0 : flight.t - this.lastT;

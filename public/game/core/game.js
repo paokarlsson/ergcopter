@@ -8,7 +8,7 @@
 // Ren logik utan DOM. Tiden kommer utifrån via tick(t) i sekunder.
 
 import { Flight } from './physics.js';
-import { StrokeSmoother } from './signal.js';
+import { Engine } from './engine.js';
 import { MIN_MASS, MAX_MASS, CLASSES } from './config.js';
 import { ExerciseRun } from './exercise.js';
 import { getHelicopter, helicopterConfig } from './helicopters.js';
@@ -38,7 +38,7 @@ export class Game {
     this.suggested = null; // förslaget i menyn som ett drag startar, null = fri flygning
     this.menuFor = 0; // s i MENU
     this.flight = null;
-    this.smoother = new StrokeSmoother(cfg);
+    this.engine = new Engine(cfg);
     this.paused = false;
     this.lastT = null;
     this.acc = 0;
@@ -66,7 +66,7 @@ export class Game {
   /** Nya inställningar (från panelen). Gäller från nästa pass. */
   setConfig(cfg) {
     this.cfg = cfg;
-    this.smoother.cfg = cfg;
+    this.engine.cfg = cfg;
   }
 
   // --- Operatörens åtgärder -------------------------------------------------
@@ -158,13 +158,13 @@ export class Game {
     if (this.state !== 'FLYING' || this.paused) return; // drag under nedräkningen ignoreras
     if (this.run?.engineOff) return; // motorstopp: dragen gör ingenting
     // Speltiden (flight.t) används så att paus och bakgrundsflik inte påverkar.
-    if (this.smoother.push({ ...stroke, t: this.flight.t })) this.lastStrokeT = this.flight.t;
+    if (this.engine.stroke({ ...stroke, t: this.flight.t })) this.lastStrokeT = this.flight.t;
   }
 
-  /** Effekten som lyfter helikoptern just nu (0 utanför FLYING): P_smooth, eller 0 vid motorstopp och minst instruktörens när hen tagit över. */
+  /** Motoreffekten just nu (0 utanför FLYING): senaste dragets, eller 0 vid motorstopp och minst instruktörens när hen tagit över. */
   get power() {
     if (this.state !== 'FLYING') return 0;
-    const power = this.smoother.value(this.flight.t);
+    const power = this.engine.power(this.flight.t);
     return this.run ? this.run.effectivePower(power, this.flight) : power;
   }
 
@@ -208,7 +208,7 @@ export class Game {
   #takeOff() {
     this.flight = new Flight(this.flightConfig, this.player.mass);
     this.run = this.exercise ? new ExerciseRun(this.exercise, { rand: this.rand }) : null;
-    this.smoother = new StrokeSmoother(this.cfg);
+    this.engine = new Engine(this.cfg);
     this.acc = 0;
     this.lastStrokeT = 0;
     this.groundFor = 0;
@@ -219,7 +219,7 @@ export class Game {
 
   #physicsStep() {
     const f = this.flight;
-    const power = this.smoother.value(f.t);
+    const power = this.engine.power(f.t);
     this.prevH = f.h;
 
     if (this.run) {
@@ -228,7 +228,7 @@ export class Game {
       f.step(run.effectivePower(power, f));
       run.update(f, power);
       // Motorn stannar eller startar: dragen från före eller under stoppet räknas inte.
-      if (run.engineOff !== off) this.smoother.reset();
+      if (run.engineOff !== off) this.engine.reset();
       for (const e of run.takeEvents()) this.#emit('drill', e);
       if (run.status !== 'running') this.#finish(run.status);
       return; // övningen avgör när passet är slut
@@ -242,7 +242,7 @@ export class Game {
       }
     }
 
-    // 1. Har flugit och sedan stått på marken med P_smooth < P0
+    // 1. Har flugit och sedan stått på marken med motoreffekt < P0
     this.groundFor = f.hasFlown && f.onGround && power < f.P0 ? this.groundFor + this.cfg.dt : 0;
     if (this.groundFor >= this.cfg.groundEndS - 1e-9) return this.#finish('landed');
     // 2. Inga drag på idleEndS
