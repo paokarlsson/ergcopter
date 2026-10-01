@@ -16,6 +16,7 @@ export const PLANE_M = 400;
 /** Högst så här många milstolpstoppar i landskapet samtidigt. */
 export const MAX_PEAKS = 12;
 const NOISE_SIZE = 64; // 3D-brustexturen för molnen
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
 
 const VERTEX = `#version 300 es
 in vec2 aPos;
@@ -618,6 +619,14 @@ export class TerrainRenderer {
     this.lost = false;
     this.failed = false;
     this.pending = true;
+    // Utan grafikkort (programvarurendering) tar varje bild flera sekunder: rita i 2D.
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    if (SOFTWARE.test(String(name))) {
+      console.info('[Ergcopter] Ingen grafikprocessor (' + name + ') – landskapet ritas i 2D.');
+      this.failed = true;
+      return;
+    }
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     const program = gl.createProgram();
     this.shaders = [[gl.VERTEX_SHADER, VERTEX], [gl.FRAGMENT_SHADER, FRAGMENT]].map(([type, src]) => {
@@ -695,8 +704,9 @@ export class TerrainRenderer {
    * @param {{x:number, z:number, h:number, r:number}[]} v.peaks
    * @param {{x:number, z:number, r:number}|null} v.pad
    */
-  render(v) {
+  render(v, remember = true) {
     if (!this.ready) return;
+    if (remember) this.lastView = v;
     const { gl, canvas, u } = this;
     const w = Math.max(1, Math.round(v.width * v.scale));
     const h = Math.max(1, Math.round(v.height * v.scale));
@@ -730,5 +740,25 @@ export class TerrainRenderer {
     gl.uniform3f(u.uPad, v.pad?.x ?? 0, v.pad?.z ?? 0, v.pad?.r ?? 0);
     gl.uniform2f(u.uSun, v.sun?.x ?? 0.86, v.sun?.y ?? 0.2);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /**
+   * Små bilder av landskapet, t.ex. till korten i Fjällräddaren-menyn. Ritas på samma
+   * canvas som bakgrunden, som sedan ritas om direkt så att den inte hinner visa något annat.
+   * @param {object[]} views  som till render(), med width, height och scale
+   * @returns {HTMLCanvasElement[]|null}  null om landskapet inte är klart
+   */
+  snapshots(views) {
+    if (!this.ready) return null;
+    const shots = views.map((v) => {
+      this.render(v, false);
+      const copy = document.createElement('canvas');
+      copy.width = this.canvas.width;
+      copy.height = this.canvas.height;
+      copy.getContext('2d').drawImage(this.canvas, 0, 0);
+      return copy;
+    });
+    if (this.lastView) this.render(this.lastView);
+    return shots;
   }
 }

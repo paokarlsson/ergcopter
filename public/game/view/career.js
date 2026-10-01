@@ -52,6 +52,11 @@ const STATE = {
 const EXAM_THUMBS = { 'exam-hover': 'hover', 'exam-freefall': 'freefall', 'exam-engine': 'engine', 'exam-precision': 'hover', 'exam-landing': 'landing' };
 
 export class CareerMenu {
+  /** Bilder av 3D-landskapet till korten: (id[]) → canvas[] eller null. Sätts av main.js. */
+  photos = null;
+  #thumbs = []; // korten som visas: { canvas, thumb, livery }
+  #photoCache = new Map(); // landskapsbilden per kort, tas en gång
+
   constructor() {
     this.el = {
       name: $('menu-name'),
@@ -140,10 +145,24 @@ export class CareerMenu {
     e.sideTitle.textContent = step.title;
     e.sideText.textContent = step.text;
     e.sideGoal.hidden = true;
+    this.#thumbs = [];
     const cards = this.#cards();
     // Få kort blir större: fyra i bredd för lektionerna, fem för de fjorton övningarna
     e.cards.style.setProperty('--cols', String(cards.length <= 4 ? cards.length : cards.length <= 6 ? 3 : 5));
     e.cards.replaceChildren(...cards);
+    this.#addPhotos();
+  }
+
+  /** Byter kortens ritade bakgrund mot en bild av 3D-landskapet, när det finns. */
+  #addPhotos() {
+    if (!this.photos) return;
+    const missing = [...new Set(this.#thumbs.map((t) => t.thumb))].filter((id) => !this.#photoCache.has(id));
+    if (missing.length) {
+      const shots = this.photos(missing);
+      if (!shots) return;
+      missing.forEach((id, i) => this.#photoCache.set(id, shots[i]));
+    }
+    for (const t of this.#thumbs) drawThumb(t.canvas, t.thumb, this.m.colors, t.livery, this.#photoCache.get(t.thumb));
   }
 
   #cards() {
@@ -210,7 +229,8 @@ export class CareerMenu {
     }
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
-    drawThumb(canvas, thumb, m.colors, livery ?? m.school);
+    drawThumb(canvas, thumb, m.colors, livery ?? m.school, this.#photoCache.get(thumb) ?? null);
+    this.#thumbs.push({ canvas, thumb, livery: livery ?? m.school });
     b.append(canvas, Object.assign(document.createElement('span'), { className: 'card-title', textContent: title }));
     if (stars !== null) b.append(starSpan(stars, 'card-stars'));
     if (state || stateText) {

@@ -1,5 +1,7 @@
 // Små bilder till korten i Fjällräddaren-menyn: en scen med fjäll och helikopter och
 // det som övningen handlar om – band, pilar, ringar, vinsch eller moln. Ritas en gång.
+// Med 3D-landskapet (terrain.js) är bakgrunden en bild av det, från en kamera per kort
+// (thumbView); annars ritas himmel och fjäll här.
 
 import { drawHelicopter, drawCloud } from './heli-draw.js';
 import { mix, alpha } from './color.js';
@@ -9,6 +11,11 @@ const W = 320;
 const H = 200;
 const GROUND = 172;
 const STILL = { blur: 0.8, angle: 0.4, tailAngle: 0.3 };
+const DUSK_IDS = ['exam', 'mission', 'altitude', 'late-catch'];
+const GROUND_MOTIFS = ['first-lift', 'bounce', 'exam', 'landing'];
+const PX_PER_M = 1.3; // samma skala i bildens plan som i spelet, fast mindre
+const PLANE_M = 400; // som i terrain.js
+const AIR_M = [650, 1000, 1500, 2200]; // kamerahöjder för motiven i luften
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -16,17 +23,52 @@ const STILL = { blur: 0.8, angle: 0.4, tailAngle: 0.3 };
  * @param {object} c       scenens färger (render.js)
  * @param {object} livery  helikopterns utseende
  */
-export function drawThumb(canvas, id, c, livery) {
+export function drawThumb(canvas, id, c, livery, photo = null) {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  const seed = [...id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
-  const dusk = ['exam', 'mission', 'altitude', 'late-catch'].includes(id) ? 1 : 0;
-  backdrop(ctx, c, seed, dusk);
+  const seed = seedOf(id);
+  if (photo) ctx.drawImage(photo, 0, 0, W, H);
+  else backdrop(ctx, c, seed, DUSK_IDS.includes(id) ? 1 : 0);
   const lesson = /^lesson-(\d)/.exec(id);
-  const motif = MOTIFS[lesson ? LESSON_MOTIF[lesson[1]] : id] ?? MOTIFS.free;
-  motif(ctx, c, livery);
+  const motif = MOTIFS[motifOf(id)] ?? MOTIFS.free;
+  motif(ctx, c, livery, Boolean(photo));
   if (lesson) badge(ctx, lesson[1]);
+}
+
+/**
+ * Kameran för kortets bild i 3D-landskapet (TerrainRenderer.render): vid plattan för
+ * motiven på marken, så att marken hamnar där motivet ritar den, annars i luften med
+ * fjällen bakom. Varje kort får sin egen plats i dalen.
+ */
+export function thumbView(id) {
+  const seed = seedOf(id);
+  const motif = motifOf(id);
+  const ground = GROUND_MOTIFS.includes(motif);
+  const cy = ground ? 96 : 105;
+  const camY = ground ? (GROUND - cy) / PX_PER_M : AIR_M[seed % AIR_M.length];
+  const camX = ground ? (seed % 7) * 260 - 900 : 2500 + ((seed * 997) % 24000);
+  const focal = PX_PER_M * PLANE_M;
+  const view = { width: W, height: H, scale: 2, cx: W / 2, cy, focal, camX, camY, dusk: DUSK_IDS.includes(id) ? 1 : 0 };
+  view.thin = camY / 9000;
+  view.sun = { x: 0.84, y: 0.16 };
+  view.time = 30;
+  view.pad = null; // motivet ritar plattan själv
+  view.peaks = [];
+  if (motif === 'mission') {
+    // Toppen där skidåkaren ligger, med toppen på (236, 122) i bilden
+    const z = 2800;
+    const h = camY + ((cy - 122) * z) / focal;
+    view.peaks = [{ x: camX + ((236 - W / 2) * z) / focal, z, h, r: 0.85 * h + 300 }];
+  }
+  return view;
+}
+
+const seedOf = (id) => [...id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+
+function motifOf(id) {
+  const lesson = /^lesson-(\d)/.exec(id);
+  return lesson ? LESSON_MOTIF[lesson[1]] : id;
 }
 
 /** Himmel, två fjällkedjor och mark. */
@@ -308,22 +350,25 @@ const MOTIFS = {
     ctx.textBaseline = 'middle';
     ctx.fillText('★', 250, 100);
   },
-  mission(ctx, c, l) {
-    // En topp med en skadad skidåkare, räddningshelikoptern med vinschen nere
-    ctx.fillStyle = mix('#6e7d93', c.duskTop, 0.4);
-    ctx.beginPath();
-    ctx.moveTo(140, GROUND);
-    ctx.lineTo(236, 122);
-    ctx.lineTo(330, GROUND);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#f4f7fb';
-    ctx.beginPath();
-    ctx.moveTo(236, 122);
-    ctx.lineTo(216, 136);
-    ctx.lineTo(256, 136);
-    ctx.closePath();
-    ctx.fill();
+  mission(ctx, c, l, photo) {
+    // En topp med en skadad skidåkare, räddningshelikoptern med vinschen nere.
+    // I 3D-bilden står toppen redan i landskapet.
+    if (!photo) {
+      ctx.fillStyle = mix('#6e7d93', c.duskTop, 0.4);
+      ctx.beginPath();
+      ctx.moveTo(140, GROUND);
+      ctx.lineTo(236, 122);
+      ctx.lineTo(330, GROUND);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f4f7fb';
+      ctx.beginPath();
+      ctx.moveTo(236, 122);
+      ctx.lineTo(216, 136);
+      ctx.lineTo(256, 136);
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.strokeStyle = '#2f343c';
     ctx.lineWidth = 2;
     ctx.beginPath();

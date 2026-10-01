@@ -197,7 +197,8 @@ export class GameRenderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const t = typeof performance !== 'undefined' ? performance.now() / 1000 : 0;
-    const dt = this.lastDraw === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastDraw));
+    const frameS = this.lastDraw === null ? 0 : Math.max(0, t - this.lastDraw); // verklig tid, för 3D-landskapets fart
+    const dt = Math.min(0.1, frameS);
     this.lastDraw = t;
     const ease = (now, target) => (now === null ? target : now + (target - now) * Math.min(1, dt / EASE_S));
     this.heliX = ease(this.heliX, v.heliX ?? HELI_X);
@@ -213,7 +214,7 @@ export class GameRenderer {
     const camGround = (H - heliY0 - GROUND_MARGIN_PX) / pxPerM;
     const cam = Math.max(v.h, camGround); // höjden som hamnar på heliY0
     const y = (alt) => heliY0 - (alt - cam) * pxPerM;
-    const scale = Math.max(0.6, Math.min(1.6, W / 1100));
+    const scale = Math.max(0.6, Math.min(1.9, W / 1000)); // helikopterns storlek
     const hx = W * this.heliX;
     const airborne = Math.min(1, v.h / 3);
     const thin = Math.min(1, Math.max(0, cam / SKY_TOP_M));
@@ -224,7 +225,7 @@ export class GameRenderer {
       this.effects.downwash(dt, hx, v.rotor.blur * (1 - v.h / DOWNWASH_M), c.dust);
     }
 
-    const td = this.#use3d(dt);
+    const td = this.#use3d(frameS);
     if (td) {
       ctx.clearRect(0, 0, W, H);
       this.#landscape3d(ctx, W, H, v, { pxPerM, heliY0, cam, hx, t, dt, dusk, thin, scale, y });
@@ -268,7 +269,7 @@ export class GameRenderer {
     const pitch = this.speed > 0 ? 0.08 * v.rotor.blur * airborne : 0;
     ctx.rotate(pitch - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)));
     ctx.scale(scale, scale);
-    drawHelicopter(ctx, v.rotor, c, v.livery);
+    drawHelicopter(ctx, v.rotor, c, v.livery, { dusk });
     ctx.restore();
     front?.(); // främre halvan av hovringsringen, framför helikoptern
 
@@ -377,11 +378,19 @@ export class GameRenderer {
     ctx.globalAlpha = 1;
   }
 
-  /** Ska 3D-landskapet ritas? Sänker upplösningen om bilderna tar för lång tid. */
+  /** 3D-landskapet är igång (WebGL2 finns, shadern är byggd och datorn hinner med). */
+  get landscape3d() {
+    return Boolean(this.terrain?.ready) && !this.terrainOff;
+  }
+
+  /**
+   * Ska 3D-landskapet ritas? Sänker upplösningen om bilderna tar för lång tid.
+   * @param {number} dt  verklig tid sedan förra bilden (s)
+   */
   #use3d(dt) {
     const ok = Boolean(this.terrain?.ready) && !this.terrainOff;
-    if (ok && dt > 0) {
-      this.frameAvg += (dt - this.frameAvg) * 0.1;
+    if (ok && dt > 0 && dt < 5) {
+      this.frameAvg += (Math.min(dt, 0.5) - this.frameAvg) * 0.1;
       this.slowS = this.frameAvg > 1 / 42 ? this.slowS + dt : 0;
       this.fastS = this.frameAvg < 1 / 56 ? this.fastS + dt : 0;
       if (this.slowS > 0.4) {
@@ -579,7 +588,7 @@ export class GameRenderer {
         ctx.save();
         ctx.translate(hx + BUDDY_DX * scale, y(g.h) - 32 * scale);
         ctx.scale(scale * 0.85, scale * 0.85);
-        drawHelicopter(ctx, r, c, v.buddyLivery);
+        drawHelicopter(ctx, r, c, v.buddyLivery, { dusk: this.dusk });
         ctx.restore();
         guideLabel(ctx, 'Instruktören', LABEL_LEFT_PX, inBand(top, bottom), c);
       } else if (g.kind === 'band') {

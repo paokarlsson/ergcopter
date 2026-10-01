@@ -14,6 +14,7 @@ import { Rotor } from './view/rotor.js';
 import { attractFlight } from './view/attract.js';
 import { GameRenderer, fmtM, RING_SPEED_PX } from './view/render.js';
 import { TerrainRenderer } from './view/terrain.js';
+import { thumbView } from './view/thumbs.js';
 import { GameUI, download } from './view/ui.js';
 import { Hud } from './view/hud.js';
 import { CareerMenu } from './view/career.js';
@@ -57,6 +58,8 @@ setTerrain(cfg.terrain3d);
 const ui = new GameUI();
 const hud = new Hud();
 const careerMenu = new CareerMenu();
+// Korten i menyn får bilder av 3D-landskapet när det är igång
+careerMenu.photos = (ids) => (renderer.landscape3d ? terrain.snapshots(ids.map(thumbView)) : null);
 const resultScreen = new ResultScreen();
 const logView = new FlightLogView(() => renderer.colors);
 const sound = new RotorSound();

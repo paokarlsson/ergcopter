@@ -68,7 +68,7 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       color.js           färgblandning för canvasen
       ui.js              DOM: startskärmen, Ny flygning, redo, notiser, topplista, inställningar
       hud.js             instrumenten: höjdrutan, effekten, variometern, tiden och övningens panel
-      career.js, thumbs.js  Fjällräddaren-menyn och korten med ritade bilder
+      career.js, thumbs.js  Fjällräddaren-menyn och korten med bilder (3D-landskapet eller ritade)
       results.js         resultatskärmen
       logplayer.js       flygloggarna med uppspelning
       rotor.js           rotorns animation
