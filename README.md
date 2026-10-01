@@ -17,6 +17,7 @@ npm test            # kör testerna
 - Inget erg till hands? Öppna `http://localhost:3000/?demo`. `?demo=lesson-1` eller `?demo=exam` låter autopiloten flyga en lektion eller uppflygningen.
 - Live-dashboarden med siffror och kraftkurva finns på `dashboard.html`. Flyger spelet i en annan flik visar den också höjden.
 - Varje flygning spelas in. Under Flygloggar på startskärmen (eller tangent L) kan du spela upp flygningen över fjälltopparna, och kopiera loggen för att klistra in den för analys: alla drag med kraftkurvan och hur helikoptern svarade.
+- Landskapet ritas i 3D med WebGL2 (fjäll, sjö som speglar fjällen, moln) och kräver en dator med grafikprocessor. Utan stöd, eller om datorn inte hinner med, ritas det i 2D. 3D går att stänga av under Inställningar → Visning.
 - Med Docker: `docker compose up`.
 
 Spelet publiceras automatiskt på GitHub Pages när `master` uppdateras och testerna går igenom.
