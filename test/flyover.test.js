@@ -16,6 +16,10 @@ Object.assign(globalThis, {
   matchMedia: () => ({ addEventListener: noop }),
   getComputedStyle: () => ({ getPropertyValue: () => '#808080' }),
   devicePixelRatio: 1,
+  // Konturer som både fylls och klipps (fjällkedjorna, helikopterns kabin)
+  Path2D: function Path2D() {
+    return new Proxy({}, { get: () => noop });
+  },
 });
 const { GameRenderer } = await import('../public/game/view/render.js');
 const { DEFAULT_MILESTONES } = await import('../public/game/core/milestones.js');

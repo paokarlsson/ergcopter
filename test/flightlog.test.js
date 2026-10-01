@@ -5,7 +5,7 @@ import { Game } from '../public/game/core/game.js';
 import { findProgram } from '../public/game/core/lessons.js';
 import { autopilot } from '../public/game/core/autopilot.js';
 import { flyGame, replayLog } from '../public/game/core/sim.js';
-import { FlightLogStore, MAX_LOGS, parseLog, reversals } from '../public/game/core/flightlog.js';
+import { FlightLogStore, MAX_LOGS, parseLog, reversals, logTimeline, traceAt } from '../public/game/core/flightlog.js';
 
 /** Ett spel i READY för en spelare på 80 kg (P0 = 60 W), med programmet `id` eller fri flygning. */
 function ready(id = null, cfg = {}, rand = () => 0.5) {
@@ -205,4 +205,23 @@ test('full lagring: de äldsta loggarna släpps tills det får plats', () => {
   const saved = JSON.parse(data.get('skierg.flightlog.v1'));
   assert.ok(saved.length >= 1 && saved.length < 4);
   assert.equal(saved[0].title, 'F4');
+});
+
+test('uppspelningen läser toppar, sättningar och höjden mellan spårets punkter', () => {
+  const game = flyGame(ready(), pilot());
+  const log = parseLog(game.log.toText());
+  const line = logTimeline(log);
+  assert.ok(line.peaks.length >= 2);
+  assert.equal(line.peaks[0].name, 'Suljätten');
+  assert.equal(line.peaks[0].h, 845);
+  assert.ok(line.peaks.every((p, i) => i === 0 || p.t >= line.peaks[i - 1].t));
+  assert.ok(line.touchdowns.length >= 1);
+  assert.ok(line.touchdowns[0].speed > 0);
+  assert.ok(Math.abs(line.duration - game.result.duration) < 0.01);
+  assert.ok(Math.abs(line.hMax - game.result.hMax) < 5);
+  // Mitt emellan två punkter i spåret
+  const [a, b] = line.trace.slice(10, 12);
+  assert.ok(Math.abs(traceAt(line.trace, (a.t + b.t) / 2).h - (a.h + b.h) / 2) < 1e-9);
+  assert.equal(traceAt(line.trace, -1).h, line.trace[0].h);
+  assert.equal(traceAt(line.trace, 1e9).h, line.trace.at(-1).h);
 });

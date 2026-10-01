@@ -91,7 +91,7 @@ test('maxSinkRate begränsar sjunkhastigheten', () => {
   assert.equal(f.v, -5);
 });
 
-test('lyftmätaren: P/P0 på marken, P/P_req(h) i luften', () => {
+test('effekten mot det som krävs: P/P0 på marken, P/P_req(h) i luften', () => {
   const f = new Flight(cfg, 80);
   assert.equal(f.liftRatio(50), 0.5);
   for (let i = 0; i < 20 * 60; i++) f.step(250);

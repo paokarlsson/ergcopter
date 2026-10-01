@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SkiErg – dashboard</title>
+    <title>Ergcopter – live-dashboard</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="dashboard/dashboard.css" />
     <script type="module" src="dashboard/dashboard.js"></script>
   </head>
   <body>
     <header>
-      <h1>SkiErg</h1>
-      <a href="./" class="nav-link">← Helikopterspelet</a>
+      <h1>Live-dashboard</h1>
+      <a href="./" class="nav-link">← Ergcopter</a>
       <span id="status" data-kind="idle">Inte ansluten</span>
       <button id="connect">Anslut PM5 (USB)</button>
       <button id="disconnect" hidden>Koppla från</button>
@@ -22,12 +22,57 @@
       Den här webbläsaren saknar WebHID. Öppna sidan i Chrome eller Edge på Windows.
     </p>
 
-    <main>
-      <section class="metric big"><h2>Tid</h2><output id="time">0:00.0</output></section>
-      <section class="metric big"><h2>Tempo /500 m</h2><output id="pace">–</output></section>
-      <section class="metric big"><h2>Watt</h2><output id="power">–</output></section>
+    <div class="top">
+      <!-- Från spelet i en annan flik (shared/live.js); watt bara med råa watt påslaget i spelet -->
+      <section class="panel game">
+        <div class="cell wide">
+          <h2>Höjd</h2>
+          <output id="game-h" class="xl">–</output>
+        </div>
+        <div class="cell">
+          <h2>Din effekt</h2>
+          <output id="power" class="good">–</output>
+        </div>
+        <div class="cell">
+          <h2>Krävd effekt</h2>
+          <output id="game-req">–</output>
+        </div>
+        <div class="cell">
+          <h2>Skillnad</h2>
+          <output id="game-diff">–</output>
+        </div>
+        <div class="cell">
+          <h2>Tid</h2>
+          <output id="time">0:00.0</output>
+        </div>
+        <p class="hint" id="game-hint">Höjd och skillnad visas när spelet flyger i en annan flik.</p>
+      </section>
+
+      <section class="panel force">
+        <div class="panel-head">
+          <h2>Kraftkurva</h2>
+          <ul class="legend">
+            <li><span class="key series"></span>Aktuellt drag</li>
+            <li><span class="key history"></span>Tidigare drag (8)</li>
+          </ul>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="force-chart" role="img" aria-label="Kraft under draget, i newton per sampel"></canvas>
+          <div id="force-tip" class="tooltip" hidden></div>
+        </div>
+      </section>
+    </div>
+
+    <main class="tiles">
+      <section class="metric"><h2>Drag/min</h2><output id="cadence">–</output></section>
+      <section class="metric"><h2>Medeleffekt</h2><output id="avg-power">–</output></section>
+      <section class="metric"><h2>Maxeffekt</h2><output id="max-power">–</output></section>
+      <section class="metric"><h2>Totalt antal drag</h2><output id="stroke-count">0</output></section>
+    </main>
+
+    <main class="tiles small">
+      <section class="metric"><h2>Tempo /500 m</h2><output id="pace">–</output></section>
       <section class="metric"><h2>Meter</h2><output id="distance">0</output></section>
-      <section class="metric"><h2>Tag/min</h2><output id="cadence">–</output></section>
       <section class="metric"><h2>Kalorier</h2><output id="calories">0</output></section>
       <section class="metric"><h2>Puls</h2><output id="hr">–</output></section>
       <section class="metric"><h2>Drag</h2><output id="stroke">–</output></section>
@@ -35,18 +80,7 @@
       <section class="metric"><h2>Dragfaktor</h2><output id="drag">–</output></section>
     </main>
 
-    <section class="panel force">
-      <div class="panel-head">
-        <h2>Kraftkurva</h2>
-        <ul class="legend">
-          <li><span class="key series"></span>Aktuellt drag</li>
-          <li><span class="key history"></span>Tidigare drag (8)</li>
-        </ul>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="force-chart" role="img" aria-label="Kraft under draget, i newton per sampel"></canvas>
-        <div id="force-tip" class="tooltip" hidden></div>
-      </div>
+    <section class="panel">
       <table class="strokes">
         <thead>
           <tr>

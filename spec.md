@@ -8,14 +8,14 @@ Deltagaren står på en SkiErg. Effekten (watt) läses live från ergens PM5-dis
 
 Designmål: flera strategier ska vara gångbara, till exempel explosivt upp, jämnt och länge, eller jämnt med slutspurt. Med standardparametrarna ligger den bästa insatsen runt 3–5 minuter, där både explosiva och uthålliga deltagare har chans.
 
-Den här specen beskriver grundspelet, "så högt som möjligt". Standardvärdena för blandad publik står i avsnitt 12. Övningar, karriär och uppdrag (Fjällräddaren) beskrivs i `plan.md`.
+Spelet heter **Ergcopter**. På startskärmen väljer man grundspelet, "så högt som möjligt", eller **Fjällräddaren** med övningar, karriär och uppdrag. Den här specen beskriver grundspelet; Fjällräddaren beskrivs i `plan.md`. Standardvärdena för blandad publik står i avsnitt 12.
 
 ## 2. Plattform
 
 - Webbapp på en enda sida som körs i Chrome eller Edge på en dator kopplad till en storskärm.
 - PM5 läses via USB (WebHID) eller Bluetooth (Web Bluetooth). Båda kräver säker kontext (https eller localhost), och anslutningen måste startas av ett användarklick. USB ger även kraftkurvan. Fungerar inte i Firefox; på iPhone/iPad fungerar bara Bluetooth, via appen Bluefy.
 - Ingen backend behövs: sidan är statiska filer. Den publiceras på GitHub Pages (https), och `server.js` eller Docker räcker för att köra lokalt. Topplista, inställningar och övningsframsteg sparas lokalt i webbläsaren (localStorage).
-- En separat dashboard (`dashboard.html`) visar siffror och kraftkurva från PM via USB, med samma datakälla som spelet.
+- En separat live-dashboard (`dashboard.html`) för operatören visar siffror och kraftkurva från PM via USB, med samma datakälla som spelet, plus medel- och maxeffekt och antal drag. Flyger spelet i en annan flik i samma webbläsare visar dashboarden också höjden och skillnaden mot det som krävs (`shared/live.js`, BroadcastChannel). Krävd effekt i watt skickas bara när råa watt är påslaget (avsnitt 6).
 - Valfri renderingsteknik; Canvas 2D räcker.
 - Fysiken ska vara helt separerad från rendering och datakälla så att den kan testas och köras headless.
 
@@ -181,15 +181,16 @@ Effektkurvan är en uppskattning. Parametrarna ska trimmas efter tester med rikt
 - Vikten visas aldrig på storskärmen och sparas inte i topplistan.
 - `P0` och råa watt visas inte heller på storskärmen som standard. I linjärt läge går vikten att räkna ut direkt från lyfteffekten (vikt = P0 / 1,25). Använd relativa mått i stället (se avsnitt 8). Råa watt kan slås på i inställningarna.
 - Flygloggen (avsnitt 9.1) har effekten i procent av `P0` och ingen vikt. `P0` i watt tas med bara när råa watt är påslaget.
+- Samma regel gäller överallt på storskärmen: inmatningen visar lyfteffekten i watt bara med råa watt (annars "Räknas från vikten"), vikten skrivs i ett dolt fält, instrumenten visar "Din effekt" och "Krävd effekt här" i watt bara med råa watt, och resultatet visar medel- och maxeffekt i procent av lyfteffekten.
 
 ## 7. Spelflöde
 
 Tillstånd: `IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE`
 
-I MENU väljer deltagaren fri flygning (det som beskrivs här) eller något i flygskolan: en övning, en lektion eller uppflygningen (se `plan.md` §3). Efter skolan går FINISHED tillbaka till MENU. Alla flygningar förs in i deltagarens loggbok.
+Läget väljs på startskärmen. "Så högt som möjligt" (det som beskrivs här) går från SETUP direkt till READY. Fjällräddaren går till MENU, där deltagaren väljer en övning, en lektion eller uppflygningen (se `plan.md` §3); efter skolan går FINISHED tillbaka till MENU. Alla flygningar förs in i deltagarens loggbok.
 
-- **IDLE**: vänteskärm med titeln i himlen, topplista och "Tryck för att starta". Bakom flyger helikoptern en demotur (`attract.js`): den lyfter, stiger förbi topparna och genom molntäcket till 2 300 m, sjunker och landar, om och om igen. Demoturen är bara bild, låter inte och påverkar inte topplistan.
-- **SETUP**: operatören matar in namn eller alias (valfritt, tomt blir "Anonym"), vikt och klass (avsnitt 12.2). Ergen måste vara ansluten.
+- **IDLE**: startskärmen med loggan ERGCOPTER, "Driv högre. Nå längre." och menyn: Så högt som möjligt, Fjällräddaren, Inställningar, Topplista och Flygloggar, plus Demo (`?demo`) nere till vänster. Enter väljer Så högt som möjligt, piltangenterna flyttar mellan valen. Topplistan visas med knappen, efter en fri flygning och av sig själv när ingen rört spelet på 30 s (20 s topplista, 30 s meny, om och om igen). Bakom flyger helikoptern en demotur (`attract.js`) i kvällsljus: den lyfter, stiger förbi topparna och genom molntäcket till 2 300 m, sjunker och landar, om och om igen. Demoturen är bara bild, låter inte och påverkar inte topplistan.
+- **SETUP** (Ny flygning): operatören matar in namn eller alias (valfritt, tomt blir "Anonym"), ålder och vikt. Åldern ger klassen (avsnitt 12.2) och sparas inte. Ergen måste vara ansluten; anslutningen finns överst i formuläret.
 - **READY**: ergen är ansluten. Visa "Dra för att lyfta!".
 - **COUNTDOWN**: 3-2-1. Drag under nedräkningen ignoreras. Fysiken nollställs.
 - **FLYING**: fysik och UI körs, tiden räknas. Passet avslutas vid det första av följande:
@@ -197,30 +198,31 @@ I MENU väljer deltagaren fri flygning (det som beskrivs här) eller något i fl
   2. Inga drag på `idleEndS` sekunder (standard 10).
   3. `maxSessionS` har uppnåtts (standard 480 s, 0 = av).
   4. Operatören trycker Esc.
-- **FINISHED**: visa maxhöjd, placering i topplistan och högsta passerade milstolpe. Landningen spelas upp snabbspolad på högst 3 sekunder. Återgå till IDLE efter `resultDisplayS` sekunder (standard 15) eller vid tangenttryck.
+- **FINISHED**: resultatet till vänster i kvällsljus, med landningen uppspelad snabbspolad på högst 3 sekunder till höger. Överst vilket rekord det blev (`core/results.js`): nytt rekord i klassen, dagens rekord i klassen (minst två flygningar) eller nytt personligt rekord (samma namn och klass, inte anonyma), annars namn och klass. Sedan maxhöjden, en mening om topparna ("Du flög högre än Helags men nådde inte helt till Kebnekaise."), tid, medel- och maxeffekt, antal drag och placering i klassen, och de två senast passerade topparna plus nästa. "Flyg igen" går till READY med samma deltagare. "Till topplistan", tangenttryck eller `resultDisplayS` sekunder (standard 15) går till IDLE med topplistan.
 
 Poäng: `h_max`. Spara namn, `h_max`, tid till `h_max`, klass och tidsstämpel.
 
 ## 8. UI (storskärm)
 
-- Vertikal höjdskala med helikoptern. Kameran följer helikoptern och visar marken när höjden är låg.
-- Stor siffra för aktuell höjd i meter och en mindre för maxhöjden i passet. Höjden visas som en mekanisk räknare där siffrorna rullar; över 15 m/s byts de direkt, eftersom de ändå inte hinner rulla klart.
-- **Lyftmätare** (det centrala elementet): `P / P_req(h)` i procent, där `P` är motoreffekten, alltså senaste dragets effekt. Mätaren ändras vid varje drag, så att man direkt ser om draget var för lätt eller för hårt. 100 % betyder att draget håller höjden när rotorn och farten har ställt in sig. Grön över 100 %, röd under. På marken visas `P / P0`. Mätaren är en halvcirkel med visare från 0 till 300 % (samma tak som ljudet) och ett tydligt streck vid 100 %; över 200 % lyser bågen.
-- Siffror och rubriker använder typsnittet Barlow Condensed (SIL OFL), som ligger i `public/fonts/` så att spelet fungerar utan nät.
-- Variometer: stig- eller sjunkhastighet i m/s med pil.
+Utseendet följer en mockup: mörka glaspaneler ovanpå scenen, rubriker och siffror i Barlow Condensed (SIL OFL, i `public/fonts/` så att spelet fungerar utan nät), blå knapp för huvudvalet och grön för att starta. Panelerna är mörka i både ljust och mörkt tema; bara inställningspanelen följer temat.
+
+- **Höjdskala** till vänster från marken till en bit över det man siktar på, i fasta steg (2 000, 3 000, 5 000 m …; i skolan 250–1 500 m). Aktuell höjd står i en blå ruta på skalan som en mekanisk räknare där siffrorna rullar; över 15 m/s byts de direkt, eftersom de ändå inte hinner rulla klart. Skalan visar också milstolparna, dagens rekord och maxhöjden i passet som små markeringar. Kameran följer helikoptern och visar marken när höjden är låg.
+- **Effekt (relativ)** uppe till höger (det centrala elementet): `P / P_req(h) − 1` i procent, där `P` är motoreffekten, alltså senaste dragets effekt. Den ändras vid varje drag, så att man direkt ser om draget var för lätt eller för hårt. ±0 % betyder att draget håller höjden när rotorn och farten har ställt in sig. På marken visas `P / P0 − 1`. Stapeln har ett vitt streck för att hålla höjden en tredjedel in; grönt växer åt höger upp till +200 % och rött åt vänster ned till −100 %, tätare nära strecket. Från +100 % lyser stapeln. Bredvid står maxhöjden i passet och dagens rekord, eller "Din effekt" och "Krävd effekt här" i watt när råa watt är påslaget.
+- **Variometer** nere till höger: en rund mätare för stig- och sjunkhastighet med noll klockan nio och stigning uppåt, tätare skala nära noll (0, 10, 20, 50 m/s). I övningarna står stigningen i panelen i stället.
+- Tid sedan start nere till vänster, som 02:14.
 - Rotorns animation följer fysikens rotorvarv under flygningen. Före lyftet följer den ergen (kraftkurvan, eller `P / P0` utan kraftdata), så att deltagaren ser respons redan innan helikoptern lättar.
-- Horisontella linjer för dagens rekord, maxhöjden i passet och milstolpar.
-- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg med röse och skylt som passerar under helikoptern; en topp högt över helikoptern ritas genomskinlig, som om den låg långt bort. Flyger man över en topp blir skylten grön och det sprutar konfetti. Visa en kort banderoll ("Topp passerad") när en milstolpe passeras.
-- Landskapet visar höjden utan siffror (`scenery.js`): tre fjällkedjor (granskog, fjällbjörk och hed, kalfjäll med snö) som sjunker undan när man stiger, ett molntäcke vid 1 900–2 040 m som man flyger igenom med ett molnhav ovanför, och norrsken högt upp.
+- Horisontella linjer för dagens rekord och maxhöjden i passet.
+- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg med snö och skugga som passerar under helikoptern, med en etikett i glas ovanför: namn, höjd och en bock när toppen är passerad. När helikoptern flyger över toppen lyfts etiketten över den. En topp högt över helikoptern ritas genomskinlig, som om den låg långt bort. Flyger man över en topp sprutar det konfetti, och en banderoll ("Topp passerad") visas.
+- Landskapet visar höjden utan siffror (`scenery.js`): taggiga fjällkedjor i tre lager med snö och skuggsida (kalfjäll längst bort, fjäll i mitten, skog närmast) som sjunker undan när man stiger, en sjö i dalen och helikopterplattan med gul cirkel, ett molntäcke vid 1 900–2 040 m som man flyger igenom med ett molnhav ovanför, och norrsken högt upp. På start- och resultatskärmen lyser kvällssolen; under flygningen är det dag.
+- Helikoptern är en räddningshelikopter i vitt och rött med inbyggd stjärtrotor (`heli-draw.js`).
 - Fartkänsla (`effects.js`): fartstreck och en lätt utzoomning när man stiger eller faller fort, damm från rotorvinden nära marken, och helikoptern gungar i luften och skakar i full stigning. Allt detta är bara bild och påverkar inte fysiken.
-- Tid sedan start.
-- Topplista per klass i IDLE och FINISHED med namn och höjd, aldrig vikt eller watt (avsnitt 12.2).
+- Topplista per klass på startskärmen med namn och höjd, aldrig vikt eller watt (avsnitt 12.2).
 - Valfritt ljud: helikopterljud som följer motoreffekten `P / P0`. Hovring (100 %) ger fullt rotorvarv; över 100 % låter det mer (bladslag, dunk, volym) upp till taket 300 %, med tydlig skillnad vid 200 %.
 
 ## 9. Inställningar och data
 
 - Alla parametrar ligger i ett samlat konfigurationsobjekt.
-- Dold inställningspanel för operatören (tangent S) med redigering och återställning till standard. Sparas i localStorage.
+- Inställningspanel för operatören (tangent S, kugghjulet eller Inställningar på startskärmen) med redigering och återställning till standard. Sparas i localStorage.
 - Topplistan kan exporteras som JSON eller CSV och rensas (med bekräftelse).
 
 ### 9.1 Flygloggen
@@ -230,11 +232,12 @@ Varje flygning spelas in (`flightlog.js`), så att man i efterhand kan se vilka 
 - **Huvud:** övning, helikopter, parametrar, resultat och de slumpvärden övningen drog (när motorn stannar).
 - **Sammanfattning** per moment och steg: tid och utfall, antal drag, snitteffekt och hur mycket effekten ändras från drag till drag, höjder, vändningar (farten byter riktning) och sättningar. I ett landningssteg räknas dragen under 25 m: hur många som leder till en mjuk sjunk, hur många som får helikoptern att stiga och hur många som sjunker för fort. Kraftkurvan sammanfattas med toppkraft och hur lång tid det tar från att kraften börjar tills effekten når motorn.
 - **Händelser:** steg, instruktörens besked, lyft, sättningar med fart, motorstopp, övertagande, paus och slut.
-- **Drag:** flygtiden då motorn fick draget, effekten, höjd och fart, lyftmätaren, stigfarten draget leder till, om draget drev motorn (ok, dubblett, paus eller motorstopp) och kraftkurvan i N med tiden från första sampel (USB och demo).
+- **Drag:** flygtiden då motorn fick draget, effekten, höjd och fart, effekten mot det som krävs (`P / P_req` i %, instrumentet visar samma minus 100), stigfarten draget leder till, om draget drev motorn (ok, dubblett, paus eller motorstopp) och kraftkurvan i N med tiden från första sampel (USB och demo).
 - **Spår:** höjd, fart, lyftkraft mot tyngd och motoreffekt var 0,5 s, och var 0,1 s under 25 m och när farten ändras fort (fall och hämtningar).
 - **Integritet (avsnitt 6):** effekten står i procent av lyfteffekten `P0` utan last, aldrig i watt, och vikten finns inte med.
 - **Uppspelning:** fysiken räknas relativt `P0`, så dragen och slumpvärdena räcker för att flyga samma pass igen genom spelet (`replayLog` i `sim.js`). `npm run flightlog -- logg.txt` skriver ut sammanfattningen, de sista dragen före varje sättning och hur väl uppspelningen följer loggen. Med `--set rotorTauS=1` provas samma drag med andra parametrar; spelaren hade förstås flugit annorlunda, så det är en fingervisning.
-- **I gränssnittet:** Inställningar → Flygloggar (tangent L) listar de 10 senaste flygningarna med Kopiera och Ladda ned. De sparas i localStorage (`skierg.flightlog.v1`); blir lagringen full släpps de äldsta. Går urklippet inte att använda visas loggen markerad, så att man kan kopiera den själv.
+- **I gränssnittet:** Flygloggar på startskärmen (tangent L) listar de 10 senaste flygningarna med Spela upp, Kopiera och Ladda ned. De sparas i localStorage (`skierg.flightlog.v1`); blir lagringen full släpps de äldsta. Går urklippet inte att använda visas loggen markerad, så att man kan kopiera den själv.
+- **Uppspelning** (`logplayer.js`): höjden över tiden som en linje över fjälltopparna man passerade, med toppen där linjen nådde höjden. Linjen är grön när helikoptern stiger, gul när den håller höjden och röd när den sjunker; sättningar är vita prickar vid marken och helikoptern ritas där den var. Spela och pausa (mellanslag), spola med reglaget eller piltangenterna och välj fart 1–16×. Topparna och sättningarna läses ur loggens händelser (`logTimeline` i `flightlog.js`).
 - En övning på ett par minuter ger 20–60 kB, mest spåret nära marken och kraftkurvorna.
 
 ## 10. Tester
@@ -265,6 +268,9 @@ Varje flygning spelas in (`flightlog.js`), så att man i efterhand kan se vilka 
 - Texten går att läsa tillbaka, även med annan text runt omkring.
 - Uppspelningen flyger samma pass: samma utfall och sättningar, och höjden skiljer under 0,1 m.
 - De 10 senaste loggarna sparas; blir lagringen full släpps de äldsta.
+
+**Resultatet** (`test/results.test.js`)
+- Topparna kring maxhöjden, meningen om höjden och vilket rekord det blev: i klassen, i dag eller personligt.
 
 **Strategisimulator** (utvecklarverktyg)
 Ett headless-skript (`npm run simulate`) som kör `ScriptedSource`-profiler genom samma motor och fysik och skriver ut `h_max`. Används för trimning. Profilerna står i avsnitt 12.3.
@@ -305,7 +311,7 @@ Med `k = 2/3` ger 30 kg `P0` = 31,2 W. Det rättvisa läget slår alltså hårt 
 
 ### 12.2 Klasser och topplista per klass
 
-- Klasserna är **Barn** (till och med 12 år), **Ungdom** (13–17 år) och **Vuxen** (18 år och äldre). Bara klassen sparas, aldrig åldern.
+- Klasserna är **Barn** (till och med 12 år), **Ungdom** (13–17 år) och **Vuxen** (18 år och äldre). Inmatningen frågar efter åldern och räknar fram klassen (`classForAge` i `config.js`). Bara klassen sparas, aldrig åldern.
 - För barn visas en påminnelse till operatören: spjäll 3–5, och pall vid behov om barnet inte når handtagen.
 - Topplistan visas per klass. Startskärmen bläddrar själv mellan klasserna (var 8:e sekund) så att publiken ser alla. En sammanlagd lista kan slås på som extra flik i inställningarna.
 - Placering och dagens rekord räknas inom deltagarens klass.

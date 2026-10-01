@@ -1,11 +1,12 @@
-// DOM-delen av spelet: skärmar, instrument, topplista, inställningar, debug.
+// DOM-delen av spelet: skärmarna (start, ny flygning, redo, nedräkning), topplistan,
+// notiser, anslutningen, inställningar och debug. Instrumenten ligger i hud.js,
+// Fjällräddaren-menyn i career.js, resultatet i results.js och flygloggarna i logplayer.js.
 // All text från användare eller datakällor sätts med textContent.
 
-import { CONFIG_SCHEMA, CLASSES, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from '../core/config.js';
+import { CONFIG_SCHEMA, CHILD_CLASS, CHILD_REMINDER, formatMilestones, parseMilestones, sanitize } from '../core/config.js';
 import { preview, CALIBRATION_STEPS, CALIBRATION_ACTIONS, PERSON_SECONDS, BALANCE_MASS } from '../core/calibration.js';
 import { fmtM } from './render.js';
-import { describeResults, starText, programOf } from '../core/exercise.js';
-import { drawHelicopter } from './heli-draw.js';
+import { starText, programOf } from '../core/exercise.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,35 +20,17 @@ const SCREEN_FOR_STATE = {
   FINISHED: 'screen-finished',
 };
 
-const REASONS = {
-  landed: 'Landade',
-  idle: 'Inga fler drag',
-  time: 'Tiden är slut',
-  operator: 'Avbrutet',
-};
-
 const MAX_DEBUG_LINES = 200;
-const ODO_ROLL_MAX_MS = 15; // över den här farten hinner siffrorna inte rulla klart, så de byts direkt
-const LIFT_GAUGE_MAX = 300; // lyftmätarens skala i %, samma tak som ljudet (spec §8)
 const TOAST_MS = 2400; // samma som animationen i game.css
 
 export class GameUI {
   constructor() {
     this.el = {
       hud: $('hud'),
-      alt: $('alt'),
-      altMax: $('alt-max'),
-      lift: document.querySelector('.lift'),
-      liftPct: $('lift-pct'),
-      liftFill: $('lift-fill'),
-      liftMeter: $('lift-meter'),
-      liftNeedle: $('lift-needle'),
-      liftHint: $('lift-hint'),
-      vario: $('vario'),
-      timer: $('timer'),
-      raw: $('raw'),
-      replayBadge: $('replay-badge'),
       toast: $('toast'),
+      idle: $('screen-idle'),
+      mainMenu: $('main-menu'),
+      boardPanel: $('board-panel'),
       boardIdle: $('board-idle'),
       boardTabs: $('board-tabs'),
       todayIdle: $('today-idle'),
@@ -55,40 +38,21 @@ export class GameUI {
       sourceSelect: $('source-select'),
       connect: $('connect'),
       setupForm: $('setup-form'),
+      setupMode: $('setup-mode'),
+      setupSubmit: $('setup-submit'),
       setupError: $('setup-error'),
       name: $('name'),
+      age: $('age'),
       mass: $('mass'),
-      klassOptions: $('klass-options'),
+      klassHint: $('klass-hint'),
+      liftTitle: $('lift-title'),
+      liftValue: $('lift-value'),
       childReminder: $('child-reminder'),
+      readyKicker: $('ready-kicker'),
       readyName: $('ready-name'),
       readyGoal: $('ready-goal'),
       readyBest: $('ready-best'),
-      menuName: $('menu-name'),
-      menuTitle: $('menu-title'),
-      menuLogbook: $('menu-logbook'),
-      menuAlarm: $('menu-alarm'),
-      menuSchool: $('menu-school'),
-      menuList: $('menu-list'),
-      menuFree: $('menu-free'),
-      menuLead: $('menu-lead'),
-      drill: $('drill'),
-      drillName: $('drill-name'),
-      drillStep: $('drill-step'),
-      drillText: $('drill-text'),
-      drillBar: $('drill-bar'),
-      drillBarFill: $('drill-bar-fill'),
-      drillSink: $('drill-sink'),
-      drillNote: $('drill-note'),
       countdown: $('countdown'),
-      finName: $('fin-name'),
-      finReason: $('fin-reason'),
-      finHeight: $('fin-height'),
-      finRank: $('fin-rank'),
-      finStars: $('fin-stars'),
-      finList: $('fin-list'),
-      finNote: $('fin-note'),
-      certificate: $('certificate'),
-      finMilestone: $('fin-milestone'),
       disc: $('screen-disconnected'),
       discMessage: $('disc-message'),
       reconnect: $('reconnect'),
@@ -102,9 +66,7 @@ export class GameUI {
     $('warning-close').addEventListener('click', () => (this.el.warning.hidden = true));
     this.toastTimer = null;
     this.toastQueue = [];
-    this.altShape = null; // höjdmätarens teckenmönster, byggs om när antalet siffror ändras
     this.settingsBase = null;
-    this.#buildClassOptions();
     this.#buildCalibrationHelp();
     // Förhandsvisningen räknas om medan operatören ändrar värden (spec §12.4).
     this.el.settingsFields.addEventListener('input', () => {
@@ -118,11 +80,21 @@ export class GameUI {
     for (const id of Object.values(SCREEN_FOR_STATE)) if (id) $(id).hidden = true;
     const id = SCREEN_FOR_STATE[state];
     if (id) $(id).hidden = false;
-    this.el.hud.hidden = !['COUNTDOWN', 'FLYING', 'FINISHED'].includes(state);
+    this.el.hud.hidden = !['COUNTDOWN', 'FLYING'].includes(state);
     if (state === 'SETUP') {
       this.el.setupError.textContent = '';
       this.el.name.focus();
     }
+  }
+
+  /** Startskärmen visar menyn eller topplistan. */
+  setIdleView(view) {
+    this.el.mainMenu.hidden = view !== 'menu';
+    this.el.boardPanel.hidden = view !== 'board';
+  }
+
+  get idleView() {
+    return this.el.boardPanel.hidden ? 'menu' : 'board';
   }
 
   /**
@@ -178,43 +150,51 @@ export class GameUI {
     this.el.setupError.textContent = text ?? '';
   }
 
-  /** Läser formuläret och tömmer vikten direkt, så att den inte ligger kvar. */
+  /** Rubriken och knappen efter läget: så högt som möjligt eller Fjällräddaren. */
+  setSetupMode(mode) {
+    this.el.setupMode.textContent = mode === 'free' ? 'Så högt som möjligt' : 'Fjällräddaren';
+    this.el.setupSubmit.textContent = mode === 'free' ? 'Starta flygning' : 'Till Fjällräddaren';
+  }
+
+  /**
+   * Klassen som åldern ger, och påminnelsen för barn (spec §12.2).
+   * @param {{ name: string, ages: string }|null} klass
+   */
+  setKlass(klass) {
+    this.el.klassHint.textContent = klass ? `Klass: ${klass.name}` : '';
+    this.el.childReminder.textContent = CHILD_REMINDER;
+    this.el.childReminder.hidden = klass?.name !== CHILD_CLASS;
+  }
+
+  /**
+   * Lyfteffekten i rutan. Visas i watt bara med råa watt påslaget, annars avslöjar
+   * den vikten (spec §6).
+   * @param {string|null} watts  t.ex. "60 W", null = visas inte
+   */
+  setLiftPower(watts) {
+    this.el.liftTitle.textContent = watts === null ? 'Din lyfteffekt' : 'Din beräknade lyfteffekt';
+    this.el.liftValue.textContent = watts ?? 'Räknas från vikten';
+    this.el.liftValue.classList.toggle('secret-value', watts === null);
+  }
+
+  /** Läser formuläret och tömmer ålder och vikt direkt, så att de inte ligger kvar. */
   takeSetup() {
     const data = {
       name: this.el.name.value,
+      age: this.el.age.value,
       mass: this.el.mass.value.trim() === '' ? NaN : Number(this.el.mass.value),
-      klass: this.el.klassOptions.querySelector('input:checked')?.value ?? '',
     };
+    this.el.age.value = '';
     this.el.mass.value = '';
+    this.setKlass(null);
     return data;
   }
 
   clearSetup() {
     this.el.name.value = '';
+    this.el.age.value = '';
     this.el.mass.value = '';
-    for (const input of this.el.klassOptions.querySelectorAll('input')) input.checked = false;
-    this.el.childReminder.hidden = true;
-  }
-
-  #buildClassOptions() {
-    this.el.klassOptions.replaceChildren(
-      ...CLASSES.map((c) => {
-        const label = document.createElement('label');
-        label.className = 'klass-option';
-        const input = Object.assign(document.createElement('input'), { type: 'radio', name: 'klass', value: c.name });
-        const name = document.createElement('strong');
-        name.textContent = c.name;
-        const ages = document.createElement('span');
-        ages.textContent = c.ages;
-        label.append(input, name, ages);
-        return label;
-      })
-    );
-    this.el.klassOptions.addEventListener('change', () => {
-      const child = this.el.klassOptions.querySelector('input:checked')?.value === CHILD_CLASS;
-      this.el.childReminder.textContent = CHILD_REMINDER;
-      this.el.childReminder.hidden = !child;
-    });
+    this.setKlass(null);
   }
 
   /**
@@ -222,6 +202,7 @@ export class GameUI {
    * @param {{ stars: number, summary: string }|null} [best]  bästa resultatet i övningen
    */
   showReady(name, item = null, best = null) {
+    this.el.readyKicker.textContent = item ? (item.kind === 'exam' ? 'Uppflygning' : item.steps ? 'Övning' : 'Lektion') : 'Så högt som möjligt';
     this.el.readyName.textContent = name;
     this.el.readyGoal.hidden = !item;
     this.el.readyBest.hidden = !item;
@@ -237,278 +218,23 @@ export class GameUI {
     }
   }
 
-  /**
-   * Menyn efter inmatningen: flygskolan (lektioner och uppflygningen), övningarna
-   * med stjärnor och fri flygning. Förslaget startar med ett drag; piltangenterna
-   * och Enter eller ett tryck väljer något annat.
-   * @param {object} m
-   * @param {string} m.name, m.title, m.logbook
-   * @param {{ item, title, sub, state }[]} m.school   state: done | next | tomorrow | later | open | passed
-   * @param {{ item, stars: number|null }[]} m.exercises
-   * @param {object|null} m.suggested  det ett drag startar, null = fri flygning
-   * @param {string|null} m.alarm      text om larmen (junior)
-   * @param {(item: object|null) => void} onChoose
-   */
-  renderMenu(m, onChoose) {
-    const e = this.el;
-    e.menuName.textContent = m.name;
-    e.menuTitle.textContent = m.title;
-    e.menuLogbook.textContent = m.logbook;
-    e.menuLead.textContent = `Dra för att starta ${m.suggested ? m.suggested.name : 'fri flygning'} – eller välj något annat nedan.`;
-    e.menuAlarm.hidden = !m.alarm;
-    e.menuAlarm.textContent = m.alarm ?? '';
-
-    const pill = (text, cls) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
-    const button = (cls, item, disabled, parts) => {
-      const li = document.createElement('li');
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `menu-item ${cls} ${item === m.suggested ? 'suggested' : ''}`.trim();
-      b.disabled = disabled;
-      b.append(...parts);
-      if (item === m.suggested) b.append(pill('Dra för att starta', 'menu-pull'));
-      b.addEventListener('click', () => onChoose(item));
-      li.append(b);
-      return li;
-    };
-    const STATE = {
-      done: ['✓ Genomförd', 'menu-done'],
-      next: ['Nästa', 'menu-state'],
-      tomorrow: ['I morgon', 'menu-state wait'],
-      later: ['Låst', 'menu-state wait'],
-      open: ['Öppen', 'menu-state'],
-      passed: ['✓ Godkänd', 'menu-done'],
-      retry: ['Omprov i morgon', 'menu-state wait'],
-    };
-    e.menuSchool.replaceChildren(
-      ...m.school.map((x) => {
-        const [text, cls] = STATE[x.state];
-        const parts = [
-          pill(x.title, 'menu-name'),
-          pill(x.sub, 'menu-goal'),
-          ...(x.item === m.suggested ? [] : [pill(text, cls)]),
-        ];
-        return button(`school ${x.item.kind === 'exam' ? 'exam' : ''}`, x.item, ['tomorrow', 'later', 'retry'].includes(x.state), parts);
-      })
-    );
-    e.menuList.replaceChildren(
-      ...m.exercises.map(({ item, stars }) =>
-        button('tile', item, false, [
-          pill(item.name, 'menu-name'),
-          pill(stars ? starText(stars) : '–', `menu-stars ${stars ? '' : 'none'}`.trim()),
-          pill(item.goal, 'menu-goal'),
-        ])
-      )
-    );
-    e.menuFree.replaceChildren(
-      button('free', null, false, [pill('Fri flygning', 'menu-name'), pill('Så högt du kan – topplistan', 'menu-goal')])
-    );
-  }
-
-  /**
-   * Övningens panel under flygningen. null döljer den.
-   * @param {{ name, stepText, stepLabel, progress?, sink?, note? }|null} d
-   *   sink: { speed, max } visas under landningen, note är instruktörens kommentar
-   */
-  updateDrill(d) {
-    const e = this.el;
-    e.drill.hidden = !d;
-    if (!d) return;
-    setText(e.drillName, d.name);
-    setText(e.drillStep, d.stepLabel);
-    setText(e.drillText, d.stepText);
-    e.drillBar.hidden = d.progress == null;
-    if (d.progress != null) e.drillBarFill.style.width = `${Math.round(d.progress * 100)}%`;
-    e.drillSink.hidden = !d.sink;
-    if (d.sink) {
-      const dec = (x) => x.toFixed(1).replace('.', ',');
-      setText(e.drillSink, `Sjunker ${dec(Math.max(0, d.sink.speed))} m/s · max ${dec(d.sink.max)}`);
-      e.drillSink.dataset.ok = String(d.sink.speed <= d.sink.max);
-    }
-    e.drillNote.hidden = !d.note;
-    if (d.note) setText(e.drillNote, d.note);
-  }
-
   setCountdown(n) {
     const text = String(Math.max(1, Math.ceil(n)));
     if (this.el.countdown.textContent !== text) this.el.countdown.textContent = text;
   }
 
-  /**
-   * rank/total gäller inom deltagarens klass.
-   * @param {object} [extra]  från profilen: { bests, promoted, teaser, next, heliName, date }
-   *   next: text om vad som väntar (t.ex. "Nästa lektion i morgon")
-   */
-  showFinished(result, rank, total, extra = {}) {
-    const e = this.el;
-    e.finName.textContent = result.klass ? `${result.name} · ${result.klass}` : result.name;
-    delete e.finHeight.dataset.status;
-    e.finStars.hidden = true;
-    e.finList.hidden = true;
-    e.finNote.hidden = true;
-    e.certificate.hidden = true;
-    if (result.exercise) return this.#showExerciseResult(result, extra);
-    e.finReason.textContent = REASONS[result.reason] ?? '';
-    e.finHeight.textContent = `${fmtM(result.hMax)} m`;
-    e.finRank.textContent = result.klass ? `Plats ${rank} av ${total} i klassen` : `Plats ${rank} av ${total}`;
-    const m = result.milestone;
-    e.finMilestone.textContent = m
-      ? `Högsta milstolpe: ${m.name} (${[m.area, `${fmtM(m.h)} m`].filter(Boolean).join(', ')})`
-      : 'Ingen milstolpe den här gången';
-  }
-
-  #showExerciseResult(result, extra) {
-    const e = this.el;
-    const ex = result.exercise;
-    const status = ex.status === 'running' ? 'aborted' : ex.status;
-    const note = (text) => {
-      e.finNote.hidden = !text;
-      e.finNote.textContent = text ?? '';
-    };
-    e.finHeight.dataset.status = status;
-    e.finMilestone.textContent = `Tid ${formatClock(result.duration)} · dra för att fortsätta`;
-
-    if (ex.kind === 'exercise') {
-      const m = ex.moments[0];
-      e.finReason.textContent = `Övning: ${ex.name}`;
-      e.finHeight.textContent = { passed: 'Godkänd!', failed: 'Underkänd', aborted: 'Avbruten' }[status];
-      e.finStars.hidden = status !== 'passed';
-      e.finStars.textContent = m ? starText(m.stars) : '';
-      e.finRank.textContent = status === 'failed' ? ex.failReason : describeResults(ex.results);
-      const best = extra.bests?.find((b) => b.id === ex.id);
-      note(best?.prev ? `Nytt personbästa! Förra bästa: ${starText(best.prev.stars)}${best.prev.summary ? ` – ${best.prev.summary}` : ''}` : null);
-      return;
-    }
-
-    // Lektion eller uppflygning: ett protokoll med alla moment.
-    const exam = ex.kind === 'exam';
-    e.finReason.textContent = ex.name;
-    e.finHeight.textContent =
-      status === 'aborted' ? 'Avbruten' : exam ? (status === 'passed' ? 'Godkänd!' : 'Underkänd') : 'Lektionen klar!';
-    if (!exam && status !== 'aborted') e.finHeight.dataset.status = 'passed';
-    const stars = ex.moments.reduce((a, m) => a + m.stars, 0);
-    e.finStars.hidden = exam || status === 'aborted';
-    e.finStars.textContent = `${stars} av ${ex.plan.length * 3} ★`;
-    e.finRank.textContent = '';
-    e.finList.hidden = false;
-    e.finList.replaceChildren(
-      ...ex.plan.map((p) => {
-        const m = ex.moments.find((x) => x.id === p.id);
-        const li = document.createElement('li');
-        li.dataset.status = m?.status ?? 'skipped';
-        const head = Object.assign(document.createElement('span'), {
-          className: 'fin-moment',
-          textContent: `${m ? (m.status === 'passed' ? '✓' : '✗') : '–'} ${p.name}`,
-        });
-        const detail = Object.assign(document.createElement('span'), {
-          className: 'fin-detail',
-          textContent: !m ? 'inte flugen' : m.status === 'passed' ? `${starText(m.stars)} ${describeResults(m.results)}` : m.failReason,
-        });
-        if (extra.bests?.some((b) => b.id === p.id && b.prev)) detail.textContent += ' · nytt personbästa!';
-        li.append(head, detail);
-        return li;
-      })
-    );
-    if (exam && status === 'passed' && extra.promoted) {
-      e.finList.hidden = true;
-      e.certificate.hidden = false;
-      $('cert-name').textContent = result.name;
-      $('cert-heli-name').textContent = extra.heliName ?? '';
-      $('cert-date').textContent = extra.date ?? '';
-      drawCertificateHeli($('cert-heli'), extra.livery);
-    }
-    note([status === 'aborted' ? null : extra.teaser, extra.next].filter(Boolean).join(' ') || null);
-  }
-
-  // --- Instrument --------------------------------------------------------------------
-
-  /**
-   * @param {object} v
-   * @param {number} v.h, v.hMax, v.vy, v.time, v.lift (andel), v.power, v.pReq, v.P0
-   * @param {number} [v.rotor]   rotorvarvet relativt hovring vid marken
-   * @param {number} [v.thrust]  lyftkraften relativt tyngden
-   * @param {boolean} v.onGround, v.showRaw
-   * @param {number|null} v.replaySpeed
-   */
-  updateHud(v) {
-    const e = this.el;
-    this.#setAltitude(fmtM(v.h));
-    e.alt.classList.toggle('fast', Math.abs(v.vy) > ODO_ROLL_MAX_MS);
-    setText(e.altMax, `${fmtM(v.hMax)} m`);
-
-    const pct = Math.round(v.lift * 100);
-    const shown = Math.min(LIFT_GAUGE_MAX, Math.max(0, pct));
-    setText(e.liftPct, `${pct} %`);
-    e.liftFill.style.strokeDasharray = `${shown} ${LIFT_GAUGE_MAX}`;
-    e.liftNeedle.style.transform = `rotate(${(shown / LIFT_GAUGE_MAX) * 180 - 90}deg)`;
-    e.liftMeter.setAttribute('aria-valuenow', String(pct));
-    e.lift.classList.toggle('good', pct >= 100);
-    e.lift.classList.toggle('strong', pct >= 200);
-    setText(e.liftHint, v.onGround ? 'På marken: över 100 % lyfter du' : '100 % = håller höjden');
-
-    const vy = Math.abs(v.vy) < 0.05 ? 0 : v.vy;
-    setText(e.vario, `${vy > 0 ? '↑' : vy < 0 ? '↓' : '·'} ${Math.abs(vy).toFixed(1).replace('.', ',')} m/s`);
-    setText(e.timer, formatClock(v.time));
-
-    e.raw.hidden = !v.showRaw;
-    if (v.showRaw) {
-      const rotor = v.rotor === undefined ? '' : ` · rotor ${Math.round(v.rotor * 100)} % · lyft ${Math.round(v.thrust * 100)} %`;
-      setText(e.raw, `P ${Math.round(v.power)} W · krävs ${Math.round(v.pReq)} W · P0 ${Math.round(v.P0)} W${rotor}`);
-    }
-    e.replayBadge.hidden = !v.replaySpeed;
-    if (v.replaySpeed) setText(e.replayBadge, `Landning ×${Math.max(1, Math.round(v.replaySpeed))}`);
-  }
-
-  /**
-   * Höjdmätaren: varje siffra är en remsa 0–9 som rullar till rätt läge, som
-   * en mekanisk räknare. Remsorna byggs om bara när antalet tecken ändras.
-   */
-  #setAltitude(text) {
-    const el = this.el.alt;
-    const shape = text.replace(/\d/g, '0');
-    if (shape !== this.altShape) {
-      this.altShape = shape;
-      const parts = [...text].map((ch) => {
-        if (!/\d/.test(ch)) return Object.assign(document.createElement('span'), { className: 'odo-sep', textContent: ch });
-        const digit = document.createElement('span');
-        digit.className = 'odo-digit';
-        const strip = document.createElement('span');
-        strip.className = 'odo-strip';
-        for (let d = 0; d <= 9; d++) strip.append(Object.assign(document.createElement('span'), { textContent: String(d) }));
-        digit.append(strip);
-        return digit;
-      });
-      const unit = Object.assign(document.createElement('span'), { className: 'odo-unit', textContent: ' m' });
-      el.replaceChildren(...parts, unit);
-    }
-    el.setAttribute('aria-label', `${text} meter`);
-    const digits = [...text].filter((ch) => /\d/.test(ch));
-    el.querySelectorAll('.odo-strip').forEach((strip, i) => {
-      const y = `translateY(${-Number(digits[i])}em)`;
-      if (strip.style.transform !== y) strip.style.transform = y;
-    });
-  }
-
-  /** Synliga rutor på startskärmen, så att bergens skyltar inte hamnar under dem. */
+  /** Synliga rutor på startskärmen, så att topparnas etiketter inte hamnar under dem. */
   idleRects() {
-    const idle = $('screen-idle');
-    if (idle.hidden) return [];
-    return [...idle.querySelectorAll('.title, .board-panel, .start-cta')].map((el) => el.getBoundingClientRect());
+    if (this.el.idle.hidden) return [];
+    return [...this.el.idle.querySelectorAll('.brand, .main-menu, .board-panel, .demo-btn')]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => el.getBoundingClientRect());
   }
 
   /**
    * Notis, t.ex. en passerad milstolpe. Köas så att snabba passager inte skriver
    * över varandra; vid lång kö hoppas de äldsta över.
    */
-  /** Synliga instrumentpaneler i skärmkoordinater, så att scenen kan undvika dem. */
-  hudRects() {
-    const els = this.el.hud.hidden
-      ? []
-      : [document.querySelector('.hud-alt'), this.el.lift, this.el.vario, this.el.timer, this.el.drill];
-    // getClientRects() är tom för dolda element (offsetParent duger inte: fixed ger alltid null)
-    return els.filter((el) => el && el.getClientRects().length > 0).map((el) => el.getBoundingClientRect());
-  }
-
   toast(title, subtitle = '', kicker = '') {
     this.toastQueue.push({ title, subtitle, kicker });
     if (this.toastQueue.length > 2) this.toastQueue.splice(0, this.toastQueue.length - 2);
@@ -595,60 +321,11 @@ export class GameUI {
     if (this.debugVisible) this.el.debug.scrollTop = this.el.debug.scrollHeight;
   }
 
-  // --- Flygloggar -----------------------------------------------------------------
-
-  /**
-   * Flygloggarna i inställningarna, nyast först (spec §9.1).
-   * @param {{ id: string, ts: number, title: string, text: string }[]} logs
-   * @param {{ copy: (entry, button: HTMLButtonElement) => void, download: (entry) => void }} actions
-   */
-  renderLogs(logs, actions) {
-    $('log-text').hidden = true;
-    $('log-text-hint').hidden = true;
-    if (!logs.length) {
-      const li = Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Inga flygningar inspelade än.' });
-      $('log-list').replaceChildren(li);
-      return;
-    }
-    const button = (text, onClick) => {
-      const b = Object.assign(document.createElement('button'), { type: 'button', textContent: text });
-      b.addEventListener('click', () => onClick(b));
-      return b;
-    };
-    $('log-list').replaceChildren(
-      ...logs.map((entry) => {
-        const li = document.createElement('li');
-        const info = Object.assign(document.createElement('span'), { className: 'log-info' });
-        const date = new Date(entry.ts).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
-        info.append(
-          Object.assign(document.createElement('span'), { className: 'log-title', textContent: entry.title }),
-          Object.assign(document.createElement('span'), { className: 'log-meta', textContent: `${date} · ${Math.ceil(entry.text.length / 1000)} kB` })
-        );
-        li.append(info, button('Kopiera', (b) => actions.copy(entry, b)), button('Ladda ned', () => actions.download(entry)));
-        return li;
-      })
-    );
-  }
-
-  /** Visar loggen markerad när urklippet inte går att använda, så att man kan kopiera själv. */
-  showLogText(text) {
-    const area = $('log-text');
-    area.value = text;
-    area.hidden = false;
-    $('log-text-hint').hidden = false;
-    area.focus();
-    area.select();
-  }
-
   /** Kort bekräftelse på en knapp, t.ex. "Kopierad ✓". */
   flashButton(button, text) {
     const original = button.textContent;
     button.textContent = text;
     setTimeout(() => (button.textContent = original), 2000);
-  }
-
-  scrollToLogs() {
-    $('logs-title').scrollIntoView({ block: 'start' });
   }
 
   // --- Inställningar ------------------------------------------------------------
@@ -777,29 +454,6 @@ function row(cells) {
 }
 
 const fmtW = (w) => (Math.round(w * 10) / 10).toLocaleString('sv-SE');
-
-/** Den nya helikoptern på certifikatet, stilla på marken. */
-function drawCertificateHeli(canvas, livery) {
-  const ctx = canvas.getContext('2d');
-  const css = getComputedStyle(document.documentElement);
-  const v = (name) => css.getPropertyValue(name).trim();
-  const c = { body: v('--heli-body'), glass: v('--heli-glass'), metal: v('--heli-metal'), rotor: v('--heli-rotor') };
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
-  ctx.translate(canvas.width / 2 + 10, 92);
-  ctx.scale(1.3, 1.3);
-  drawHelicopter(ctx, { blur: 0, angle: 0.3, tailAngle: 0.5 }, c, livery);
-  ctx.restore();
-}
-
-function setText(el, text) {
-  if (el.textContent !== text) el.textContent = text;
-}
-
-export function formatClock(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
 
 /** Laddar ned text som en fil. */
 export function download(filename, text, type) {

@@ -187,6 +187,14 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 /** Stjärnor 1–3 från en kvalitet där lägre är bättre (t.ex. landningsfart / gräns). */
 const starsLow = (x, three, two) => (x <= three + EPS ? 3 : x <= two + EPS ? 2 : 1);
 
+// Gränserna för tre och två stjärnor; en stjärna är godkänt. Samma värden i bedömningen och i starGuide.
+const STARS = {
+  hover: [0.3, 0.55], // medelavvikelse som andel av bandet (även vinschen)
+  land: [0.3, 0.6], // sättningsfart som andel av gränsen
+  catch: [0.35, 0.65], // djup under hämtgränsen som andel av utrymmet ned till golvet
+  follow: [0.9, 0.75], // andel av tiden i nivå med instruktören (högre är bättre)
+};
+
 /** Ett försök att hämta upp: från hämtgränsen tills helikoptern inte längre sjunker. */
 function catchResult(s, f) {
   return { low: s.low, depth: s.gate - s.low, catchS: f.t - s.gateT, window: s.gate - s.floor };
@@ -195,7 +203,7 @@ function catchResult(s, f) {
 /** Stjärnor för hämtningar: hur djupt under gränsen, som andel av utrymmet ned till golvet. */
 function catchStars(catches) {
   const share = catches.reduce((a, c) => a + c.depth / c.window, 0) / catches.length;
-  return { stars: starsLow(share, 0.35, 0.65), score: -share };
+  return { stars: starsLow(share, ...STARS.catch), score: -share };
 }
 
 /**
@@ -225,7 +233,7 @@ const STEPS = {
       }
       if (s.held >= s.holdS - EPS) {
         const share = s.dev / Math.max(EPS, s.held) / s.tol; // medelavvikelse som andel av bandet
-        s.result = { held: s.held, avgDev: s.dev / Math.max(EPS, s.held), stars: starsLow(share, 0.3, 0.55), score: -share };
+        s.result = { held: s.held, avgDev: s.dev / Math.max(EPS, s.held), stars: starsLow(share, ...STARS.hover), score: -share };
         return 'done';
       }
     },
@@ -241,7 +249,7 @@ const STEPS = {
       const td = f.touchdown;
       if (!td || td.t <= s.since) return;
       if (td.speed > s.maxSpeed + EPS) return { fail: `Hård landning: ${ms(td.speed)} (högst ${ms(s.maxSpeed)})` };
-      s.result = { speed: td.speed, stars: starsLow(td.speed / s.maxSpeed, 0.3, 0.6), score: -td.speed / s.maxSpeed };
+      s.result = { speed: td.speed, stars: starsLow(td.speed / s.maxSpeed, ...STARS.land), score: -td.speed / s.maxSpeed };
       return 'done';
     },
     text: (s) => `Landa mjukt, högst ${ms(s.maxSpeed)}`,
@@ -325,7 +333,7 @@ const STEPS = {
       f.setLoad?.(s.load);
       ctx.event({ type: 'loaded' });
       const share = s.dev / Math.max(EPS, s.held) / s.tol;
-      s.result = { held: s.held, stars: starsLow(share, 0.3, 0.55), score: -share };
+      s.result = { held: s.held, stars: starsLow(share, ...STARS.hover), score: -share };
       return 'done';
     },
     text: (s) =>
@@ -391,7 +399,8 @@ const STEPS = {
       if (s.elapsed < duration - EPS) return;
       const share = s.inBand / duration;
       if (share < s.pass - EPS) return { fail: `I nivå med instruktören ${pct(share)} av tiden (minst ${pct(s.pass)})` };
-      s.result = { share, stars: share >= 0.9 ? 3 : share >= 0.75 ? 2 : 1, score: share };
+      const [three, two] = STARS.follow;
+      s.result = { share, stars: share >= three - EPS ? 3 : share >= two - EPS ? 2 : 1, score: share };
       return 'done';
     },
     text: (s) => `Håll dig i nivå med instruktören: ${pct(s.inBand / Math.max(EPS, s.elapsed))} hittills`,
@@ -597,7 +606,7 @@ export class ExerciseRun {
 /**
  * Hjälplinjer för det aktuella steget, i världskoordinater (meter):
  *   { kind: 'line', h, label }                         målhöjd
- *   { kind: 'band', lo, hi, label, progress? }         zon att hålla sig i eller hämta upp i
+ *   { kind: 'band', lo, hi, label, progress?, ring? }  zon att hålla sig i eller hämta upp i; ring = hovra i ringen
  *   { kind: 'buddy', h, lo, hi }                       instruktörens helikopter med bandet runt
  *   { kind: 'ring', h, tol, inS, hit? }                ring som når helikoptern om inS sekunder
  * plus `landingPad` när man ska landa och `blind` i moln (inga linjer syns).
@@ -624,6 +633,7 @@ export function stepGuides(step, t = 0) {
             hi: step.at + step.tol,
             label: `${label} ${Math.floor(step.held ?? 0)} / ${step.holdS} s`,
             progress: Math.min(1, (step.held ?? 0) / step.holdS),
+            ring: true,
           },
         ],
       };
@@ -637,7 +647,7 @@ export function stepGuides(step, t = 0) {
     }
     case 'engineout': {
       if (step.phase === 'hover') {
-        return { ...none, lines: [{ kind: 'band', lo: step.at - step.tol, hi: step.at + step.tol, label: 'Hovra här' }] };
+        return { ...none, lines: [{ kind: 'band', lo: step.at - step.tol, hi: step.at + step.tol, label: 'Hovra här', ring: true }] };
       }
       const zone = { kind: 'band', lo: step.floor, hi: step.at - step.drop, label: `Hämta upp här – före ${fmt(step.floor)} m` };
       return { ...none, lines: [zone] };
@@ -679,6 +689,50 @@ export function describeResults(results) {
     })
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * Vad som krävs för tre, två och en stjärna i ett steg, för panelen under flygningen.
+ * @returns {{ stars: number, text: string }[]|null}  tre stjärnor först; null om steget inte ger stjärnor
+ */
+export function starGuide(step) {
+  if (!step || step.unscored) return null;
+  const lines = (three, two, one) => [
+    { stars: 3, text: three },
+    { stars: 2, text: two },
+    { stars: 1, text: one },
+  ];
+  const near = (h) => {
+    const r = Math.round(h * 10) / 10;
+    return `${Number.isInteger(r) ? r : dec(r)} m`;
+  };
+  switch (step.type) {
+    case 'hover':
+    case 'winch': {
+      const [three, two] = STARS.hover;
+      return lines(`i snitt inom ${near(three * step.tol)} från målet`, `i snitt inom ${near(two * step.tol)}`, `inom ±${m(step.tol)}`);
+    }
+    case 'land': {
+      const [three, two] = STARS.land;
+      return lines(`sätt ner under ${ms(three * step.maxSpeed)}`, `under ${ms(two * step.maxSpeed)}`, `under ${ms(step.maxSpeed)}`);
+    }
+    case 'freefall':
+    case 'engineout': {
+      const gate = step.type === 'freefall' ? step.gate : step.at - step.drop;
+      const room = gate - step.floor;
+      const [three, two] = STARS.catch;
+      return lines(`vänd inom ${m(three * room)} under gränsen`, `inom ${m(two * room)}`, `före ${m(step.floor)}`);
+    }
+    case 'follow': {
+      const [three, two] = STARS.follow;
+      return lines(`i nivå ${pct(three)} av tiden`, `${pct(two)} av tiden`, `${pct(step.pass)} av tiden`);
+    }
+    case 'rings': {
+      const n = step.rings.length;
+      return lines(`alla ${n} ringar`, `${n - 2} ringar`, `${step.pass} ringar`);
+    }
+  }
+  return null;
 }
 
 /** "★★☆" för 0–3 stjärnor. */

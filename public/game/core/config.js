@@ -41,12 +41,19 @@ const PREVIOUS_DEFAULTS = { P_ref: 100, H_air: 2700, G: 22.5, maxSessionS: 600 }
 
 /** Klasser (spec §12.2). Bara klassen sparas, aldrig åldern. */
 export const CLASSES = [
-  { name: 'Barn', ages: 'till och med 12 år' },
-  { name: 'Ungdom', ages: '13–17 år' },
-  { name: 'Vuxen', ages: '18 år och äldre' },
+  { name: 'Barn', ages: 'till och med 12 år', maxAge: 12 },
+  { name: 'Ungdom', ages: '13–17 år', maxAge: 17 },
+  { name: 'Vuxen', ages: '18 år och äldre', maxAge: Infinity },
 ];
 export const CHILD_CLASS = 'Barn';
 export const CHILD_REMINDER = 'Spjäll 3–5. Pall vid behov om barnet inte når handtagen.';
+export const MIN_AGE = 1;
+export const MAX_AGE = 120;
+
+/** Klassen för en ålder i hela år. Åldern används bara här och sparas aldrig. */
+export function classForAge(age) {
+  return CLASSES.find((c) => age <= c.maxAge).name;
+}
 
 /** Viktexponenten k för ett viktläge. */
 export function weightExponent(cfg) {

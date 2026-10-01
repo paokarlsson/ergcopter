@@ -1,15 +1,16 @@
 // Spelflödet (spec §7, plan.md §8):
 //   IDLE → SETUP → MENU → READY → COUNTDOWN → FLYING → FINISHED → IDLE
-// I MENU väljer deltagaren en övning, lektion, uppflygningen (lessons.js) eller fri
-// flygning (så högt som möjligt). Efter en övning går FINISHED tillbaka till MENU,
-// så att man kan fortsätta öva.
+// På startskärmen väljer man läge: "så högt som möjligt" (free) går från SETUP direkt
+// till READY, Fjällräddaren (career) till MENU. Där väljer deltagaren en övning, lektion,
+// uppflygningen (lessons.js) eller fri flygning. Efter en övning går FINISHED tillbaka
+// till MENU, så att man kan fortsätta öva. "Flyg igen" går från FINISHED till READY.
 // Den som står på ergen behöver inte röra skärmen: ett drag i MENU startar det
 // föreslagna valet, och ett drag efter en övnings resultat går tillbaka till MENU.
 // Ren logik utan DOM. Tiden kommer utifrån via tick(t) i sekunder.
 
 import { Flight } from './physics.js';
 import { Engine } from './engine.js';
-import { MIN_MASS, MAX_MASS, CLASSES } from './config.js';
+import { MIN_MASS, MAX_MASS, MIN_AGE, MAX_AGE, CLASSES, classForAge } from './config.js';
 import { ExerciseRun } from './exercise.js';
 import { getHelicopter, helicopterConfig } from './helicopters.js';
 import { FlightLog } from './flightlog.js';
@@ -31,6 +32,7 @@ export class Game {
     this.cfg = cfg;
     this.rand = rand;
     this.state = 'IDLE';
+    this.mode = 'career'; // 'free' = så högt som möjligt, 'career' = Fjällräddaren med menyn
     this.player = null; // { name, anonymous, mass, klass }
     this.exercise = null; // vald övning, lektion eller uppflygning, null = fri flygning
     this.helicopter = null; // helikoptertyp, null = standard
@@ -73,22 +75,36 @@ export class Game {
 
   // --- Operatörens åtgärder -------------------------------------------------
 
-  openSetup() {
-    if (this.state === 'IDLE' || this.state === 'FINISHED') this.#set('SETUP');
+  /** @param {'free'|'career'} [mode]  så högt som möjligt eller Fjällräddaren */
+  openSetup(mode = 'career') {
+    if (this.state !== 'IDLE' && this.state !== 'FINISHED') return;
+    this.mode = mode;
+    this.#set('SETUP');
   }
 
   /**
-   * @param {{ name: string, mass: number, klass: string }} setup  namnet är valfritt; klass: 'Barn' | 'Ungdom' | 'Vuxen'
+   * Fri flygning går direkt till READY, Fjällräddaren till menyn.
+   * @param {{ name: string, mass: number, age?: number|string, klass?: string }} setup
+   *   namnet är valfritt; åldern ger klassen och sparas inte. Utan ålder anges klassen: 'Barn' | 'Ungdom' | 'Vuxen'.
    * @returns {string|null} felmeddelande, eller null om det gick bra
    */
-  submitSetup({ name, mass, klass = '' }) {
+  submitSetup({ name, mass, age, klass = '' }) {
     if (this.state !== 'SETUP') return 'Fel läge';
     const trimmed = String(name ?? '').trim();
+    if (age !== undefined) {
+      const years = String(age).trim() === '' ? NaN : Number(age);
+      if (!Number.isInteger(years) || years < MIN_AGE || years > MAX_AGE) return `Åldern ska vara ett heltal ${MIN_AGE}–${MAX_AGE} år`;
+      klass = classForAge(years);
+    }
     const kg = Number(mass);
     if (!Number.isInteger(kg) || kg < MIN_MASS || kg > MAX_MASS) return `Vikten ska vara ett heltal ${MIN_MASS}–${MAX_MASS} kg`;
     if (!CLASSES.some((c) => c.name === klass)) return 'Välj klass';
     this.player = { name: trimmed.slice(0, 40) || ANONYMOUS_NAME, anonymous: !trimmed, mass: kg, klass };
-    this.#set('MENU');
+    if (this.mode === 'free') {
+      this.exercise = null;
+      this.helicopter = this.ownHelicopter;
+      this.#set('READY');
+    } else this.#set('MENU');
     return null;
   }
 
@@ -121,16 +137,25 @@ export class Game {
     if (this.countdownLeft <= 0) this.#takeOff();
   }
 
-  /** Esc: avbryter passet (sparas), backar från READY till menyn eller till IDLE. */
+  /** Esc: avbryter passet (sparas), backar från READY till menyn (Fjällräddaren) eller till IDLE. */
   escape() {
     if (this.state === 'FLYING') this.#finish('operator');
-    else if (this.state === 'READY' || this.state === 'COUNTDOWN') this.#toMenu();
+    else if ((this.state === 'READY' || this.state === 'COUNTDOWN') && this.mode === 'career') this.#toMenu();
     else if (this.state !== 'IDLE') this.#toIdle();
   }
 
   /** Tangent eller klick i resultatvisningen. */
   dismissResult() {
     if (this.state === 'FINISHED') this.#afterResult();
+  }
+
+  /** "Flyg igen": samma deltagare, val och helikopter, direkt till READY. */
+  again() {
+    if (this.state !== 'FINISHED') return;
+    this.flight = null;
+    this.run = null;
+    this.result = null;
+    this.#set('READY');
   }
 
   setPaused(paused) {
@@ -295,6 +320,7 @@ export class Game {
       reason,
       milestone: this.highestMilestone(f.hMax),
       endH: f.h,
+      stats: this.#strokeStats(),
       exercise: this.run
         ? {
             id: this.exercise.id,
@@ -312,6 +338,17 @@ export class Game {
     this.finishedFor = 0;
     this.#set('FINISHED');
     this.#emit('finish', this.result);
+  }
+
+  /** Dragen som drev motorn: antal, snitt och bästa i % av lyfteffekten (P0 i W för råa watt). */
+  #strokeStats() {
+    const p = this.log.strokes.filter((s) => s.note === 'ok').map((s) => s.p);
+    return {
+      strokes: p.length,
+      avgPct: p.length ? p.reduce((a, x) => a + x, 0) / p.length : 0,
+      maxPct: p.length ? Math.max(...p) : 0,
+      P0: this.log.P0,
+    };
   }
 
   #afterResult() {

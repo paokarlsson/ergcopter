@@ -1,8 +1,10 @@
-// Dashboard: siffror och kraftkurva från PM via USB. Samma datakälla som spelet.
+// Live-dashboarden: siffror och kraftkurva från PM via USB (samma datakälla som spelet),
+// och höjden och effekten relativt det som krävs från spelet i en annan flik (shared/live.js).
 import { le, CMD, PM } from '../shared/csafe.js';
 import { StrokeTracker, ForceChart, strokeStats } from './forcecurve.js';
 import { UsbPm5Source } from '../shared/sources/usb.js';
 import { mountScreenControls } from '../shared/screen.js';
+import { openLive } from '../shared/live.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -42,6 +44,7 @@ const WORKOUT_STATES = {
 
 const source = new UsbPm5Source({ metrics: true });
 source.on('metrics', render);
+source.on('stroke', (s) => countStroke(s.power));
 source.on('force', (samples, state) => applyForce(state, samples));
 source.on('raw', (text) => logLine(text, text.startsWith('[error]') ? 'error' : text.startsWith('[warn]') ? 'warn' : 'log'));
 source.on('status', ({ state, message }) => {
@@ -70,6 +73,40 @@ if (new URLSearchParams(location.search).has('demo')) {
   source.resume(); // återanslut direkt om PM:en redan är godkänd
 }
 
+// --- Drag och spelet --------------------------------------------------------
+
+const strokes = { count: 0, sum: 0, max: 0 };
+
+/** Medel- och maxeffekt och antal drag sedan sidan öppnades. */
+function countStroke(power) {
+  strokes.count++;
+  strokes.sum += power;
+  strokes.max = Math.max(strokes.max, power);
+  set('stroke-count', strokes.count);
+  set('avg-power', `${Math.round(strokes.sum / strokes.count)} W`);
+  set('max-power', `${Math.round(strokes.max)} W`);
+}
+
+const GAME_STALE_MS = 3000; // utan meddelande så här länge flyger inte spelet längre
+let gameTimer = null;
+
+/** Livedata från spelet: höjd, skillnad mot det som krävs, och watt om råa watt är på. */
+function showGame(msg) {
+  set('game-h', `${Math.round(msg.h).toLocaleString('sv-SE')} m`);
+  const pct = Math.round((msg.lift - 1) * 100);
+  set('game-diff', `${pct > 0 ? '+' : pct < 0 ? '−' : '±'}${Math.abs(pct)} %`);
+  $('game-diff').dataset.sign = pct >= 0 ? 'up' : 'down';
+  set('game-req', msg.watts ? `${Math.round(msg.watts.pReq)} W` : '–');
+  $('game-hint').hidden = true;
+  clearTimeout(gameTimer);
+  gameTimer = setTimeout(() => {
+    for (const id of ['game-h', 'game-diff', 'game-req']) set(id, '–');
+    delete $('game-diff').dataset.sign;
+    $('game-hint').hidden = false;
+  }, GAME_STALE_MS);
+}
+openLive()?.addEventListener('message', (e) => showGame(e.data));
+
 // --- Visning ---------------------------------------------------------------
 
 function render({ std, pm: pmData }) {
@@ -90,7 +127,7 @@ function render({ std, pm: pmData }) {
   // PM rapporterar tempo i s/km – visa som s/500 m.
   if (pace) set('pace', le(pace, 2) ? formatTime(le(pace, 2) / 2) : '–');
   if (cadence) set('cadence', le(cadence, 2) || '–');
-  if (power) set('power', le(power, 2) || '–');
+  if (power) set('power', le(power, 2) ? `${le(power, 2)} W` : '–');
   if (cal) set('calories', le(cal, 2));
   if (hr) set('hr', hr[0] && hr[0] !== 255 ? hr[0] : '–');
   if (stroke) set('stroke', STROKE_STATES[stroke[0]] ?? stroke[0]);
@@ -151,7 +188,7 @@ function renderStrokeTable() {
 
 // --- Demo (?demo) ---------------------------------------------------------------
 
-/** Påhittade drag, ett var 1,5:e s, med effekt som pendlar 20–160 W på en minut. */
+/** Påhittade drag, ett var 1,5:e s, med effekt som pendlar 20–160 W på en minut, och en påhittad flygning. */
 function runDemo() {
   setStatus('Demoläge – ingen PM ansluten', 'idle');
   ui.connect.disabled = true;
@@ -173,8 +210,15 @@ function runDemo() {
     } else {
       applyForce(4, []);
     }
-    if (++tick % 30 === 0) i = 0; // 30 × 50 ms = 1,5 s per drag
-    set('power', Math.round(watts));
+    if (++tick % 30 === 0) {
+      i = 0; // 30 × 50 ms = 1,5 s per drag
+      countStroke(watts);
+      set('cadence', 40);
+    }
+    set('power', `${Math.round(watts)} W`);
+    set('time', formatTime(t));
+    const lift = 1 + 0.12 * Math.sin(t / 4);
+    showGame({ h: 900 + 500 * Math.sin(t / 30), lift, watts: { power: watts, pReq: watts / lift } });
   }, 50);
 }
 

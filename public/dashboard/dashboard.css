@@ -1,58 +1,33 @@
-:root {
-  --bg: #f4f5f7;
-  --panel: #ffffff;
-  --text: #16181d;
-  --muted: #5f6673;
-  --accent: #1f6feb;
-  --ok: #1a7f37;
-  --error: #cf222e;
-  --border: #d8dce3;
-  --series-1: #2a78d6;
-  --series-history: #8a909c;
-  --grid: #e6e8ec;
-  --sky-top: #9ccaf2;
-  --sky-bottom: #e4f1fc;
-  --cloud: #ffffff;
-  --hill: #a9cf9a;
-  --ground: #6fa35e;
-  --tree: #3f7a37;
-  --trunk: #6b4f35;
-  --pad: #c9ccd1;
-  --heli-shadow: rgb(0 0 0 / 0.18);
-  --heli-body: #eb6834;
-  --heli-glass: #cfe8fa;
-  --heli-metal: #3b3f47;
-  --heli-rotor: #2b2e34;
-  color-scheme: light dark;
+/* Barlow Condensed (SIL OFL, se fonts/OFL.txt), samma som spelet */
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-weight: 600;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  font-weight: 800;
+  font-display: swap;
+  src: url('../fonts/barlow-condensed-800.woff2') format('woff2');
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --panel: #181b21;
-    --text: #e8eaee;
-    --muted: #9aa3b2;
-    --accent: #4c8dff;
-    --ok: #3fb950;
-    --error: #ff6b6b;
-    --border: #2a2f38;
-    --series-1: #3987e5;
-    --series-history: #6b7280;
-    --grid: #242830;
-    --sky-top: #0b1424;
-    --sky-bottom: #1d3150;
-    --cloud: #2c3d58;
-    --hill: #1f3a2c;
-    --ground: #172c20;
-    --tree: #25503a;
-    --trunk: #3d2f22;
-    --pad: #3a3f48;
-    --heli-shadow: rgb(0 0 0 / 0.35);
-    --heli-body: #d95926;
-    --heli-glass: #5d7d99;
-    --heli-metal: #c7ccd4;
-    --heli-rotor: #d4d8df;
-  }
+/* Mörk, som spelets paneler */
+:root {
+  --font-display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --bg: #0b1424;
+  --panel: #111d33;
+  --panel-edge: rgb(150 190 240 / 0.18);
+  --text: #ffffff;
+  --muted: rgb(214 226 245 / 0.72);
+  --accent: #2f8ef2;
+  --ok: #5fe27a;
+  --error: #ff7b72;
+  --border: rgb(255 255 255 / 0.1);
+  --series-1: #2ad4ff;
+  --series-history: #6c7d99;
+  --grid: rgb(255 255 255 / 0.08);
+  color-scheme: dark;
 }
 
 * {
@@ -61,8 +36,9 @@
 
 body {
   margin: 0;
-  padding: 16px;
-  background: var(--bg);
+  padding: 18px 22px 24px;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 30% 0%, #17294a, var(--bg) 60%);
   color: var(--text);
   font: 16px/1.4 system-ui, sans-serif;
 }
@@ -71,13 +47,17 @@ header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px 16px;
-  margin-bottom: 16px;
+  gap: 12px 18px;
+  margin-bottom: 18px;
 }
 
 h1 {
   margin: 0;
-  font-size: 1.4rem;
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 #status {
@@ -92,13 +72,16 @@ h1 {
 }
 
 button {
-  padding: 10px 18px;
-  border: 0;
+  padding: 9px 18px;
+  border: 1px solid rgb(150 205 255 / 0.6);
   border-radius: 8px;
-  background: var(--accent);
+  background: linear-gradient(180deg, #3b9bf7, #1663c8);
   color: #fff;
-  font: inherit;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
 }
 button:disabled {
@@ -107,8 +90,7 @@ button:disabled {
 }
 #disconnect {
   background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
+  border-color: var(--panel-edge);
 }
 
 /* Helskärm och håll skärmen på, längst till höger i sidhuvudet */
@@ -125,12 +107,11 @@ button:disabled {
   padding: 0;
   background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--panel-edge);
 }
 .screen-btn[data-state='on'] {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
 }
 .screen-btn[data-state='pending'] {
   border: 2px dashed var(--accent);
@@ -143,54 +124,98 @@ button:disabled {
   color: var(--error);
 }
 
-main {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-}
-
+.panel,
 .metric {
-  padding: 14px 16px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #14233d, var(--panel));
+  border: 1px solid var(--panel-edge);
   border-radius: 10px;
 }
-.metric.big {
-  grid-column: span 2;
-}
-@media (max-width: 420px) {
-  .metric.big {
-    grid-column: 1 / -1;
-  }
-}
 
-.metric h2 {
-  margin: 0 0 4px;
+h2 {
+  margin: 0 0 2px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
-.metric output {
+output {
   display: block;
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
-.metric.big output {
-  font-size: 3rem;
+output.xl {
+  font-size: 3.4rem;
+}
+output.good {
+  color: var(--ok);
+}
+output[data-sign='up'] {
+  color: var(--ok);
+}
+output[data-sign='down'] {
+  color: var(--error);
+}
+
+/* Översta raden: spelets siffror till vänster, kraftkurvan till höger */
+.top {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+}
+.game {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  gap: 14px 18px;
+  padding: 18px 20px;
+}
+.game .wide {
+  grid-column: 1 / -1;
+}
+.hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+.tiles.small {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.metric {
+  padding: 14px 18px;
+}
+.tiles.small output {
+  font-size: 1.7rem;
+}
+@media (max-width: 760px) {
+  .top {
+    grid-template-columns: 1fr;
+  }
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* --- Kraftkurva --- */
 
 .panel {
-  margin-top: 16px;
   padding: 14px 16px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+}
+.tiles + .panel,
+.tiles.small + .panel {
+  margin-top: 16px;
 }
 
 .panel-head {
@@ -200,10 +225,6 @@ main {
   justify-content: space-between;
   gap: 8px 16px;
   margin-bottom: 8px;
-}
-.panel-head h2 {
-  margin: 0;
-  font-size: 1rem;
 }
 
 .legend {
@@ -237,30 +258,23 @@ main {
   background: var(--series-history);
 }
 
-#heli {
-  display: block;
-  width: 100%;
-  height: 360px;
-  border-radius: 8px;
-}
-
 .chart-wrap {
   position: relative;
 }
 #force-chart {
   display: block;
   width: 100%;
-  height: 320px;
+  height: 300px;
   touch-action: none;
 }
 
 .tooltip {
   position: absolute;
   padding: 8px 10px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: #0e1a2e;
+  border: 1px solid var(--panel-edge);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.3);
   font-size: 0.85rem;
   pointer-events: none;
   white-space: nowrap;
@@ -280,14 +294,13 @@ main {
 
 .strokes {
   width: 100%;
-  margin-top: 12px;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
 }
 .strokes th,
 .strokes td {
-  padding: 6px 8px;
+  padding: 7px 8px;
   border-top: 1px solid var(--border);
   text-align: right;
 }
@@ -311,13 +324,13 @@ footer {
   overflow: auto;
   padding: 12px;
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--panel-edge);
   border-radius: 8px;
   font-size: 0.8rem;
 }
 
 .nav-link {
-  color: var(--accent);
+  color: var(--series-1);
   text-decoration: none;
   font-weight: 600;
 }
