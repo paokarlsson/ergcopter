@@ -160,7 +160,7 @@ float lakeHere(float x) {
 // Skogens täthet 0–1: sammanhängande med gläntor, under trädgränsen och inte nära plattan
 float forestAt(vec2 p, float h) {
   float n = vnoise(p * 0.0017) * 0.55 + vnoise(p * 0.0071) * 0.3 + vnoise(p * 0.031) * 0.15;
-  return smoothstep(0.36, 0.46, n) * (1.0 - smoothstep(420.0, 640.0, h + 90.0 * (n - 0.5))) * smoothstep(PLANE + 160.0, PLANE + 320.0, p.y);
+  return smoothstep(0.3, 0.42, n) * (1.0 - smoothstep(420.0, 640.0, h + 90.0 * (n - 0.5))) * smoothstep(PLANE + 160.0, PLANE + 320.0, p.y);
 }
 
 // Milstolparnas toppar: en spetsig topp med eroderade sluttningar, åsar, raviner och
@@ -202,8 +202,12 @@ float heightAt(vec2 p, int oct) {
   float rough = (2.0 + 6.0 * vnoise(p * 0.005)) * smoothstep(40.0, 260.0, abs(z - PLANE));
   float lake = lakeHere(p.x) * smoothstep(PLANE + 70.0, PLANE + 140.0, z) * (1.0 - smoothstep(shore - 110.0, shore - 10.0, z));
   h = mix(max(h, rough), -7.0, lake);
+  // Tjärnar på flacka partier i dalen
+  float tarn = smoothstep(0.64, 0.72, vnoise(p * 0.0011 + 3.7)) * (1.0 - smoothstep(12.0, 40.0, h)) * smoothstep(PLANE + 300.0, PLANE + 800.0, z);
+  h = mix(h, -6.0, tarn);
+  float wet = max(lake, tarn);
   // Trädkronorna ger skogen struktur på nära håll
-  if (oct > 9) h += forestAt(p, h) * (11.0 + 9.0 * vnoise(p * 0.15)) * (1.0 - lake) * smoothstep(9.5, 11.5, float(oct));
+  if (oct > 9) h += forestAt(p, h) * (11.0 + 9.0 * vnoise(p * 0.15)) * (1.0 - wet) * smoothstep(9.5, 11.5, float(oct));
   if (p.x > uPeakBox.x && p.x < uPeakBox.z && p.y > uPeakBox.y && p.y < uPeakBox.w) {
     for (int i = 0; i < uPeakCount; i++) {
       h = smax(h, peakAt(p, uPeaks[i], oct - 1), 60.0);
@@ -484,10 +488,12 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float t, bool shadows) {
   // Sten: grå med bruna stråk och mörkare ränder
   vec3 rock = mix(vec3(0.16, 0.155, 0.15), vec3(0.3, 0.285, 0.27), n2);
   rock = mix(rock, vec3(0.26, 0.21, 0.16), smoothstep(0.55, 0.8, n1) * 0.6);
-  rock *= 0.8 + 0.4 * vnoise(vec2(p.x * 0.01, h * 0.06));
+  rock *= 0.85 + 0.3 * vnoise(vec2(p.x * 0.01, h * 0.035) + n2);
   // Ängar i dalen, fjällhed ovanför trädgränsen, myr på flacka partier
-  vec3 meadow = mix(vec3(0.06, 0.085, 0.04), vec3(0.11, 0.125, 0.062), n2);
+  vec3 meadow = mix(vec3(0.065, 0.08, 0.04), vec3(0.11, 0.115, 0.062), n2);
   meadow = mix(meadow, vec3(0.06, 0.08, 0.04), smoothstep(0.5, 0.8, vnoise(p * 0.11)) * 0.3);
+  // Myrar: gulbruna på flacka partier i dalen
+  meadow = mix(meadow, vec3(0.15, 0.13, 0.07), smoothstep(0.55, 0.7, vnoise(p * 0.004 + 9.1)) * 0.7);
   vec3 heath = mix(vec3(0.19, 0.17, 0.1), vec3(0.27, 0.24, 0.14), n2);
   float alpine = smoothstep(420.0, 850.0, h + 180.0 * (n1 - 0.5));
   vec3 veg = mix(meadow, heath, alpine);
