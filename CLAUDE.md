@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Helikopterspel som drivs av en Concept2 SkiErg: effekten från ergen lyfter en simulerad helikopter. Grundspelet heter "så högt som möjligt". Ovanpå det byggs Fjällräddaren med övningar, karriär och uppdrag. Projektet är vibe-kodat, så håll det enkelt och lätt att läsa.
+Ergcopter är ett helikopterspel som drivs av en Concept2 SkiErg: effekten från ergen lyfter en simulerad helikopter. Grundspelet heter "så högt som möjligt". Ovanpå det byggs Fjällräddaren med övningar, karriär och uppdrag; läget väljs på startskärmen. Projektet är vibe-kodat, så håll det enkelt och lätt att läsa.
 
 - `spec.md` beskriver grundspelet: datakälla, signal, fysik, spelflöde, UI och standardvärden (§12).
 - `plan.md` beskriver Fjällräddaren och byggordningen (§8).
@@ -19,8 +19,8 @@ node server.js                    # http://localhost:3000 (PORT=… för annan p
 docker compose up                 # samma server i Docker, public/ monteras live
 ```
 
-- `?demo` flyger en demospelare utan erg. `?demo=<id>` låter autopiloten flyga en övning (t.ex. `hover`, `freefall`, `rings`; se `core/exercise.js`), en lektion (`lesson-1` … `lesson-4`) eller uppflygningen (`exam`). `dashboard.html?demo` visar dashboarden med påhittad data.
-- Tangenter i spelet: Enter start, Esc avbryt, S inställningar, L flygloggar, D debug, F helskärm. I menyn flyttar piltangenterna mellan valen.
+- `?demo` (knappen Demo på startskärmen) flyger en demospelare utan erg. `?demo=<id>` låter autopiloten flyga en övning (t.ex. `hover`, `freefall`, `rings`; se `core/exercise.js`), en lektion (`lesson-1` … `lesson-4`) eller uppflygningen (`exam`). `dashboard.html?demo` visar live-dashboarden med påhittad data.
+- Tangenter i spelet: Enter startar så högt som möjligt, Esc avbryt, S inställningar, L flygloggar, D debug, F helskärm. På startskärmen och i Fjällräddaren-menyn flyttar piltangenterna mellan valen, och i menyn byter 1–4 flik. I flygloggarnas uppspelning spelar och pausar mellanslag, och pilarna spolar.
 - Varje flygning spelas in som en flyglogg (spec §9.1). Klistrar någon in en logg: spara den i en fil och kör `npm run flightlog -- fil` för sammanfattning, de sista dragen före varje sättning och uppspelning.
 - CI (`.github/workflows/pages.yml`) kör `node --test` och `node tools/simulate.js` och publicerar sedan `public/` på GitHub Pages vid push till `master`.
 
@@ -29,11 +29,12 @@ docker compose up                 # samma server i Docker, public/ monteras live
 ```
 public/                  allt som publiceras, statiska filer utan byggsteg
   index.html             spelet
-  dashboard.html         dashboarden (siffror och kraftkurva via USB)
+  dashboard.html         live-dashboarden (siffror och kraftkurva via USB, höjden från spelet)
   favicon.svg            ikonen: räddningshelikoptern framför ett fjäll
   shared/                delas av spelet och dashboarden
     csafe.js, pm5.js     CSAFE-protokollet och PM5 via WebHID
     screen.js            helskärm och "håll skärmen vaken"
+    live.js              livedata från spelet till dashboarden (BroadcastChannel)
     sources/             datakällor: usb, ble (Bluetooth), mock (?demo), scripted (tester)
   dashboard/             dashboard.js, forcecurve.js, dashboard.css
   fonts/                 Barlow Condensed (woff2) med licens (OFL.txt)
@@ -51,18 +52,25 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       helicopters.js     helikoptertyper (plan.md §4)
       leaderboard.js     topplistan (localStorage)
       progress.js        spelarprofilen: grad, stjärnor, lektioner, loggbok (localStorage)
+      results.js         resultatet: topparna kring maxhöjden, meningen och vilket rekord det blev
       calibration.js     förväntat utfall och balanskontroll (spec §12)
       milestones.js      fjälltopparna, med källor
       flightlog.js       flygloggen: inspelning, text, tolkning och de sparade loggarna (spec §9.1)
       replay.js, sim.js  snabbspolad landning, headless-körning och uppspelning av flygloggar
     view/                allt som ritar, visar eller låter
-      render.js          canvasen: himmel, berg, helikopter, hjälplinjer
-      heli-draw.js, mountains.js    ritfunktioner
-      scenery.js         fjällkedjor, sol, molntäcke och norrsken efter höjd
+      render.js          canvasen: himmel, berg, helikopter, hjälplinjer, höjdskalan (i 3D utan himmel och berg)
+      terrain.js         landskapet i 3D: WebGL2-shader med fjäll, sjö, skog, moln och himmel
+      peaks3d.js         var milstolparnas toppar står i 3D-landskapet och när de skickas in
+      heli-draw.js, mountains.js    ritfunktioner: helikoptern, moln, granar, toppar med etiketter
+      scenery.js         himmel i dag- och kvällsljus, fjällkedjor, molntäcke och norrsken efter höjd
       effects.js         fartstreck, rotordamm och konfetti
       attract.js         startskärmens demotur
       color.js           färgblandning för canvasen
-      ui.js              DOM: skärmar, HUD, formulär, inställningspanel, topplista
+      ui.js              DOM: startskärmen, Ny flygning, redo, notiser, topplista, inställningar
+      hud.js             instrumenten: höjdrutan, effekten, variometern, tiden och övningens panel
+      career.js, thumbs.js  Fjällräddaren-menyn och korten med bilder (3D-landskapet eller ritade)
+      results.js         resultatskärmen
+      logplayer.js       flygloggarna med uppspelning
       rotor.js           rotorns animation
       audio.js, helicopter-sound.js rotorljud (Web Audio)
 test/                    node:test, en fil per område

@@ -1,7 +1,7 @@
 // Standardvärden för blandad publik (spec §12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES } from '../public/game/core/config.js';
+import { DEFAULT_CONFIG, liftPower, sanitize, CLASSES, classForAge } from '../public/game/core/config.js';
 import { analyticHeight } from '../public/game/core/physics.js';
 import { runPhysicsOnly } from '../public/game/core/sim.js';
 import { preview, heightAfter } from '../public/game/core/calibration.js';
@@ -111,4 +111,8 @@ test('topplista per klass: placering och dagens rekord inom klassen', () => {
   assert.deepEqual(lb.top(10, 'Barn').map((e) => e.name), ['Barn 1', 'Barn 2']);
   assert.equal(lb.todayBest(ts, 'Barn'), 1200);
   assert.equal(lb.todayBest(ts), 5000);
+});
+
+test('klassen följer åldern: till och med 12 barn, 13–17 ungdom, sedan vuxen', () => {
+  assert.deepEqual([1, 12, 13, 17, 18, 120].map(classForAge), ['Barn', 'Barn', 'Ungdom', 'Ungdom', 'Vuxen', 'Vuxen']);
 });

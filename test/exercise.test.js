@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../public/game/core/config.js';
 import { Flight } from '../public/game/core/physics.js';
-import { EXERCISES, ExerciseRun, getExercise } from '../public/game/core/exercise.js';
+import { EXERCISES, ExerciseRun, getExercise, starGuide } from '../public/game/core/exercise.js';
 import { getHelicopter, helicopterConfig } from '../public/game/core/helicopters.js';
 import { LESSONS, EXAM } from '../public/game/core/lessons.js';
 import { runExercise } from '../public/game/core/sim.js';
@@ -268,16 +268,27 @@ test('hjälplinjer per steg', async () => {
   assert.deepEqual(stepGuides(null), { lines: [], landingPad: false, blind: false });
   assert.equal(stepGuides({ type: 'climb', to: 50 }).lines[0].h, 50);
   const hover = stepGuides({ type: 'hover', at: 300, tol: 25, holdS: 30, held: 15 }).lines[0];
-  assert.deepEqual([hover.lo, hover.hi, hover.progress], [275, 325, 0.5]);
+  assert.deepEqual([hover.lo, hover.hi, hover.progress, hover.ring], [275, 325, 0.5, true]);
   assert.equal(stepGuides({ type: 'land', maxSpeed: 2 }).landingPad, true);
   const armed = stepGuides({ type: 'freefall', from: 1000, gate: 650, floor: 450, phase: 'armed' }).lines;
   assert.deepEqual(armed.map((l) => l.kind), ['line', 'band']);
   const falling = stepGuides({ type: 'freefall', from: 1000, gate: 650, floor: 450, phase: 'falling' }).lines;
-  assert.deepEqual([falling.length, falling[0].lo, falling[0].hi], [1, 450, 650]);
+  assert.deepEqual([falling.length, falling[0].lo, falling[0].hi, falling[0].ring], [1, 450, 650, undefined]);
   assert.equal(stepGuides({ type: 'hover', at: 350, tol: 30, holdS: 30, blind: true }).blind, true);
   assert.equal(stepGuides({ type: 'hover', at: 350, tol: 30, holdS: 30, blind: true }).lines.length, 0);
   const buddy = stepGuides({ type: 'follow', tol: 25, t0: 10, path: [[0, 150], [10, 250]] }, 20).lines[0];
   assert.deepEqual([buddy.kind, buddy.h], ['buddy', 250]);
   const rings = stepGuides({ type: 'rings', tol: 30, t0: 0, outcomes: [true], rings: [{ t: 8, h: 130 }, { t: 16, h: 170 }] }, 10).lines;
   assert.deepEqual(rings.map((r) => [r.inS, r.hit]), [[-2, true], [6, undefined]]);
+});
+
+test('stjärnkraven per steg: samma gränser som bedömningen', () => {
+  const hover = starGuide({ type: 'hover', at: 300, tol: 25, holdS: 30 });
+  assert.deepEqual(hover.map((l) => l.stars), [3, 2, 1]);
+  assert.deepEqual(hover.map((l) => l.text), ['i snitt inom 7,5 m från målet', 'i snitt inom 13,8 m', 'inom ±25 m']);
+  assert.equal(starGuide({ type: 'land', maxSpeed: 2 })[0].text, 'sätt ner under 0,6 m/s');
+  assert.equal(starGuide({ type: 'freefall', from: 1000, gate: 650, floor: 450 })[0].text, 'vänd inom 70 m under gränsen');
+  assert.equal(starGuide({ type: 'climb', to: 50 }), null);
+  assert.equal(starGuide({ type: 'hover', at: 150, tol: 25, holdS: 3, unscored: true }), null);
+  assert.equal(starGuide(null), null);
 });

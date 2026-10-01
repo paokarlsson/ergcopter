@@ -41,6 +41,22 @@ export class Leaderboard {
     return { rank: same.indexOf(entry) + 1, total: same.length };
   }
 
+  /** Placering bland dagens flygningar (lokal tid) i postens klass, och antalet i dag. */
+  todayRank(entry) {
+    const day = new Date(entry.ts).toDateString();
+    const same = this.entries.filter((e) => e.klass === entry.klass && new Date(e.ts).toDateString() === day);
+    return { rank: same.indexOf(entry) + 1, total: same.length };
+  }
+
+  /**
+   * Bästa höjden för samma namn (utan hänsyn till versaler) i klassen, utom posten `except`.
+   * @returns {number|null}
+   */
+  personalBest(name, klass, except = null) {
+    const key = String(name).trim().toLowerCase();
+    return this.entries.find((e) => e !== except && e.klass === klass && e.name.trim().toLowerCase() === key)?.hMax ?? null;
+  }
+
   clear() {
     this.entries = [];
     this.#save();

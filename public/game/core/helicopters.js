@@ -9,7 +9,7 @@ export const HELICOPTERS = [
     ceiling: 1500, // m
     winch: false, // ingen vinsch och ingen plats för patient
     seats: 0,
-    livery: { body: '#f2c230', trim: '#1f2328', label: 'SKOLA' },
+    livery: { body: '#f2c230', accent: '#2a2f37', trim: '#ffffff', label: 'SKOLA' },
   },
   {
     id: 'rescue',
@@ -18,12 +18,12 @@ export const HELICOPTERS = [
     ceiling: 0,
     winch: true,
     seats: 1,
-    livery: { body: '#d7263d', trim: '#ffffff', label: '112' },
+    livery: { body: '#f4f5f7', accent: '#d7263d', trim: '#ffffff', label: '112' },
   },
 ];
 
 /** Instruktörens helikopter i "Följ instruktören". */
-export const INSTRUCTOR_LIVERY = { body: '#2f6fd0', trim: '#ffffff', label: 'INSTR' };
+export const INSTRUCTOR_LIVERY = { body: '#2f6fd0', accent: '#f4f5f7', trim: '#1b2b44', label: 'INSTR' };
 
 export function getHelicopter(id) {
   const heli = HELICOPTERS.find((h) => h.id === id);

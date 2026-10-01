@@ -124,7 +124,7 @@ export class FlightLog {
       p: this.#pct(stroke.power),
       h: f.h,
       v: f.v,
-      lift: f.liftRatio(stroke.power) * 100, // det lyftmätaren visar
+      lift: f.liftRatio(stroke.power) * 100, // effekten mot det som krävs, % (100 = håller höjden)
       vs: f.targetSpeed(stroke.power), // stigfarten draget leder till
       note,
       k0: this.pendingForce.length ? this.forceT - stroke.t : null,
@@ -248,7 +248,7 @@ export class FlightLog {
     lines.push('', '## Händelser (t = flygtid i s)', ...this.events.map((e) => `${fix(e.t, 2)} ${e.text}`));
     lines.push(
       '',
-      '## Drag (t = flygtid då motorn fick draget, p = effekt %, h m, v m/s, lyft = lyftmätaren %,',
+      '## Drag (t = flygtid då motorn fick draget, p = effekt %, h m, v m/s, lyft = effekt mot det som krävs %,',
       '## vs = stigfarten draget leder till m/s, anm = ok|dubblett|paus|motorstopp,',
       '## k0 = s från första kraftsampel till t, sedan kraftkurvan i N)',
       'nr t p h v lyft vs anm k0 kraft',
@@ -464,6 +464,35 @@ export function parseLog(text) {
     end: endT ? { t: Number(endT), reason } : null,
   });
   return log;
+}
+
+/**
+ * Det som uppspelningen av en logg ritar: spåret, passerade toppar och sättningar.
+ * @param {ReturnType<typeof parseLog>} log
+ * @returns {{ trace: {t,h,v,P}[], peaks: {t,name,h}[], touchdowns: {t,speed}[], duration: number, hMax: number }}
+ */
+export function logTimeline(log) {
+  const trace = log.trace.map(([t, h, v, , P]) => ({ t, h, v, P }));
+  const matches = (re) => log.events.map((e) => ({ t: e.t, m: re.exec(e.text) })).filter((x) => x.m);
+  return {
+    trace,
+    peaks: matches(/^topp passerad: (.+) (\d+) m$/).map(({ t, m }) => ({ t, name: m[1], h: Number(m[2]) })),
+    touchdowns: matches(/^sättning ([\d,]+) m\/s$/).map(({ t, m }) => ({ t, speed: Number(m[1].replace(',', '.')) })),
+    duration: log.end?.t ?? trace.at(-1)?.t ?? 0,
+    hMax: Math.max(0, ...trace.map((p) => p.h)),
+  };
+}
+
+/** Höjd och fart vid tiden t, linjärt mellan spårets punkter. */
+export function traceAt(trace, t) {
+  if (!trace.length) return { h: 0, v: 0 };
+  if (t <= trace[0].t) return { h: trace[0].h, v: trace[0].v };
+  const i = trace.findIndex((p) => p.t >= t);
+  if (i < 0) return { h: trace.at(-1).h, v: trace.at(-1).v };
+  const a = trace[i - 1];
+  const b = trace[i];
+  const u = (t - a.t) / Math.max(1e-9, b.t - a.t);
+  return { h: a.h + (b.h - a.h) * u, v: a.v + (b.v - a.v) * u };
 }
 
 // --- Sparade loggar ---------------------------------------------------------------

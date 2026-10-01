@@ -149,11 +149,11 @@ Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska 
    - Ingen fallbroms: den faller lika fort som de andra.
    - Ett tak på 1 500 m, där den inte stiger mer. Den klarar övningshöjderna men inte de höga topparna. Taket valdes i stället för att luften tunnas ut snabbare, eftersom det senare hade gjort övningarna på 1 000 m tyngre och gynnat styrka.
    - Den har ingen vinsch och ingen plats för patient. Det förklarar varför aspiranten bara övar.
-   - Den är gul med texten SKOLA (`heli-draw.js`).
+   - Den är gul med svarta detaljer och texten SKOLA (`helicopters.js`, ritas av `heli-draw.js`).
    - Ljudet får ljusare ton och snabbare rotor (`helicopter-sound.js`). Inte byggt än.
 2. **Lätt räddningshelikopter** (junior och fjällräddare, `rescue`)
    - Vinsch och en patient. Fysiken som i dag.
-   - Röd med texten 112. Den står vid verkstan medan man är aspirant och blir ens egen i fri flygning efter uppflygningen.
+   - Vit och röd med texten 112, som i mockupen. Den står vid verkstan medan man är aspirant och blir ens egen i fri flygning efter uppflygningen.
    - Räcker till fjällen i Jämtland och Härjedalen.
 3. **Tung räddningshelikopter** (senior och uppåt)
    - Högre tak och plats för två eller tre patienter.
@@ -229,14 +229,14 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 
 - **Namnet** blir spelarprofilen (`core/progress.js`, `skierg.progress.v2`). Grad, godkända övningar, bästa resultat, genomförda lektioner, uppflygningen och loggboken sparas lokalt, så den som kommer tillbaka fortsätter sin karriär. Anonyma spelare sparas bara under passet.
 - **Vikten** används som i dag och sparas inte i profilen (spec §6).
-- **Åldern** kan styra vilka uppdrag som erbjuds. Barn kan få en egen, snällare karriärstege, ungefär som klasserna fungerar i dag. Åldern sparas inte, bara klassen.
+- **Åldern** anges i inmatningen och ger klassen (spec §12.2). Den kan också styra vilka uppdrag som erbjuds: barn kan få en egen, snällare karriärstege. Åldern sparas inte, bara klassen.
 
 ## 8. Byggordning
 
 1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/core/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
 2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med tak (1 500 m) och egen grafik. Se `public/game/core/helicopters.js`. Ljudet återstår.
-3. ✅ **Menyskärm efter inmatningen:** "Aspirant · Flygskolan" med loggboken, lektionerna, uppflygningen, övningarna med stjärnor och fri flygning. Man väljer med piltangenterna och Enter, ett tryck eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
-4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på, släpphöjd och fångstzon i fritt fall, landningsplatta med sjunkhastighet mot gränsen, och verkstaden vid startplatsen. En panel under höjden visar övningens instruktion och återkoppling. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
+3. ✅ **Fjällräddaren-menyn efter inmatningen** (`view/career.js`): rubrik med räddningshelikoptern, namn, grad och loggbok, och karriärens steg som flikar: 1. Flygskolan (lektionerna), 2. Övningar (de fjorton övningarna), 3. Uppflygning (med sina fem moment) och 4. Räddningsuppdrag (låst tills uppdragen finns). Varje val är ett kort med en bild (`view/thumbs.js`): en bild av 3D-landskapet från en egen kamera per kort med övningens motiv ovanpå, eller ritad himmel och fjäll utan 3D; stjärnor eller läge; sidopanelen beskriver fliken och målet för kortet man pekar på, och visar vad ett drag startar. Juniorer har också Fri flygning där. Man väljer med piltangenterna och Enter, siffrorna 1–4 byter flik, ett tryck eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
+4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på med en lysande ring på målhöjden runt helikoptern, släpphöjd och fångstzon i fritt fall, en pulserande ring på plattan när man ska landa, och verkstaden vid startplatsen. Rubriken uppe till vänster säger vilken övning det är ("Övning 3 – Hovring", i lektioner också momentet). Panelen till höger visar uppgiften och återkopplingen, vad som krävs för en, två och tre stjärnor i steget (`starGuide` i `exercise.js`, samma gränser som bedömningen), höjd, mål och stigning (sjunkfarten mot gränsen under landningen) och effekten de senaste 30 sekunderna. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
 5. ✅ **Profiler och grader** som sparas på namnet, med loggbok och personbästa.
 6. ✅ **Uppflygningen**, lektionerna, övningarna 5–14 och den lätta räddningshelikoptern. `?demo=<id>` flyger en övning, lektion (`lesson-1`) eller uppflygningen (`exam`) med autopiloten.
 7. **Skarpa uppdrag** med larmskärm (Ja/Nej), vinsch och patient som last.

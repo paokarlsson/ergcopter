@@ -1,5 +1,5 @@
-// Fjälltoppar i scenen: silhuett med ljus och skugga, raviner, snötäcke, ett
-// röse och en skylt med namn och höjd på toppen. Allt i skärmkoordinater;
+// Fjälltoppar i scenen: silhuett med ljus och skugga, raviner och snötäcke, och en
+// etikett i glas ovanför toppen med namn och höjd. Allt i skärmkoordinater;
 // formen är deterministisk per topp.
 
 import { mix, alpha } from './color.js';
@@ -86,79 +86,113 @@ export function drawMountain(ctx, m, sx, sy, bottom, c) {
   ctx.fillStyle = c.snow;
   ctx.fill();
 
-  // Skuggsida (höger): mörkar både berg och snö
+  // Snöstråk i rännorna under snötäcket
+  ctx.strokeStyle = alpha(c.snow, 0.7);
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const side = i % 2 ? 1 : -1;
+    const x0 = sx + side * snow * (0.4 + 1.6 * rand(seed + i * 6.3));
+    const y0 = sy + snow * (0.5 + 0.5 * rand(seed + i * 2.9));
+    ctx.lineWidth = 2 + 4 * rand(seed + i * 8.1);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x0 + side * snow * 0.3, y0 + snow * (0.6 + 0.8 * rand(seed + i * 3.3)));
+    ctx.stroke();
+  }
+
+  // Skuggsida (vänster, solen står till höger): mörkar både berg och snö
   ctx.beginPath();
   ctx.moveTo(sx, sy);
-  for (const [x, y] of right) ctx.lineTo(x, y);
-  ctx.lineTo(sx + depth * 0.08, bottom);
+  for (const [x, y] of left) ctx.lineTo(x, y);
+  ctx.lineTo(sx - depth * 0.08, bottom);
   ctx.closePath();
   ctx.fillStyle = c.mountainShade;
   ctx.fill();
   ctx.restore();
-
-  // Röse på toppen, som skylten står i
-  ctx.fillStyle = mix(c.rock, '#1b2230', 0.35);
-  for (const [dx, dy, r] of [[-7, -3, 6], [6, -3, 6], [0, -10, 5.5], [0, -17, 4]]) {
-    ctx.beginPath();
-    ctx.ellipse(sx + dx, sy + dy, r * 1.2, r, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
 }
 
-/** Skyltens mått och text. Används både för att rita och för att undvika krockar. */
-export function signLayout(ctx, m, sx, sy, passed, scale, formatHeight) {
-  const pole = 34 * scale;
-  const nameFont = `800 ${Math.round(22 * scale)}px system-ui, sans-serif`;
-  const heightFont = `700 ${Math.round(18 * scale)}px system-ui, sans-serif`;
-  const heightText = `${passed ? '✓ ' : ''}${formatHeight(m.h)} m`;
+/** Etikettens mått och text. Används både för att rita och för att undvika krockar. */
+export function labelLayout(ctx, m, sx, sy, passed, scale, formatHeight) {
+  const pole = 26 * scale;
+  const nameFont = `800 ${Math.round(24 * scale)}px "Barlow Condensed", system-ui, sans-serif`;
+  const heightFont = `600 ${Math.round(18 * scale)}px "Barlow Condensed", system-ui, sans-serif`;
+  const heightText = `${formatHeight(m.h)} m`;
   ctx.font = nameFont;
   const w1 = ctx.measureText(m.name).width;
   ctx.font = heightFont;
-  // Bredden räknas alltid med bocken, så att skylten inte ändrar storlek när toppen passeras.
-  const w2 = ctx.measureText(`✓ ${formatHeight(m.h)} m`).width;
-  const pad = 14 * scale;
+  // Bredden räknas alltid med bocken, så att etiketten inte ändrar storlek när toppen passeras.
+  const check = 20 * scale;
+  const w2 = ctx.measureText(heightText).width + check;
+  const pad = 12 * scale;
   const w = Math.max(w1, w2) + pad * 2;
-  const h = 60 * scale;
-  return { x: sx - w / 2, y: sy - pole - h, w, h: h + pole, pole, bh: h, nameFont, heightFont, heightText };
+  const h = 54 * scale;
+  return { x: sx - w / 2, y: sy - pole - h, w, h: h + pole, pole, bh: h, pad, check, nameFont, heightFont, heightText };
 }
 
 /**
- * Skylt på toppen: stolpe och bräda med namn och höjd. Passerade toppar får en bock.
- * @param {ReturnType<typeof signLayout>} L
+ * Etikett i glas ovanför toppen: namn och höjd, med en bock när toppen är passerad.
+ * En tunn linje går ned till en lysande punkt på toppen.
+ * @param {ReturnType<typeof labelLayout>} L
  */
-export function drawSign(ctx, m, sx, sy, passed, scale, c, L) {
-  const { pole, nameFont, heightFont, heightText } = L;
-  const bw = L.w;
-  const bh = L.bh;
+export function drawLabel(ctx, m, sx, sy, passed, scale, c, L) {
+  const { pad, check, nameFont, heightFont, heightText } = L;
   const bx = L.x;
   const by = L.y;
 
-  // Stolpe
-  ctx.fillStyle = c.signPost;
-  ctx.fillRect(sx - 3 * scale, sy - pole, 6 * scale, pole + 2);
+  ctx.strokeStyle = alpha('#ffffff', 0.75);
+  ctx.lineWidth = 1.5 * scale;
+  ctx.beginPath();
+  ctx.moveTo(sx, by + L.bh);
+  ctx.lineTo(sx, sy - 3 * scale);
+  ctx.stroke();
+  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 9 * scale);
+  glow.addColorStop(0, '#ffffff');
+  glow.addColorStop(0.35, alpha('#ffffff', 0.8));
+  glow.addColorStop(1, alpha('#ffffff', 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 9 * scale, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Bräda med skugga, så att den lyfter mot berget bakom
+  // Plattan med skugga, så att den lyfter mot berget bakom
   ctx.save();
   ctx.shadowColor = 'rgb(0 0 0 / 0.35)';
-  ctx.shadowBlur = 10 * scale;
+  ctx.shadowBlur = 12 * scale;
   ctx.shadowOffsetY = 3 * scale;
   ctx.beginPath();
-  ctx.roundRect(bx, by, bw, bh, 8 * scale);
-  ctx.fillStyle = passed ? c.signBoardPassed : c.signBoard;
+  ctx.roundRect(bx, by, L.w, L.bh, 6 * scale);
+  ctx.fillStyle = c.labelBg;
   ctx.fill();
   ctx.restore();
-  ctx.lineWidth = 3 * scale;
-  ctx.strokeStyle = passed ? c.signCheck : c.signEdge;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = c.labelEdge;
   ctx.stroke();
 
-  ctx.fillStyle = c.signText;
-  ctx.textAlign = 'center';
+  ctx.fillStyle = c.labelText;
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.font = nameFont;
-  ctx.fillText(m.name, sx, by + 27 * scale);
+  ctx.fillText(m.name, bx + pad, by + 24 * scale);
   ctx.font = heightFont;
-  ctx.fillStyle = passed ? c.signCheck : c.signText;
-  ctx.fillText(heightText, sx, by + 50 * scale);
+  ctx.fillStyle = alpha(c.labelText, 0.9);
+  ctx.fillText(heightText, bx + pad + check, by + 45 * scale);
+  // Bocken: grön när toppen är passerad, annars en tom ring
+  const cx = bx + pad + 7 * scale;
+  const cy = by + 39 * scale;
+  ctx.lineWidth = 2.5 * scale;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (passed) {
+    ctx.strokeStyle = c.labelCheck;
+    ctx.moveTo(cx - 6 * scale, cy);
+    ctx.lineTo(cx - 2 * scale, cy + 4 * scale);
+    ctx.lineTo(cx + 6 * scale, cy - 5 * scale);
+  } else {
+    ctx.strokeStyle = alpha(c.labelText, 0.5);
+    ctx.arc(cx, cy, 5 * scale, 0, Math.PI * 2);
+  }
+  ctx.stroke();
 }
 
 /** Deterministiskt "slump"-tal 0–1. */

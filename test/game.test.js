@@ -153,3 +153,50 @@ test('namnet är valfritt: tomt namn blir Anonym', () => {
   assert.equal(game.player.name, ANONYMOUS_NAME);
   assert.equal(game.player.anonymous, true);
 });
+
+test('åldern ger klassen och sparas inte', () => {
+  const setup = (age) => {
+    const game = new Game(cfg);
+    game.openSetup();
+    return { game, error: game.submitSetup({ name: 'A', mass: 40, age }) };
+  };
+  assert.equal(setup(12).game.player.klass, 'Barn');
+  assert.equal(setup('13').game.player.klass, 'Ungdom');
+  assert.equal(setup(17).game.player.klass, 'Ungdom');
+  assert.equal(setup(18).game.player.klass, 'Vuxen');
+  assert.equal('age' in setup(40).game.player, false);
+  assert.match(setup('').error, /Åldern/);
+  assert.match(setup(12.5).error, /heltal/);
+  assert.match(setup(0).error, /1–120/);
+});
+
+test('så högt som möjligt går från inmatningen direkt till READY med egen helikopter', () => {
+  const game = new Game(cfg);
+  const seen = [];
+  game.on('state', ({ to }) => seen.push(to));
+  const own = { id: 'rescue', ceiling: 0 };
+  game.setOwnHelicopter(own);
+  game.openSetup('free');
+  assert.equal(game.submitSetup({ name: 'A', mass: 80, age: 30 }), null);
+  assert.deepEqual(seen, ['SETUP', 'READY']);
+  assert.equal(game.exercise, null);
+  assert.equal(game.helicopter, own);
+  game.escape(); // ingen meny i det här läget: tillbaka till startskärmen
+  assert.equal(game.state, 'IDLE');
+});
+
+test('flyg igen: samma deltagare tillbaka till READY, och resultatet har dragen', () => {
+  const { game, clock } = flying();
+  clock.row(150, 30);
+  game.escape();
+  assert.equal(game.state, 'FINISHED');
+  const stats = game.result.stats;
+  assert.equal(stats.strokes, 20);
+  assert.equal(Math.round(stats.avgPct), 250); // 150 W av P0 = 60 W
+  assert.equal(Math.round(stats.maxPct), 250);
+  assert.equal(stats.P0, 60);
+  game.again();
+  assert.equal(game.state, 'READY');
+  assert.equal(game.player.name, 'Testa');
+  assert.equal(game.result, null);
+});

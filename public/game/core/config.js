@@ -33,6 +33,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   showRawWatts: false,
   showCombinedBoard: false, // sammanlagd topplista som extra flik
   sound: false,
+  terrain3d: true, // landskapet i 3D (WebGL2); utan stöd, eller om datorn är för långsam, ritas det i 2D
   milestones: DEFAULT_MILESTONES, // se milestones.js
 });
 
@@ -41,12 +42,19 @@ const PREVIOUS_DEFAULTS = { P_ref: 100, H_air: 2700, G: 22.5, maxSessionS: 600 }
 
 /** Klasser (spec §12.2). Bara klassen sparas, aldrig åldern. */
 export const CLASSES = [
-  { name: 'Barn', ages: 'till och med 12 år' },
-  { name: 'Ungdom', ages: '13–17 år' },
-  { name: 'Vuxen', ages: '18 år och äldre' },
+  { name: 'Barn', ages: 'till och med 12 år', maxAge: 12 },
+  { name: 'Ungdom', ages: '13–17 år', maxAge: 17 },
+  { name: 'Vuxen', ages: '18 år och äldre', maxAge: Infinity },
 ];
 export const CHILD_CLASS = 'Barn';
 export const CHILD_REMINDER = 'Spjäll 3–5. Pall vid behov om barnet inte når handtagen.';
+export const MIN_AGE = 1;
+export const MAX_AGE = 120;
+
+/** Klassen för en ålder i hela år. Åldern används bara här och sparas aldrig. */
+export function classForAge(age) {
+  return CLASSES.find((c) => age <= c.maxAge).name;
+}
 
 /** Viktexponenten k för ett viktläge. */
 export function weightExponent(cfg) {
@@ -85,6 +93,7 @@ export const CONFIG_SCHEMA = [
   { group: 'Visning', key: 'showCombinedBoard', label: 'Visa även sammanlagd topplista', type: 'bool' },
   { group: 'Visning', key: 'showRawWatts', label: 'Visa råa watt och P0 på skärmen', type: 'bool' },
   { group: 'Visning', key: 'sound', label: 'Rotorljud', type: 'bool' },
+  { group: 'Visning', key: 'terrain3d', label: 'Landskap i 3D (kräver WebGL2 och bra grafik; annars 2D)', type: 'bool' },
   { group: 'Visning', key: 'milestones', label: 'Milstolpar (namn;höjd;område per rad, området är valfritt)', type: 'milestones' },
 ];
 

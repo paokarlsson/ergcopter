@@ -203,14 +203,17 @@ export class ForceChart {
     ctx.lineTo(x(cur.length - 1), y(0));
     ctx.lineTo(x(0), y(0));
     ctx.closePath();
-    ctx.globalAlpha = 0.1;
+    ctx.globalAlpha = 0.14;
     ctx.fillStyle = c.series;
     ctx.fill();
     ctx.globalAlpha = 1;
     tracePath(ctx, cur, x, y);
     ctx.strokeStyle = c.series;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = c.series;
+    ctx.shadowBlur = 8;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     // Toppen: prick med ring + etikett (bara när draget är klart)
     const stats = strokeStats(this.current);

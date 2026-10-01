@@ -3,151 +3,234 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Fjällräddaren</title>
+    <title>Ergcopter</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="game/game.css" />
     <script type="module" src="game/main.js"></script>
   </head>
   <body>
+    <canvas id="terrain" aria-hidden="true"></canvas>
     <canvas id="scene" aria-hidden="true"></canvas>
 
-    <!-- Instrument under flygning -->
+    <!-- Instrument under flygning (spec §8). Höjdskalan ritas i canvasen; rutan med höjden följer den. -->
     <div id="hud" hidden>
-      <div class="hud-alt">
-        <div class="hud-label">Höjd</div>
+      <div class="alt-box" id="alt-box">
         <output id="alt" class="alt-big">0 m</output>
-        <div class="alt-max">Max <output id="alt-max">0 m</output></div>
       </div>
-      <div class="hud-side">
-        <!-- Lyftmätaren: visare 0–300 %, 100 % håller höjden (spec §8) -->
-        <div class="lift">
-          <div class="lift-gauge" role="meter" aria-label="Lyft" aria-valuemin="0" aria-valuemax="300" id="lift-meter">
-            <svg viewBox="0 0 200 112" aria-hidden="true">
-              <path class="gauge-track" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
-              <path class="gauge-low" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
-              <path class="gauge-fill" id="lift-fill" d="M 20 100 A 80 80 0 0 1 180 100" pathLength="300" />
-              <line class="gauge-tick" x1="30" y1="100" x2="10" y2="100" />
-              <line class="gauge-tick hold" x1="65" y1="39.4" x2="52.5" y2="17.7" />
-              <line class="gauge-tick" x1="135" y1="39.4" x2="145" y2="22.1" />
-              <line class="gauge-tick" x1="170" y1="100" x2="190" y2="100" />
-              <text class="gauge-num" x="74" y="56">100</text>
-              <text class="gauge-num" x="126" y="56">200</text>
-              <g class="gauge-needle" id="lift-needle">
-                <path d="M 96 100 L 100 30 L 104 100 Z" />
-                <circle cx="100" cy="100" r="8" />
-              </g>
-            </svg>
+      <h2 class="hud-title" id="hud-title" hidden><span id="hud-title-main"></span><small id="hud-title-sub"></small></h2>
+
+      <div class="hud-right">
+        <!-- Effekt (relativ): motoreffekten mot det som krävs för att hålla höjden -->
+        <section class="glass effect" id="effect">
+          <div class="effect-main">
+            <div class="effect-head">
+              <span class="hud-label">Effekt (relativ)</span>
+              <output class="effect-pct" id="effect-pct">±0 %</output>
+            </div>
+            <div class="effect-bar" id="effect-meter" role="meter" aria-label="Effekt jämfört med att hålla höjden" aria-valuemin="-100" aria-valuemax="200">
+              <div class="effect-fill" id="effect-fill"></div>
+              <span class="effect-hold" aria-hidden="true"></span>
+            </div>
+            <div class="effect-scale" aria-hidden="true"><span id="effect-hold-label">Håller höjden</span></div>
           </div>
-          <div class="lift-read">
-            <div class="hud-label">Lyft</div>
-            <output id="lift-pct" class="lift-pct">0 %</output>
-            <div class="lift-hint" id="lift-hint">100 % = håller höjden</div>
-          </div>
+          <dl class="effect-side" id="effect-side">
+            <div><dt id="side-a-label">Max i passet</dt><dd id="side-a">0 m</dd></div>
+            <div><dt id="side-b-label">Dagens rekord</dt><dd id="side-b">–</dd></div>
+          </dl>
+        </section>
+
+        <!-- Övningens panel (plan.md §3): uppgift, stjärnkrav, siffror och effekten över tid -->
+        <div class="drill" id="drill" hidden>
+          <section class="glass drill-card">
+            <p class="drill-step" id="drill-step"></p>
+            <p class="drill-text" id="drill-text"></p>
+            <p class="drill-note" id="drill-note" hidden></p>
+            <div class="drill-bar" id="drill-bar" hidden><div class="drill-bar-fill" id="drill-bar-fill"></div></div>
+            <ol class="drill-stars" id="drill-stars" hidden></ol>
+          </section>
+          <dl class="glass drill-stats">
+            <div><dt>Höjd</dt><dd id="ds-h">0 m</dd></div>
+            <div id="ds-goal-row"><dt>Mål</dt><dd id="ds-goal">–</dd></div>
+            <div><dt id="ds-vy-label">Stigning</dt><dd id="ds-vy">0,0 m/s</dd></div>
+          </dl>
+          <section class="glass drill-graph">
+            <div class="hud-label">Effekt senaste 30 s</div>
+            <canvas id="effect-graph" aria-hidden="true"></canvas>
+          </section>
         </div>
-        <div class="hud-row">
-          <div class="vario"><div class="hud-label">Stigning</div><output id="vario">· 0,0 m/s</output></div>
-          <div class="timer"><div class="hud-label">Tid</div><output id="timer">0:00</output></div>
+      </div>
+
+      <section class="glass timer">
+        <div class="hud-label">Tid</div>
+        <output id="timer">00:00</output>
+      </section>
+
+      <!-- Variometer: stig- och sjunkhastighet. Skalan är tätare nära noll. -->
+      <section class="vario" id="vario-dial" aria-label="Stigning">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="vario-face" cx="100" cy="100" r="96" />
+          <g id="vario-ticks"></g>
+          <g class="vario-needle" id="vario-needle">
+            <path d="M 100 104 L 28 100 L 100 96 Z" />
+          </g>
+          <circle class="vario-hub" cx="100" cy="100" r="7" />
+        </svg>
+        <div class="vario-read">
+          <output id="vario">0,0</output>
+          <span class="vario-unit">m/s</span>
         </div>
-        <div class="raw" id="raw" hidden></div>
-      </div>
-      <div class="replay-badge" id="replay-badge" hidden></div>
-      <!-- Övningens instruktion (plan.md §3) -->
-      <div class="drill" id="drill" hidden>
-        <div class="drill-head"><span id="drill-name"></span><span id="drill-step"></span></div>
-        <div class="drill-text" id="drill-text"></div>
-        <div class="drill-bar" id="drill-bar" hidden><div class="drill-bar-fill" id="drill-bar-fill"></div></div>
-        <div class="drill-sink" id="drill-sink" hidden></div>
-        <div class="drill-note" id="drill-note" hidden></div>
-      </div>
+      </section>
+
+      <div class="raw" id="raw" hidden></div>
     </div>
 
     <div id="toast" class="toast" hidden></div>
 
-    <!-- Helskärm och håll skärmen på -->
+    <!-- Ljud, inställningar, helskärm och håll skärmen på -->
     <div id="screen-controls" class="screen-controls"></div>
 
-    <!-- IDLE -->
-    <!-- Startskärmen: titeln i himlen, helikoptern flyger en demotur bakom (view/attract.js) -->
+    <!-- IDLE: startskärmen. Helikoptern flyger en demotur bakom (view/attract.js). -->
     <section id="screen-idle" class="screen attract" hidden>
-      <header class="title">
-        <p class="title-kicker">SkiErg · Fjällräddningen</p>
-        <h1>Fjällräddaren</h1>
-        <p class="title-lead">Börja som aspirant och öva med skolhelikoptern – eller flyg så högt du kan.</p>
-      </header>
-      <div class="board board-panel">
-        <div class="board-head">
-          <h2>Topplista · fri flygning</h2>
-          <div class="tabs" role="tablist" id="board-tabs" aria-label="Klass"></div>
-        </div>
-        <ol id="board-idle" class="board-list" role="tabpanel"></ol>
-        <p class="today" id="today-idle"></p>
+      <div class="idle-column">
+        <header class="brand">
+          <svg class="brand-mark" viewBox="0 0 240 84" aria-hidden="true">
+            <defs>
+              <linearGradient id="brand-snow" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#ffffff" />
+                <stop offset="1" stop-color="#c9d6e6" />
+              </linearGradient>
+            </defs>
+            <path fill="url(#brand-snow)" d="M0 84 L58 34 L72 44 L118 4 L150 32 L162 24 L240 84 Z" />
+            <path fill="#7e93b0" d="M118 4 L104 40 L96 84 L132 84 L124 52 L130 30 Z M58 34 L52 58 L46 84 L64 84 L62 56 Z M162 24 L170 52 L184 84 L198 84 L178 46 Z" opacity="0.55" />
+            <path fill="none" stroke="#0d1a2e" stroke-width="2.5" stroke-linejoin="round" opacity="0.5"
+              d="M118 4 L110 26 L116 22 L120 34 M58 34 L62 44 M162 24 L158 38" />
+          </svg>
+          <h1 class="brand-name">Ergcopter</h1>
+          <p class="brand-tagline">Driv högre. Nå längre.</p>
+        </header>
+
+        <nav class="main-menu" id="main-menu" aria-label="Meny">
+          <button type="button" class="btn primary big menu-btn" data-action="free">
+            <svg viewBox="0 0 32 24" aria-hidden="true"><path d="M1 23 L11 9 L15 14 L21 3 L31 23 Z" fill="currentColor" /><path d="M21 3 L18 9 L21 8 L23 11 L24 8 Z" fill="#1867cc" /></svg>
+            Så högt som möjligt
+          </button>
+          <button type="button" class="btn big menu-btn" data-action="career">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 11a7 7 0 0 1 14 0v2H5z" fill="currentColor" />
+              <path d="M7 12h10v3a5 5 0 0 1-10 0z" fill="currentColor" opacity="0.55" />
+              <path d="M3 24c0-4 4-6.5 9-6.5s9 2.5 9 6.5z" fill="currentColor" />
+            </svg>
+            Fjällräddaren
+          </button>
+          <button type="button" class="btn menu-btn small" data-action="settings">Inställningar</button>
+          <button type="button" class="btn menu-btn small" data-action="board">Topplista</button>
+          <button type="button" class="btn menu-btn small" data-action="logs">Flygloggar</button>
+        </nav>
+
+        <!-- Topplistan per klass (spec §12.2). Visas med knappen och växlar in av sig själv. -->
+        <section class="glass board-panel" id="board-panel" hidden>
+          <div class="board-head">
+            <h2>Topplista</h2>
+            <div class="tabs" role="tablist" id="board-tabs" aria-label="Klass"></div>
+          </div>
+          <ol id="board-idle" class="board-list" role="tabpanel"></ol>
+          <p class="today" id="today-idle"></p>
+          <button type="button" class="btn small" id="board-back">Tillbaka</button>
+        </section>
       </div>
-      <button class="primary big start-cta" id="start"><span class="keys">Tryck Enter för att starta</span><span class="touch">Tryck här för att starta</span></button>
+      <a class="btn small demo-btn" href="?demo" title="Se en demoflygning utan erg"><span class="demo-q" aria-hidden="true">?</span>Demo</a>
     </section>
 
-    <!-- SETUP -->
-    <section id="screen-setup" class="screen" hidden>
-      <form class="card" id="setup-form" autocomplete="off">
-        <h2>Ny deltagare</h2>
-        <fieldset class="conn">
+    <!-- SETUP: ny flygning -->
+    <section id="screen-setup" class="screen setup" hidden>
+      <form class="glass card setup-card" id="setup-form" autocomplete="off">
+        <button type="button" class="close" id="setup-cancel" aria-label="Avbryt">×</button>
+        <p class="kicker" id="setup-mode">Så högt som möjligt</p>
+        <h2>Ny flygning</h2>
+        <fieldset class="conn" id="conn">
           <legend>Erg</legend>
-          <div class="row">
-            <select id="source-select" aria-label="Datakälla">
-              <option value="usb">PM5 via USB</option>
-              <option value="ble">PM5 via Bluetooth</option>
-            </select>
-            <button type="button" id="connect">Anslut</button>
-          </div>
-          <p class="conn-status" id="conn-status" data-kind="idle">Inte ansluten</p>
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-status" id="conn-status" data-kind="idle">Inte ansluten</span>
+          <select id="source-select" aria-label="Datakälla">
+            <option value="usb">PM5 via USB</option>
+            <option value="ble">PM5 via Bluetooth</option>
+          </select>
+          <button type="button" class="btn small" id="connect">Anslut</button>
         </fieldset>
-        <label>Namn eller alias (valfritt)
-          <input id="name" name="name" maxlength="40" />
-        </label>
-        <label>Vikt (kg, 15–200) – visas inte
-          <input id="mass" name="mass" type="text" class="secret" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required />
-        </label>
-        <fieldset class="klass">
-          <legend>Klass</legend>
-          <div class="klass-options" id="klass-options"></div>
-        </fieldset>
+        <div class="field">
+          <label for="name">Namn</label>
+          <input id="name" name="name" maxlength="40" placeholder="valfritt" />
+        </div>
+        <div class="field">
+          <label for="age">Ålder</label>
+          <input id="age" name="age" class="short" type="text" inputmode="numeric" pattern="[0-9]*" required />
+          <span class="unit">år</span>
+          <span class="field-hint" id="klass-hint"></span>
+        </div>
+        <div class="field">
+          <label for="mass">Vikt</label>
+          <input id="mass" name="mass" class="short secret" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required />
+          <span class="unit">kg</span>
+          <span class="field-hint">visas inte</span>
+        </div>
+        <div class="lift-box">
+          <p class="lift-title" id="lift-title">Din lyfteffekt</p>
+          <p class="lift-value" id="lift-value">Räknas från vikten</p>
+          <p class="lift-text">
+            Helikoptern lyfter när du drar mer än din lyfteffekt. Allt räknas relativt din vikt, så att lätta och tunga
+            spelare tävlar på lika villkor.
+          </p>
+        </div>
         <p class="reminder" id="child-reminder" hidden></p>
         <p class="error" id="setup-error" role="alert"></p>
-        <div class="row end">
-          <button type="button" id="setup-cancel">Avbryt</button>
-          <button type="submit" class="primary">Klar</button>
-        </div>
+        <button type="submit" class="btn go big" id="setup-submit">Starta flygning</button>
       </form>
     </section>
 
-    <!-- MENU: flygskolan (lektioner, uppflygning, övningar) eller fri flygning (plan.md §2–3) -->
-    <section id="screen-menu" class="screen" hidden>
-      <div class="card wide menu-card">
-        <p class="who" id="menu-name"></p>
-        <h2 id="menu-title">Aspirant · Flygskolan</h2>
-        <p class="logbook" id="menu-logbook"></p>
-        <p class="lead" id="menu-lead"></p>
-        <div id="menu-alarm" class="menu-alarm" hidden></div>
-        <h3 class="menu-section">Flygskolan <span class="muted small">med skolhelikoptern från verkstan</span></h3>
-        <ol class="menu-school" id="menu-school"></ol>
-        <h3 class="menu-section">Övningar</h3>
-        <ol class="menu-grid" id="menu-list"></ol>
-        <ol class="menu-list" id="menu-free"></ol>
-        <div class="row end">
-          <button type="button" id="menu-cancel">Avstå<span class="keys"> (Esc)</span></button>
+    <!-- MENU: Fjällräddaren – flygskolan, övningar, uppflygning och uppdrag (plan.md §2–3) -->
+    <section id="screen-menu" class="screen career-screen" hidden>
+      <div class="career">
+        <header class="career-head">
+          <canvas class="career-heli" id="career-heli" width="320" height="130" aria-hidden="true"></canvas>
+          <div class="career-title">
+            <h2>Fjällräddaren</h2>
+            <p>Från aspirant till fjällräddare</p>
+          </div>
+          <div class="career-who">
+            <p class="who" id="menu-name"></p>
+            <p class="grade" id="menu-title"></p>
+            <p class="logbook" id="menu-logbook"></p>
+          </div>
+        </header>
+        <nav class="steps" id="menu-steps" role="tablist" aria-label="Karriären"></nav>
+        <div class="career-body">
+          <ol class="cards" id="menu-cards" role="tabpanel"></ol>
+          <aside class="glass career-side">
+            <h3 id="side-title"></h3>
+            <p class="side-text" id="side-text"></p>
+            <p class="side-goal" id="side-goal" hidden></p>
+            <div class="menu-alarm" id="menu-alarm" hidden></div>
+            <p class="pull" id="menu-pull"></p>
+            <div class="side-actions">
+              <button type="button" class="btn menu-item" id="menu-free" hidden>Fri flygning</button>
+              <button type="button" class="btn small menu-item" id="menu-cancel">Avstå<span class="keys"> (Esc)</span></button>
+            </div>
+          </aside>
         </div>
       </div>
     </section>
 
     <!-- READY -->
     <section id="screen-ready" class="screen" hidden>
-      <div class="card center" id="ready-card">
+      <div class="glass card center ready-card" id="ready-card">
+        <p class="kicker" id="ready-kicker"></p>
         <p class="who" id="ready-name"></p>
         <p class="ready-goal" id="ready-goal" hidden></p>
         <p class="ready-best" id="ready-best" hidden></p>
         <h1>Dra för att lyfta!</h1>
         <p class="muted keys">eller tryck Enter · Esc avbryter</p>
         <p class="muted touch">eller tryck här för att starta</p>
-        <button type="button" class="touch" id="ready-cancel">Avbryt</button>
+        <button type="button" class="btn small touch" id="ready-cancel">Avbryt</button>
       </div>
     </section>
 
@@ -156,38 +239,96 @@
       <output class="countdown" id="countdown">3</output>
     </section>
 
-    <!-- FINISHED -->
-    <section id="screen-finished" class="screen" hidden>
-      <div class="card center">
-        <p class="who" id="fin-name"></p>
-        <p class="muted" id="fin-reason"></p>
-        <p class="result"><output id="fin-height">0 m</output></p>
-        <p class="fin-stars" id="fin-stars" hidden></p>
-        <p class="rank" id="fin-rank"></p>
-        <ol class="fin-list" id="fin-list" hidden></ol>
-        <div class="certificate" id="certificate" hidden>
-          <p class="cert-kicker">Fjällräddningens flygskola</p>
-          <p class="cert-title">Certifikat</p>
-          <p class="cert-name" id="cert-name"></p>
-          <p>har klarat uppflygningen och är nu</p>
-          <p class="cert-grade">Junior fjällräddare</p>
-          <canvas class="cert-heli" id="cert-heli" width="360" height="150" aria-hidden="true"></canvas>
-          <p class="cert-heli-name">Din nya helikopter: <strong id="cert-heli-name"></strong></p>
-          <p class="cert-date muted" id="cert-date"></p>
+    <!-- FINISHED: resultatet (spec §7) -->
+    <section id="screen-finished" class="screen result" hidden>
+      <div class="result-wrap" id="result-wrap">
+        <p class="result-kicker" id="fin-kicker">
+          <svg class="crown" id="fin-crown" viewBox="0 0 32 24" aria-hidden="true">
+            <path d="M2 7 L9 13 L16 3 L23 13 L30 7 L27 21 H5 Z" fill="currentColor" />
+            <circle cx="2" cy="6" r="2" fill="currentColor" /><circle cx="16" cy="2.5" r="2" fill="currentColor" /><circle cx="30" cy="6" r="2" fill="currentColor" />
+          </svg>
+          <span id="fin-kicker-text"></span>
+        </p>
+        <p class="result-big"><output id="fin-height">0 m</output></p>
+        <p class="result-stars" id="fin-stars" hidden></p>
+        <p class="result-verdict" id="fin-verdict"></p>
+        <div class="result-cards">
+          <dl class="glass result-stats" id="fin-stats"></dl>
+          <section class="glass result-peaks" id="fin-peaks">
+            <h3>Passerade fjälltoppar</h3>
+            <ol id="fin-peak-list"></ol>
+          </section>
+          <ol class="glass fin-list" id="fin-list" hidden></ol>
+          <div class="certificate" id="certificate" hidden>
+            <p class="cert-kicker">Fjällräddningens flygskola</p>
+            <p class="cert-title">Certifikat</p>
+            <p class="cert-name" id="cert-name"></p>
+            <p>har klarat uppflygningen och är nu</p>
+            <p class="cert-grade">Junior fjällräddare</p>
+            <canvas class="cert-heli" id="cert-heli" width="360" height="150" aria-hidden="true"></canvas>
+            <p class="cert-heli-name">Din nya helikopter: <strong id="cert-heli-name"></strong></p>
+            <p class="cert-date muted" id="cert-date"></p>
+          </div>
         </div>
         <p class="fin-note" id="fin-note" hidden></p>
-        <p class="milestone" id="fin-milestone"></p>
-        <p class="muted"><span class="keys">Tryck valfri tangent</span><span class="touch">Tryck på skärmen</span></p>
+        <div class="result-actions">
+          <button type="button" class="btn big" id="fin-again">Flyg igen</button>
+          <button type="button" class="btn primary big" id="fin-next">Till topplistan</button>
+        </div>
+        <p class="result-hint"><span class="keys" id="fin-hint">Tryck valfri tangent</span></p>
+      </div>
+    </section>
+
+    <!-- Flygloggar med uppspelning (spec §9.1). Öppnas från startskärmen, inte ett eget speltillstånd. -->
+    <section id="screen-logs" class="screen logs-screen" hidden>
+      <div class="glass logs">
+        <header class="logs-head">
+          <h2>Flygloggar</h2>
+          <button type="button" class="btn small" id="logs-close">Tillbaka<span class="keys"> (Esc)</span></button>
+        </header>
+        <div class="logs-body">
+          <div class="logs-side">
+            <ol class="log-list" id="log-list"></ol>
+            <p class="muted small">
+              De 10 senaste flygningarna sparas i webbläsaren. Kopiera en logg och klistra in den i en chatt med Claude för
+              analys. Effekten står i procent av lyfteffekten, aldrig i watt eller kilo.
+            </p>
+            <p class="muted small" id="log-text-hint" hidden>
+              Urklippet gick inte att använda. Loggen är markerad nedan: kopiera den själv (Ctrl+C, eller håll inne och välj Kopiera).
+            </p>
+            <textarea class="log-text" id="log-text" readonly hidden aria-label="Flygloggen"></textarea>
+            <button type="button" class="btn small danger" id="logs-clear">Rensa flygloggarna</button>
+          </div>
+          <div class="player" id="player">
+            <div class="player-stage">
+              <canvas id="log-canvas" aria-label="Höjden under flygningen"></canvas>
+              <p class="player-title">Flyglogg – uppspelning</p>
+              <div class="player-card" id="player-card" hidden>
+                <p class="player-head" id="player-head"></p>
+                <p class="player-date" id="player-date"></p>
+              </div>
+              <p class="player-empty" id="player-empty">Välj en flygning i listan för att spela upp den.</p>
+            </div>
+            <div class="player-controls">
+              <button type="button" class="play" id="log-play" aria-label="Spela upp">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path id="log-play-icon" d="M7 4 L20 12 L7 20 Z" fill="currentColor" /></svg>
+              </button>
+              <output class="player-time" id="log-time">00:00 / 00:00</output>
+              <input type="range" id="log-seek" min="0" max="1" step="0.01" value="0" aria-label="Tid i flygningen" />
+              <button type="button" class="speed" id="log-speed" aria-label="Uppspelningsfart">4×</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- Frånkopplad -->
     <section id="screen-disconnected" class="screen alert" hidden>
-      <div class="card center">
+      <div class="glass card center">
         <h2>Anslutningen till ergen bröts</h2>
         <p id="disc-message" class="muted">Försöker återansluta…</p>
         <p class="muted">Passet är pausat.</p>
-        <button id="reconnect" class="primary" hidden>Anslut igen</button>
+        <button id="reconnect" class="btn primary" hidden>Anslut igen</button>
       </div>
     </section>
 
@@ -229,22 +370,10 @@
           <button type="button" id="export-csv">Exportera CSV</button>
           <button type="button" id="board-clear" class="danger">Rensa topplistan</button>
         </div>
-        <!-- Flygloggar (spec §9.1): kopieras och klistras in för analys -->
-        <h3 id="logs-title">Flygloggar</h3>
         <p class="muted small">
-          Varje flygning spelas in: alla drag med kraftkurvan, hur helikoptern svarar och vad instruktören säger.
-          Kopiera en logg och klistra in den i en chatt med Claude för analys. Effekten står i procent av lyfteffekten,
-          aldrig i watt eller kilo. De 10 senaste flygningarna sparas i webbläsaren.
+          Tangenter: Enter start · Esc avbryt · S inställningar · L flygloggar · D debug · F helskärm ·
+          <a href="dashboard.html">Live-dashboard</a>
         </p>
-        <ol class="log-list" id="log-list"></ol>
-        <p class="muted small" id="log-text-hint" hidden>
-          Urklippet gick inte att använda. Loggen är markerad nedan: kopiera den själv (Ctrl+C, eller håll inne och välj Kopiera).
-        </p>
-        <textarea class="log-text" id="log-text" readonly hidden aria-label="Flygloggen"></textarea>
-        <div class="row">
-          <button type="button" id="logs-clear" class="danger">Rensa flygloggarna</button>
-        </div>
-        <p class="muted small">Tangenter: Enter start · Esc avbryt · S inställningar · L flygloggar · D debug · F helskärm · <a href="dashboard.html">Dashboard</a></p>
       </form>
     </dialog>
 
