@@ -17,6 +17,11 @@ export const PLANE_M = 400;
 export const MAX_PEAKS = 12;
 const NOISE_SIZE = 64; // 3D-brustexturen för molnen
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+/** Antal steg i shaderns slingor: hög kvalitet, och lägre för en svag grafikprocessor. */
+export const QUALITY = {
+  high: { steps: 320, cloudSteps: 110, shadowSteps: 40 },
+  low: { steps: 200, cloudSteps: 60, shadowSteps: 24 },
+};
 
 const VERTEX = `#version 300 es
 in vec2 aPos;
@@ -39,6 +44,12 @@ uniform vec4 uPeakBox;  // rutan (x0, z0, x1, z1) som alla toppar ryms i
 uniform vec3 uPad;      // helikopterplattan: x, z, radie (0 = ingen)
 uniform vec2 uSun;      // kvällssolen syns här i bild (andel av bredd och höjd)
 uniform float uClouds;  // 0 = klart, 1 = vanligt med stackmoln
+uniform int uPeakCount; // antal toppar i uPeaks
+// Antal steg i slingorna. Som uniforms, så att kompilatorn inte vecklar ut dem (långsam
+// kompilering i Windows) och så att de går att sänka på en svag dator.
+uniform int uSteps;      // strålen mot marken
+uniform int uCloudSteps; // genom molnen
+uniform int uShadowSteps;
 uniform sampler3D uNoise;
 out vec4 outColor;
 
@@ -194,8 +205,8 @@ float heightAt(vec2 p, int oct) {
   // Trädkronorna ger skogen struktur på nära håll
   if (oct > 9) h += forestAt(p, h) * (11.0 + 9.0 * vnoise(p * 0.15)) * (1.0 - lake) * smoothstep(9.5, 11.5, float(oct));
   if (p.x > uPeakBox.x && p.x < uPeakBox.z && p.y > uPeakBox.y && p.y < uPeakBox.w) {
-    for (int i = 0; i < ${MAX_PEAKS}; i++) {
-      if (uPeaks[i].z > 0.0) h = smax(h, peakAt(p, uPeaks[i], oct - 1), 60.0);
+    for (int i = 0; i < uPeakCount; i++) {
+      h = smax(h, peakAt(p, uPeaks[i], oct - 1), 60.0);
     }
   }
   return h;
@@ -421,7 +432,7 @@ float march(vec3 ro, vec3 rd, float tmax, int steps, float minStep) {
 float softShadow(vec3 ro, vec3 rd) {
   float res = 1.0;
   float t = 6.0;
-  for (int i = 0; i < 40; i++) {
+  for (int i = 0; i < uShadowSteps; i++) {
     vec3 p = ro + rd * t;
     float h = p.y - heightAt(p.xz, 5);
     res = min(res, 10.0 * h / t);
@@ -530,7 +541,7 @@ vec3 waterShade(vec3 pos, vec3 rd, float t) {
   ref.y = max(ref.y, 0.002);
   float fre = 0.02 + 0.98 * pow(1.0 - clamp(dot(-rd, nor), 0.0, 1.0), 5.0);
   vec3 ro = pos + vec3(0.0, 0.5, 0.0);
-  float tr = march(ro, ref, 40000.0, 160, 0.012);
+  float tr = march(ro, ref, 40000.0, uSteps / 2, 0.012);
   vec3 refl;
   if (tr > 0.0) {
     vec3 rp = ro + ref * tr;
@@ -539,7 +550,7 @@ vec3 waterShade(vec3 pos, vec3 rd, float t) {
   } else {
     refl = skyColor(ref);
   }
-  vec4 cl = uClouds > 0.0 ? clouds(ro, ref, tr > 0.0 ? tr : 45000.0, 28, 0.5) : vec4(0.0);
+  vec4 cl = uClouds > 0.0 ? clouds(ro, ref, tr > 0.0 ? tr : 45000.0, uCloudSteps / 4, 0.5) : vec4(0.0);
   refl = refl * (1.0 - cl.a) + cl.rgb;
   vec3 deep = mix(vec3(0.012, 0.03, 0.035), vec3(0.03, 0.025, 0.04), uDusk);
   vec3 col = mix(deep, refl, fre);
@@ -557,7 +568,7 @@ void main() {
   vec3 ro = uCam;
   const float tmax = 80000.0;
 
-  float t = march(ro, rd, tmax, 320, 0.0012);
+  float t = march(ro, rd, tmax, uSteps, 0.0012);
   vec3 col;
   float tHit = 1e5;
   if (t > 0.0) {
@@ -571,7 +582,7 @@ void main() {
   }
   // Gitter mot bandning i molnen (interleaved gradient noise, jämnare än vitt brus)
   float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  vec4 cl = uClouds > 0.0 ? clouds(ro, rd, tHit, 110, ign) : vec4(0.0);
+  vec4 cl = uClouds > 0.0 ? clouds(ro, rd, tHit, uCloudSteps, ign) : vec4(0.0);
   col = col * (1.0 - cl.a) + cl.rgb;
   float disc = t > 0.0 ? 0.0 : clamp(sunDisc(rd), 0.0, 1.0) * (1.0 - cl.a);
 
@@ -666,7 +677,7 @@ export class TerrainRenderer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     this.u = Object.fromEntries(
-      ['uRes', 'uScale', 'uCenter', 'uFocal', 'uCam', 'uTime', 'uDusk', 'uThin', 'uTop', 'uPeaks', 'uPeakBox', 'uPad', 'uSun', 'uClouds', 'uNoise'].map((n) => [
+      ['uRes', 'uScale', 'uCenter', 'uFocal', 'uCam', 'uTime', 'uDusk', 'uThin', 'uTop', 'uPeaks', 'uPeakBox', 'uPad', 'uSun', 'uClouds', 'uPeakCount', 'uSteps', 'uCloudSteps', 'uShadowSteps', 'uNoise'].map((n) => [
         n,
         gl.getUniformLocation(program, n),
       ])
@@ -703,6 +714,7 @@ export class TerrainRenderer {
    * @param {number} v.dusk, v.thin, v.time
    * @param {{x:number, y:number}} [v.sun]  kvällssolens plats i bild, andel av bredd och höjd
    * @param {number} [v.clouds]         stackmolnen, 0 = klart, 1 = vanligt
+   * @param {'high'|'low'} [v.quality]  antal steg i strålföljningen
    * @param {{x:number, z:number, h:number, r:number}[]} v.peaks
    * @param {{x:number, z:number, r:number}|null} v.pad
    */
@@ -742,6 +754,11 @@ export class TerrainRenderer {
     gl.uniform3f(u.uPad, v.pad?.x ?? 0, v.pad?.z ?? 0, v.pad?.r ?? 0);
     gl.uniform2f(u.uSun, v.sun?.x ?? 0.86, v.sun?.y ?? 0.2);
     gl.uniform1f(u.uClouds, v.clouds ?? 1);
+    gl.uniform1i(u.uPeakCount, Math.min(MAX_PEAKS, v.peaks?.length ?? 0));
+    const q = QUALITY[v.quality ?? 'high'];
+    gl.uniform1i(u.uSteps, q.steps);
+    gl.uniform1i(u.uCloudSteps, q.cloudSteps);
+    gl.uniform1i(u.uShadowSteps, q.shadowSteps);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -755,10 +772,11 @@ export class TerrainRenderer {
     if (!this.ready) return null;
     const shots = views.map((v) => {
       this.render(v, false);
+      // Kopian i CSS-pixlar: ritad i högre upplösning och nedskalad blir kanterna mjuka
       const copy = document.createElement('canvas');
-      copy.width = this.canvas.width;
-      copy.height = this.canvas.height;
-      copy.getContext('2d').drawImage(this.canvas, 0, 0);
+      copy.width = Math.round(v.width);
+      copy.height = Math.round(v.height);
+      copy.getContext('2d').drawImage(this.canvas, 0, 0, copy.width, copy.height);
       return copy;
     });
     if (this.lastView) this.render(this.lastView);

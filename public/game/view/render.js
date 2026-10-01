@@ -60,6 +60,7 @@ export class GameRenderer {
     this.terrain = terrain;
     this.terrainOff = false; // för långsam dator: tillbaka till 2D för resten av besöket
     this.terrainScale = TERRAIN_SCALE.start;
+    this.terrainQuality = 'high'; // färre steg i shadern om datorn inte hinner med
     this.frameAvg = 1 / 60; // s per bild, glidande medel
     this.slowS = 0;
     this.fastS = 0;
@@ -397,6 +398,8 @@ export class GameRenderer {
         this.slowS = 0;
         if (this.terrainScale > TERRAIN_SCALE.min) {
           this.terrainScale = Math.max(TERRAIN_SCALE.min, this.terrainScale * 0.85);
+        } else if (this.terrainQuality === 'high') {
+          this.terrainQuality = 'low'; // sedan färre steg i strålföljningen
         } else if (this.frameAvg > 1 / 20) {
           // Även på lägsta upplösning går det för trögt: 2D resten av besöket.
           this.terrainOff = true;
@@ -456,7 +459,7 @@ export class GameRenderer {
     if (key !== this.terrainKey || o.t - this.terrainAt > TERRAIN_REFRESH_S) {
       this.terrainKey = key;
       this.terrainAt = o.t;
-      this.terrain.render({ ...view, scale: this.terrainScale, time: o.t });
+      this.terrain.render({ ...view, scale: this.terrainScale, quality: this.terrainQuality, time: o.t });
     }
 
     const visible = items
