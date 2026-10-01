@@ -161,12 +161,18 @@ body {
   font: 18px/1.4 var(--font-text);
 }
 
-#scene {
+#scene,
+#terrain {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* 3D-landskapet (terrain.js) ritas i lägre upplösning och skalas upp mjukt */
+#terrain {
+  visibility: hidden;
 }
 
 button,

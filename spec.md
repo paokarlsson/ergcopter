@@ -16,7 +16,7 @@ Spelet heter **Ergcopter**. På startskärmen väljer man grundspelet, "så hög
 - PM5 läses via USB (WebHID) eller Bluetooth (Web Bluetooth). Båda kräver säker kontext (https eller localhost), och anslutningen måste startas av ett användarklick. USB ger även kraftkurvan. Fungerar inte i Firefox; på iPhone/iPad fungerar bara Bluetooth, via appen Bluefy.
 - Ingen backend behövs: sidan är statiska filer. Den publiceras på GitHub Pages (https), och `server.js` eller Docker räcker för att köra lokalt. Topplista, inställningar och övningsframsteg sparas lokalt i webbläsaren (localStorage).
 - En separat live-dashboard (`dashboard.html`) för operatören visar siffror och kraftkurva från PM via USB, med samma datakälla som spelet, plus medel- och maxeffekt och antal drag. Flyger spelet i en annan flik i samma webbläsare visar dashboarden också höjden och skillnaden mot det som krävs (`shared/live.js`, BroadcastChannel). Krävd effekt i watt skickas bara när råa watt är påslaget (avsnitt 6).
-- Valfri renderingsteknik; Canvas 2D räcker.
+- Landskapet ritas i 3D med WebGL2 när webbläsaren och datorn klarar det (`terrain.js`), annars i Canvas 2D. Helikoptern, etiketterna, linjerna och höjdskalan ritas alltid i Canvas 2D ovanpå, och instrumenten är DOM.
 - Fysiken ska vara helt separerad från rendering och datakälla så att den kan testas och köras headless.
 
 ## 3. Datakälla: Concept2 PM5
@@ -212,8 +212,10 @@ Utseendet följer en mockup: mörka glaspaneler ovanpå scenen, rubriker och sif
 - Tid sedan start nere till vänster, som 02:14.
 - Rotorns animation följer fysikens rotorvarv under flygningen. Före lyftet följer den ergen (kraftkurvan, eller `P / P0` utan kraftdata), så att deltagaren ser respons redan innan helikoptern lättar.
 - Horisontella linjer för dagens rekord och maxhöjden i passet.
-- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Topparna ritas som berg med snö och skugga som passerar under helikoptern, med en etikett i glas ovanför: namn, höjd och en bock när toppen är passerad. När helikoptern flyger över toppen lyfts etiketten över den. En topp högt över helikoptern ritas genomskinlig, som om den låg långt bort. Flyger man över en topp sprutar det konfetti, och en banderoll ("Topp passerad") visas.
-- Landskapet visar höjden utan siffror (`scenery.js`): taggiga fjällkedjor i tre lager med snö och skuggsida (kalfjäll längst bort, fjäll i mitten, skog närmast) som sjunker undan när man stiger, en sjö i dalen och helikopterplattan med gul cirkel, ett molntäcke vid 1 900–2 040 m som man flyger igenom med ett molnhav ovanför, och norrsken högt upp. På start- och resultatskärmen lyser kvällssolen; under flygningen är det dag.
+- Milstolpar (konfigurerbara): verkliga toppar från Jämtland och Härjedalen via Norge och Europa upp till Mount Everest, tätare där de flesta pass slutar (800–2 500 m). Listan med källor finns i `milestones.js`. Varje topp får en etikett i glas ovanför: namn, höjd och en bock när toppen är passerad; etiketten lyfts över helikoptern när den kommer nära. Når man en topp sprutar det konfetti, och en banderoll ("Topp passerad") visas.
+  - **I 3D** (`peaks3d.js`) står toppen 2,6–10 km bort med sin riktiga höjd, som en spetsig eroderad topp med förberg. Kameran står på helikopterns höjd och tittar rakt fram, så toppen ligger på helikopterns linje precis när helikoptern når höjden, hur långt bort den än står. Topparna kommer in utanför högerkanten och glider fram mot en plats strax höger om helikoptern dit de ska nå när helikoptern når höjden, förutsagt från stighastigheten. Ändras stigningen styrs en topp som inte passerats mjukt: den glider högst 45 % fortare eller långsammare än landskapet omkring, alltid åt vänster. Svävar man skickas inga nya toppar, och en topp som inte hinner in i bild före passagen visas inte.
+  - **I 2D** ritas topparna som berg med snö och skugga som passerar under helikoptern, med samma etiketter. En topp högt över helikoptern ritas genomskinlig, som om den låg långt bort.
+- Landskapet visar höjden utan siffror. **I 3D** (`terrain.js`, WebGL2) strålföljs terrängen i en fragment-shader som i Inigo Quilez "Elevated": platt dalbotten med helikopterplattan, en sjö bakom som speglar fjällen och molnen, skog och myr, kullar och sedan alpina fjäll med snö på allt som inte är för brant, mjuka skuggor, molnskuggor och dis som tätnar nära marken. Stackmoln i 3D mellan 1 250 och 2 350 m (glesare på kvällen) som man flyger igenom och ser ovanifrån högre upp, slöjmoln högt upp, och himlen mörknar med höjden tills stjärnorna syns. Kameran har samma skala som 2D-scenen i helikopterns plan, 400 m framför kameran, så plattan, marken och linjerna hamnar rätt. Under flygningen är det dag; på start- och resultatskärmen står kvällssolen lågt till höger. Upplösningen sänks automatiskt om bilderna tar för lång tid, och räcker inte ens lägsta upplösningen ritas landskapet i 2D resten av besöket. Shadern byggs i bakgrunden; tills den är klar ritas 2D. **I 2D** (`scenery.js`): taggiga fjällkedjor i tre lager med snö och skuggsida som sjunker undan när man stiger, en sjö i dalen och helikopterplattan med gul cirkel, ett molntäcke vid 1 900–2 040 m och norrsken högt upp.
 - Helikoptern är en räddningshelikopter i vitt och rött med inbyggd stjärtrotor (`heli-draw.js`).
 - Fartkänsla (`effects.js`): fartstreck och en lätt utzoomning när man stiger eller faller fort, damm från rotorvinden nära marken, och helikoptern gungar i luften och skakar i full stigning. Allt detta är bara bild och påverkar inte fysiken.
 - Topplista per klass på startskärmen med namn och höjd, aldrig vikt eller watt (avsnitt 12.2).
@@ -222,7 +224,7 @@ Utseendet följer en mockup: mörka glaspaneler ovanpå scenen, rubriker och sif
 ## 9. Inställningar och data
 
 - Alla parametrar ligger i ett samlat konfigurationsobjekt.
-- Inställningspanel för operatören (tangent S, kugghjulet eller Inställningar på startskärmen) med redigering och återställning till standard. Sparas i localStorage.
+- Inställningspanel för operatören (tangent S, kugghjulet eller Inställningar på startskärmen) med redigering och återställning till standard. Sparas i localStorage. Under Visning går 3D-landskapet att stänga av, t.ex. på en dator med svag grafik.
 - Topplistan kan exporteras som JSON eller CSV och rensas (med bekräftelse).
 
 ### 9.1 Flygloggen
@@ -271,6 +273,10 @@ Varje flygning spelas in (`flightlog.js`), så att man i efterhand kan se vilka 
 
 **Resultatet** (`test/results.test.js`)
 - Topparna kring maxhöjden, meningen om höjden och vilket rekord det blev: i klassen, i dag eller personligt.
+
+**Topparna i scenen** (`test/flyover.test.js`, `test/peaks3d.test.js`)
+- 2D: bergen passerar strax under helikoptern när den når toppens höjd.
+- 3D: i jämn stigning och i allt tunnare luft passeras varje topp i bild strax höger om helikoptern; stiger man i omgångar syns topparna ändå när de passeras, och svävar man skickas inga nya in. Landskapet får kameran på helikopterns höjd och plattan i helikopterns plan.
 
 **Strategisimulator** (utvecklarverktyg)
 Ett headless-skript (`npm run simulate`) som kör `ScriptedSource`-profiler genom samma motor och fysik och skriver ut `h_max`. Används för trimning. Profilerna står i avsnitt 12.3.

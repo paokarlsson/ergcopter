@@ -58,7 +58,9 @@ public/                  allt som publiceras, statiska filer utan byggsteg
       flightlog.js       flygloggen: inspelning, text, tolkning och de sparade loggarna (spec §9.1)
       replay.js, sim.js  snabbspolad landning, headless-körning och uppspelning av flygloggar
     view/                allt som ritar, visar eller låter
-      render.js          canvasen: himmel, berg, helikopter, hjälplinjer, höjdskalan
+      render.js          canvasen: himmel, berg, helikopter, hjälplinjer, höjdskalan (i 3D utan himmel och berg)
+      terrain.js         landskapet i 3D: WebGL2-shader med fjäll, sjö, skog, moln och himmel
+      peaks3d.js         var milstolparnas toppar står i 3D-landskapet och när de skickas in
       heli-draw.js, mountains.js    ritfunktioner: helikoptern, moln, granar, toppar med etiketter
       scenery.js         himmel i dag- och kvällsljus, fjällkedjor, molntäcke och norrsken efter höjd
       effects.js         fartstreck, rotordamm och konfetti

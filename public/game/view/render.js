@@ -4,12 +4,16 @@
 // när man är låg, fartstreck och konfetti (effects.js), höjdlinjer och höjdskalan till vänster.
 // I skolan också övningarnas hjälplinjer och ringar, instruktörens helikopter, moln och vinschen.
 // Siffror och mätare ligger i DOM (hud.js); höjdrutan placeras efter skalan här (gaugeY).
+// Med 3D-landskapet (terrain.js) ritas himlen, fjällen, molnen och dalen i WebGL på en
+// egen canvas bakom, och den här canvasen ritar bara helikoptern, etiketterna och linjerna.
 
 import { drawHelicopter, drawCloud, drawTree } from './heli-draw.js';
 import { drawMountain, drawLabel, labelLayout, mountainReach, rand } from './mountains.js';
 import { drawSky, drawSun, drawCirrus, drawRidges, hazeColor, drawCloudDeck, drawFog, fogAmount, drawAurora } from './scenery.js';
 import { Effects } from './effects.js';
 import { mix, alpha } from './color.js';
+import { PLANE_M } from './terrain.js';
+import { PeakField } from './peaks3d.js';
 
 const VIEW_SPAN_M = 300; // höjd som syns i huvudvyn
 const GROUND_MARGIN_PX = 56; // marken så här högt upp när man står på den
@@ -40,11 +44,29 @@ const DOWNWASH_M = 30; // rotorvinden blåser upp damm under den här höjden
 export const RING_SPEED_PX = 320; // ringbanan: landskapet och ringarna rullar i jämn fart
 const BUDDY_DX = 200; // instruktörens helikopter flyger så här långt framför (px vid skala 1)
 const LAKE_M = 44; // sjön i dalen bakom plattan, px över marken
+const TERRAIN_SCALE = { start: 0.5, min: 0.3, max: 0.75 }; // 3D-landskapets upplösning per CSS-pixel
+const TERRAIN_REFRESH_S = 0.5; // står kameran still ritas landskapet om så här ofta (molnen driver)
+const DUSK_SUN = { x: 0.87, y: 0.15 }; // kvällssolen i 3D, andel av bredd och höjd: till höger, över fjällen
 
 export class GameRenderer {
-  constructor(canvas) {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {object} [opts]
+   * @param {import('./terrain.js').TerrainRenderer|null} [opts.terrain]  3D-landskapet bakom, om det finns
+   */
+  constructor(canvas, { terrain = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.terrain = terrain;
+    this.terrainOff = false; // för långsam dator: tillbaka till 2D för resten av besöket
+    this.terrainScale = TERRAIN_SCALE.start;
+    this.frameAvg = 1 / 60; // s per bild, glidande medel
+    this.slowS = 0;
+    this.fastS = 0;
+    this.terrainKey = '';
+    this.terrainAt = -Infinity;
+    this.terrainShown = null;
+    this.peaks = new PeakField(); // milstolparnas toppar i 3D
     this.distance = 0; // px landskapet rullat
     this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
@@ -84,6 +106,7 @@ export class GameRenderer {
     this.distance = 0;
     this.mountains = [];
     this.sent.clear();
+    this.peaks.clear();
     this.signAlpha.clear();
     this.celebrated.clear();
     this.effects.clear();
@@ -201,19 +224,25 @@ export class GameRenderer {
       this.effects.downwash(dt, hx, v.rotor.blur * (1 - v.h / DOWNWASH_M), c.dust);
     }
 
-    this.#sendMountains(v, W, H, y, hx);
-    drawSky(ctx, W, H, thin, dusk, c);
-    drawSun(ctx, W, H, thin, dusk, c);
-    drawCirrus(ctx, W, H, t, thin, dusk, c);
-    drawAurora(ctx, W, H, cam, t, c);
-    this.#stars(ctx, W, H, thin);
-    const haze = hazeColor(thin, dusk, c);
-    drawRidges(ctx, W, H, H - GROUND_MARGIN_PX, (cam - camGround) * pxPerM, this.distance, haze, dusk, c);
-    drawCloudDeck(ctx, W, H, cam, y, heliY0, pxPerM, this.distance, c);
-    this.#mountains(ctx, W, H, v, y, dt, cam, thin, dusk, hx, scale);
-    this.#clouds(ctx, W, H, cam, y, dusk);
-    if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk);
-    drawFog(ctx, W, H, fogAmount(cam), c);
+    const td = this.#use3d(dt);
+    if (td) {
+      ctx.clearRect(0, 0, W, H);
+      this.#landscape3d(ctx, W, H, v, { pxPerM, heliY0, cam, hx, t, dt, dusk, thin, scale, y });
+    } else {
+      this.#sendMountains(v, W, H, y, hx);
+      drawSky(ctx, W, H, thin, dusk, c);
+      drawSun(ctx, W, H, thin, dusk, c);
+      drawCirrus(ctx, W, H, t, thin, dusk, c);
+      drawAurora(ctx, W, H, cam, t, c);
+      this.#stars(ctx, W, H, thin);
+      const haze = hazeColor(thin, dusk, c);
+      drawRidges(ctx, W, H, H - GROUND_MARGIN_PX, (cam - camGround) * pxPerM, this.distance, haze, dusk, c);
+      drawCloudDeck(ctx, W, H, cam, y, heliY0, pxPerM, this.distance, c);
+      this.#mountains(ctx, W, H, v, y, dt, cam, thin, dusk, hx, scale);
+      this.#clouds(ctx, W, H, cam, y, dusk);
+    }
+    if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk, td);
+    if (!td) drawFog(ctx, W, H, fogAmount(cam), c);
     if (v.blind) drawCloudBank(ctx, W, H, t, this.distance, c);
     this.#lines(ctx, W, H, v, y, c);
     const front = this.#guides(ctx, W, H, v, y, c, dt, scale, hx);
@@ -301,10 +330,17 @@ export class GameRenderer {
       drawMountain(ctx, m, sx, sy, bottom, colors);
     }
     ctx.globalAlpha = 1;
+    this.#signs(ctx, W, v, visible.map((item) => ({ ...item, passed: item.sx <= hx })), dt, hx, scale, y);
+  }
 
-    // Etiketterna sist; de som skulle hamna under instrumenten eller en annan etikett
-    // tonas ut. Etiketter som redan syns placeras först, så att två etiketter som
-    // nuddar varandra inte turas om att synas bild för bild.
+  /**
+   * Etiketterna på topparna; de som skulle hamna under instrumenten eller en annan
+   * etikett tonas ut. Etiketter som redan syns placeras först, så att två etiketter som
+   * nuddar varandra inte turas om att synas bild för bild.
+   * @param {{m:object, sx:number, sy:number, passed:boolean}[]} visible  topparna i bild
+   */
+  #signs(ctx, W, v, visible, dt, hx, scale, y) {
+    const c = this.colors;
     const taken = [...(v.avoid ?? [])];
     // Etiketterna skalar med skärmbredden: ~1,6 på 1 600 px, större på en storskärm.
     const s = Math.max(0.9, Math.min(2.4, W / 1000));
@@ -313,8 +349,7 @@ export class GameRenderer {
     // Helikoptern flyger över toppen: etiketten lyfts mjukt över den i stället för att hamna bakom.
     const heli = { x0: hx - 130 * scale, x1: hx + 100 * scale, top: y(v.h) - 86 * scale, bottom: y(v.h) };
     const signs = [];
-    for (const { m, sx, sy } of order) {
-      const passed = sx <= hx;
+    for (const { m, sx, sy, passed } of order) {
       const L = labelLayout(ctx, m, sx, sy, passed, s, fmtM);
       const near = clamp01((Math.min(L.x + L.w, heli.x1) - Math.max(L.x, heli.x0) + 60) / 60);
       const lift = near * Math.max(0, L.y + L.bh - heli.top);
@@ -342,6 +377,97 @@ export class GameRenderer {
     ctx.globalAlpha = 1;
   }
 
+  /** Ska 3D-landskapet ritas? Sänker upplösningen om bilderna tar för lång tid. */
+  #use3d(dt) {
+    const ok = Boolean(this.terrain?.ready) && !this.terrainOff;
+    if (ok && dt > 0) {
+      this.frameAvg += (dt - this.frameAvg) * 0.1;
+      this.slowS = this.frameAvg > 1 / 42 ? this.slowS + dt : 0;
+      this.fastS = this.frameAvg < 1 / 56 ? this.fastS + dt : 0;
+      if (this.slowS > 0.4) {
+        this.slowS = 0;
+        if (this.terrainScale > TERRAIN_SCALE.min) {
+          this.terrainScale = Math.max(TERRAIN_SCALE.min, this.terrainScale * 0.85);
+        } else if (this.frameAvg > 1 / 20) {
+          // Även på lägsta upplösning går det för trögt: 2D resten av besöket.
+          this.terrainOff = true;
+          console.info('[Ergcopter] 3D-landskapet är för tungt för den här datorn – ritar i 2D.');
+        }
+      }
+      if (this.fastS > 2.5) {
+        this.fastS = 0;
+        this.terrainScale = Math.min(TERRAIN_SCALE.max, this.terrainScale * 1.08);
+      }
+    }
+    const use = ok && !this.terrainOff;
+    if (this.terrain && this.terrainShown !== use) {
+      this.terrainShown = use;
+      this.terrain.canvas.style.visibility = use ? 'visible' : 'hidden';
+    }
+    return use;
+  }
+
+  /**
+   * 3D-landskapet: kameran på helikopterns höjd, optiska mitten på helikoptern och
+   * samma skala som 2D-scenen i helikopterns plan. Milstolparnas toppar står långt bort
+   * (peaks3d.js) och får etiketter här.
+   */
+  #landscape3d(ctx, W, H, v, o) {
+    const basePxPerM = (H * 0.8) / VIEW_SPAN_M; // utan utzoomning, så att sidledes läget inte hoppar
+    const camX = this.distance / basePxPerM;
+    const focal = o.pxPerM * PLANE_M;
+    const items = this.peaks.update({
+      milestones: v.milestones,
+      h: v.h,
+      vy: v.vy,
+      flying: v.flying,
+      camX,
+      speed: this.speed / basePxPerM,
+      cx: o.hx,
+      W,
+      focal,
+    });
+    const view = {
+      width: W,
+      height: H,
+      cx: o.hx,
+      cy: o.heliY0,
+      focal,
+      camX,
+      camY: o.cam,
+      dusk: o.dusk,
+      thin: o.thin,
+      sun: DUSK_SUN,
+      peaks: items.map((p) => ({ x: p.x, z: p.z, h: p.m.h, r: p.r })),
+      // Plattan vid startplatsen, ungefär lika stor som helikoptern
+      pad: { x: 0, z: PLANE_M, r: (110 * o.scale) / basePxPerM },
+    };
+    // Rita bara om när något ändrats, eller då och då för molnens skull.
+    const key = JSON.stringify(view, (k, val) => (typeof val === 'number' ? Math.round(val * 100) / 100 : val));
+    if (key !== this.terrainKey || o.t - this.terrainAt > TERRAIN_REFRESH_S) {
+      this.terrainKey = key;
+      this.terrainAt = o.t;
+      this.terrain.render({ ...view, scale: this.terrainScale, time: o.t });
+    }
+
+    const visible = items
+      .map((p) => ({
+        m: p.m,
+        sx: o.hx + ((p.x - camX) * focal) / p.z,
+        sy: o.heliY0 - ((p.m.h - o.cam) * focal) / p.z,
+        passed: this.peaks.passed.has(p.m.name),
+      }))
+      .filter(({ sx, sy }) => sx > -200 && sx < W + 200 && sy > -40 && sy < H + 20);
+    // Konfetti när helikoptern når upp till en topp i bild.
+    const c = this.colors;
+    for (const { m, sx, passed } of visible) {
+      if (!passed || this.celebrated.has(m.name)) continue;
+      this.celebrated.add(m.name);
+      if (v.flying && sx > 0 && sx < W) this.effects.burst(sx, m.h, [c.accent, c.record, c.guide, c.cyan, '#ffffff']);
+    }
+    this.#signs(ctx, W, v, visible, o.dt, o.hx, o.scale, o.y);
+  }
+
   #clouds(ctx, W, H, cam, y, dusk) {
     const c = this.colors;
     const light = mix(c.cloud, '#ffd2a8', dusk * 0.6);
@@ -359,10 +485,21 @@ export class GameRenderer {
     ctx.globalAlpha = 1;
   }
 
-  /** Dalen vid startplatsen: sjön, stranden med granar och stenar, plattan och verkstan. */
-  #ground(ctx, W, H, groundY, v, hx, t, dusk) {
+  /**
+   * Dalen vid startplatsen: sjön, stranden med granar och stenar, plattan och verkstan.
+   * Med 3D-landskapet finns sjön, marken och plattan redan där; bara verkstan, den
+   * parkerade helikoptern och landningsringen ritas här.
+   */
+  #ground(ctx, W, H, groundY, v, hx, t, dusk, td) {
     const c = this.colors;
     const d = this.distance;
+    const padX = hx - d;
+    if (td) {
+      if (v.workshop && padX > -460) drawWorkshop(ctx, padX - 330, groundY, c);
+      if (v.parked && padX > -700) drawParked(ctx, padX + 320, groundY, v.parked, c);
+      if (v.landingPad) drawLandingRing(ctx, hx, groundY, t, c);
+      return;
+    }
     // Sjön speglar himlen, med ljusa strimmor som glittrar
     const lakeTop = groundY - LAKE_M;
     const water = ctx.createLinearGradient(0, lakeTop, 0, groundY);
@@ -410,7 +547,6 @@ export class GameRenderer {
       drawTree(ctx, x, shore(x) + 4, c, 0.9 + 0.7 * rand(k * 5.3));
     }
 
-    const padX = hx - d;
     if (v.workshop && padX > -460) drawWorkshop(ctx, padX - 330, groundY, c);
     if (v.parked && padX > -700) drawParked(ctx, padX + 320, groundY, v.parked, c);
     if (padX > -160) drawPad(ctx, padX, groundY, c);

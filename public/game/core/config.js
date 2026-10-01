@@ -33,6 +33,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   showRawWatts: false,
   showCombinedBoard: false, // sammanlagd topplista som extra flik
   sound: false,
+  terrain3d: true, // landskapet i 3D (WebGL2); utan stöd, eller om datorn är för långsam, ritas det i 2D
   milestones: DEFAULT_MILESTONES, // se milestones.js
 });
 
@@ -92,6 +93,7 @@ export const CONFIG_SCHEMA = [
   { group: 'Visning', key: 'showCombinedBoard', label: 'Visa även sammanlagd topplista', type: 'bool' },
   { group: 'Visning', key: 'showRawWatts', label: 'Visa råa watt och P0 på skärmen', type: 'bool' },
   { group: 'Visning', key: 'sound', label: 'Rotorljud', type: 'bool' },
+  { group: 'Visning', key: 'terrain3d', label: 'Landskap i 3D (kräver WebGL2 och bra grafik; annars 2D)', type: 'bool' },
   { group: 'Visning', key: 'milestones', label: 'Milstolpar (namn;höjd;område per rad, området är valfritt)', type: 'milestones' },
 ];
 

@@ -13,6 +13,7 @@ import { autopilot } from './core/autopilot.js';
 import { Rotor } from './view/rotor.js';
 import { attractFlight } from './view/attract.js';
 import { GameRenderer, fmtM, RING_SPEED_PX } from './view/render.js';
+import { TerrainRenderer } from './view/terrain.js';
 import { GameUI, download } from './view/ui.js';
 import { Hud } from './view/hud.js';
 import { CareerMenu } from './view/career.js';
@@ -41,7 +42,18 @@ const rotor = new Rotor();
 const attractRotor = new Rotor(); // startskärmens demotur har en egen rotor; den riktiga följer ergen
 const ATTRACT_LIFT = 1.4; // demoturens rotorvarv, som effekt/P0
 let attractStart = now();
+// 3D-landskapet bakom 2D-scenen, om webbläsaren klarar WebGL2 (annars ritar render.js i 2D).
+const terrainCanvas = document.getElementById('terrain');
+let terrain = null;
 const renderer = new GameRenderer(document.getElementById('scene'));
+function setTerrain(on) {
+  if (on && !terrain) terrain = TerrainRenderer.create(terrainCanvas);
+  renderer.terrain = on ? terrain : null;
+  renderer.terrainOff = false;
+  terrainCanvas.style.visibility = 'hidden'; // renderer visar den när landskapet är klart
+  renderer.terrainShown = null;
+}
+setTerrain(cfg.terrain3d);
 const ui = new GameUI();
 const hud = new Hud();
 const careerMenu = new CareerMenu();
@@ -471,6 +483,7 @@ function applyConfig(next) {
   preview.cfg = cfg;
   sound.setEnabled(cfg.sound);
   sound.unlock(); // sparas med klick/tangent, så ljudet får starta direkt
+  if (Boolean(renderer.terrain) !== cfg.terrain3d) setTerrain(cfg.terrain3d);
   renderSoundBtn();
   if (game.state === 'IDLE') showBoard(); // t.ex. sammanlagd lista på/av
 }
