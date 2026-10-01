@@ -1,6 +1,8 @@
 // Flygloggarna med uppspelning (spec §9.1): listan över de senaste flygningarna och en
 // uppspelning av den valda – höjden över tiden som en färgad linje över fjällen man
 // passerade, med helikoptern där den var. Effekten finns bara i procent i loggen.
+// Med 3D-landskapet (terrain.js) är bakgrunden en bild av det, där topparna står i 3D
+// precis där linjen nådde dem; annars ritas himmel och fjäll här.
 
 import { parseLog, logTimeline, traceAt } from '../core/flightlog.js';
 import { drawHelicopter } from './heli-draw.js';
@@ -17,6 +19,7 @@ const ICON_PLAY = 'M7 4 L20 12 L7 20 Z';
 const ICON_PAUSE = 'M6 4 H10 V20 H6 Z M14 4 H18 V20 H14 Z';
 const CLIMB_MS = 2; // över det är linjen grön, under minus det röd, däremellan gul
 const ROTOR = { blur: 1, angle: 0, tailAngle: 0 };
+const MAX_PHOTO_PEAKS = 12; // som terrain.js MAX_PEAKS
 
 export class FlightLogView {
   /** @param {() => object} colors  scenens färger (render.js) */
@@ -39,6 +42,10 @@ export class FlightLogView {
       textHint: $('log-text-hint'),
     };
     this.line = null; // logTimeline för vald logg
+    /** Bild av 3D-landskapet: (view) → canvas eller null. Sätts av main.js. */
+    this.photo = null;
+    this.photoKey = null;
+    this.photoImage = null;
     this.currentId = null;
     this.t = 0;
     this.playing = false;
@@ -203,6 +210,22 @@ export class FlightLogView {
     this.raf = requestAnimationFrame(frame);
   }
 
+  /** Bakgrundsbilden från 3D-landskapet för vald logg och storlek, tas en gång. */
+  #photo(W, H, yMax, x, peaks) {
+    if (!this.photo) return null;
+    const key = `${this.currentId}|${W}x${H}|${yMax}`;
+    if (key !== this.photoKey) {
+      const k = (H - PAD.top - PAD.bottom) / yMax;
+      const seed = [...String(this.currentId)].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) >>> 0;
+      const view = logPhotoView(W, H, k, H - PAD.bottom, peaks.map((p) => ({ x: x(p.t), h: p.h })), seed);
+      const image = this.photo(view);
+      if (!image) return null; // inte klart än: försök igen nästa gång
+      this.photoKey = key;
+      this.photoImage = image;
+    }
+    return this.photoImage;
+  }
+
   #draw() {
     const canvas = this.el.canvas;
     const W = canvas.clientWidth;
@@ -216,9 +239,11 @@ export class FlightLogView {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const c = this.colors();
-    backdrop(ctx, W, H, c);
     const line = this.line;
-    if (!line) return;
+    if (!line) {
+      backdrop(ctx, W, H, c);
+      return;
+    }
 
     // Plats ovanför den högsta toppen för etiketten
     const yMax = niceMax(Math.max(line.hMax, ...line.peaks.map((p) => p.h)) * 1.3 + 20);
@@ -227,8 +252,21 @@ export class FlightLogView {
 
     // Topparna man passerade, med toppen där linjen nådde höjden. Högst först.
     const peaks = [...line.peaks].sort((a, b) => b.h - a.h);
-    const rock = { ...c, rock: mix(c.mountainRock, '#3c4c66', 0.2), snow: c.mountainSnow, valleyHaze: '#4d6b8a' };
-    for (const p of peaks) drawMountain(ctx, p, x(p.t), y(p.h), H + 40, rock);
+    const photo = this.#photo(W, H, yMax, x, peaks);
+    if (photo) {
+      ctx.drawImage(photo, 0, 0, W, H);
+      // Mörkare upptill och nedtill, så att linjen och etiketterna syns
+      const shade = ctx.createLinearGradient(0, 0, 0, H);
+      shade.addColorStop(0, alpha('#081224', 0.45));
+      shade.addColorStop(0.45, alpha('#081224', 0.12));
+      shade.addColorStop(1, alpha('#081224', 0.4));
+      ctx.fillStyle = shade;
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      backdrop(ctx, W, H, c);
+      const rock = { ...c, rock: mix(c.mountainRock, '#3c4c66', 0.2), snow: c.mountainSnow, valleyHaze: '#4d6b8a' };
+      for (const p of peaks) drawMountain(ctx, p, x(p.t), y(p.h), H + 40, rock);
+    }
     ctx.fillStyle = alpha('#0b1a2e', 0.25);
     ctx.fillRect(0, y(0), W, H - y(0));
 
@@ -284,6 +322,39 @@ export class FlightLogView {
     drawHelicopter(ctx, ROTOR, c, null);
     ctx.restore();
   }
+}
+
+/**
+ * Kameran i 3D-landskapet för uppspelningen: alla toppar på samma avstånd, så att
+ * höjden i bilden blir linjär precis som diagrammets höjdaxel, och varje topp i sidled
+ * där linjen nådde den. Marken (0 m) på toppens avstånd hamnar på diagrammets nollinje.
+ * @param {number} k  px per meter i diagrammet
+ * @param {number} y0  diagrammets nollinje (px)
+ */
+export function logPhotoView(W, H, k, y0, peaks, seed) {
+  const focal = Math.max(W, H) * 0.75;
+  const z = focal / k;
+  const cx = W / 2;
+  // Kameran lågt, så att topparna står mot himlen
+  const camY = Math.min(600, (0.3 * (y0 - H * 0.2)) / k);
+  const cy = y0 - camY * k;
+  const camX = 4000 + (seed % 9973) * 3;
+  return {
+    width: W,
+    height: H,
+    scale: 1,
+    cx,
+    cy,
+    focal,
+    camX,
+    camY,
+    dusk: 0,
+    thin: 0,
+    time: 20,
+    clouds: 0,
+    pad: null,
+    peaks: peaks.slice(0, MAX_PHOTO_PEAKS).map((p) => ({ x: camX + ((p.x - cx) * z) / focal, z, h: p.h, r: 0.85 * p.h + 300 })),
+  };
 }
 
 /** Himmel och två avlägsna fjällkedjor bakom diagrammet. */

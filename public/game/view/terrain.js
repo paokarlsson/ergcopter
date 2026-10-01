@@ -38,6 +38,7 @@ uniform vec4 uPeaks[${MAX_PEAKS}];  // milstolparnas toppar: x, z, höjd, radie 
 uniform vec4 uPeakBox;  // rutan (x0, z0, x1, z1) som alla toppar ryms i
 uniform vec3 uPad;      // helikopterplattan: x, z, radie (0 = ingen)
 uniform vec2 uSun;      // kvällssolen syns här i bild (andel av bredd och höjd)
+uniform float uClouds;  // 0 = klart, 1 = vanligt med stackmoln
 uniform sampler3D uNoise;
 out vec4 outColor;
 
@@ -295,7 +296,7 @@ float cloudMap(vec3 p, int oct, float sharp) {
   vec2 c = (p.xz + drift) * 0.0007;
   float m = noise3(vec3(c.x, 0.37, c.y)) * 0.6 + noise3(vec3(c.x * 2.6, 1.63, c.y * 2.6)) * 0.4;
   // Glesare på kvällen, så att solnedgången syns
-  m = smoothstep(0.42 + 0.3 * uDusk, 0.8 + 0.1 * uDusk, m) * smoothstep(CLOUD_NEAR, CLOUD_NEAR + 2500.0, p.z);
+  m = smoothstep(0.42 + 0.3 * uDusk, 0.8 + 0.1 * uDusk, m) * smoothstep(CLOUD_NEAR, CLOUD_NEAR + 2500.0, p.z) * uClouds;
   float hn = y / (CLOUD_TOP - CLOUD_BASE);
   vec3 q = (p + vec3(drift.x, 0.0, drift.y)) * 0.0026;
   float f = 0.5 * noise3(q);
@@ -538,7 +539,7 @@ vec3 waterShade(vec3 pos, vec3 rd, float t) {
   } else {
     refl = skyColor(ref);
   }
-  vec4 cl = clouds(ro, ref, tr > 0.0 ? tr : 45000.0, 28, 0.5);
+  vec4 cl = uClouds > 0.0 ? clouds(ro, ref, tr > 0.0 ? tr : 45000.0, 28, 0.5) : vec4(0.0);
   refl = refl * (1.0 - cl.a) + cl.rgb;
   vec3 deep = mix(vec3(0.012, 0.03, 0.035), vec3(0.03, 0.025, 0.04), uDusk);
   vec3 col = mix(deep, refl, fre);
@@ -570,7 +571,7 @@ void main() {
   }
   // Gitter mot bandning i molnen (interleaved gradient noise, jämnare än vitt brus)
   float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  vec4 cl = clouds(ro, rd, tHit, 110, ign);
+  vec4 cl = uClouds > 0.0 ? clouds(ro, rd, tHit, 110, ign) : vec4(0.0);
   col = col * (1.0 - cl.a) + cl.rgb;
   float disc = t > 0.0 ? 0.0 : clamp(sunDisc(rd), 0.0, 1.0) * (1.0 - cl.a);
 
@@ -665,7 +666,7 @@ export class TerrainRenderer {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     this.u = Object.fromEntries(
-      ['uRes', 'uScale', 'uCenter', 'uFocal', 'uCam', 'uTime', 'uDusk', 'uThin', 'uTop', 'uPeaks', 'uPeakBox', 'uPad', 'uSun', 'uNoise'].map((n) => [
+      ['uRes', 'uScale', 'uCenter', 'uFocal', 'uCam', 'uTime', 'uDusk', 'uThin', 'uTop', 'uPeaks', 'uPeakBox', 'uPad', 'uSun', 'uClouds', 'uNoise'].map((n) => [
         n,
         gl.getUniformLocation(program, n),
       ])
@@ -701,6 +702,7 @@ export class TerrainRenderer {
    * @param {number} v.camX, v.camY     kamerans läge (m)
    * @param {number} v.dusk, v.thin, v.time
    * @param {{x:number, y:number}} [v.sun]  kvällssolens plats i bild, andel av bredd och höjd
+   * @param {number} [v.clouds]         stackmolnen, 0 = klart, 1 = vanligt
    * @param {{x:number, z:number, h:number, r:number}[]} v.peaks
    * @param {{x:number, z:number, r:number}|null} v.pad
    */
@@ -739,6 +741,7 @@ export class TerrainRenderer {
     gl.uniform4f(u.uPeakBox, ...(box[0] < Infinity ? box : [0, 0, 0, 0]));
     gl.uniform3f(u.uPad, v.pad?.x ?? 0, v.pad?.z ?? 0, v.pad?.r ?? 0);
     gl.uniform2f(u.uSun, v.sun?.x ?? 0.86, v.sun?.y ?? 0.2);
+    gl.uniform1f(u.uClouds, v.clouds ?? 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 

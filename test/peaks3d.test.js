@@ -97,3 +97,26 @@ test('svävar man skickas inga nya toppar in', () => {
   const sent = fly((t) => (t < 20 ? 12 : 0), 20).views.at(-1).peaks.length;
   assert.ok(count <= sent, `${count} toppar efter svävandet, ${sent} när det började`);
 });
+
+test('flygloggens bild: topparna står i 3D precis där linjen nådde dem', async () => {
+  globalThis.document ??= { getElementById: () => null };
+  const { logPhotoView } = await import('../public/game/view/logplayer.js');
+  const W = 1000;
+  const H = 600;
+  const k = 0.155; // px per m
+  const y0 = H - 34;
+  const peaks = [
+    { x: 300, h: 1420 },
+    { x: 620, h: 2097 },
+  ];
+  const v = logPhotoView(W, H, k, y0, peaks, 42);
+  for (const [i, p] of v.peaks.entries()) {
+    const sx = v.cx + ((p.x - v.camX) * v.focal) / p.z;
+    const sy = v.cy - ((p.h - v.camY) * v.focal) / p.z;
+    assert.ok(Math.abs(sx - peaks[i].x) < 1e-6, `x ${sx}`);
+    assert.ok(Math.abs(sy - (y0 - peaks[i].h * k)) < 1e-6, `y ${sy}`);
+  }
+  // Marken på toppens avstånd ligger på diagrammets nollinje
+  const ground = v.cy + (v.camY * v.focal) / v.peaks[0].z;
+  assert.ok(Math.abs(ground - y0) < 1e-6);
+});

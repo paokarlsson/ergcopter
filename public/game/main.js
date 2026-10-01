@@ -58,10 +58,11 @@ setTerrain(cfg.terrain3d);
 const ui = new GameUI();
 const hud = new Hud();
 const careerMenu = new CareerMenu();
-// Korten i menyn får bilder av 3D-landskapet när det är igång
+// Korten i menyn och flygloggarna får bilder av 3D-landskapet när det är igång
 careerMenu.photos = (ids) => (renderer.landscape3d ? terrain.snapshots(ids.map(thumbView)) : null);
 const resultScreen = new ResultScreen();
 const logView = new FlightLogView(() => renderer.colors);
+logView.photo = (view) => (renderer.landscape3d ? terrain.snapshots([view])[0] : null);
 const sound = new RotorSound();
 sound.setEnabled(cfg.sound);
 // Motorn även utanför passet, så att rotorn svarar redan i READY (BLE saknar kraftdata).
