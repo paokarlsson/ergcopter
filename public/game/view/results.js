@@ -73,7 +73,7 @@ export class ResultScreen {
             li.append(
               Object.assign(document.createElement('span'), { className: 'mark tick', ariaHidden: 'true' }),
               Object.assign(document.createElement('span'), { className: 'peak-name', textContent: p.name }),
-              Object.assign(document.createElement('span'), { className: 'peak-h', textContent: `${fmtM(p.h)} m` }),
+              withUnit(Object.assign(document.createElement('span'), { className: 'peak-h' }), `${fmtM(p.h)} m`),
               Object.assign(document.createElement('span'), {
                 className: `mark ${p.passed ? 'tick' : 'ring'}`,
                 title: p.passed ? 'Passerad' : 'Nästa topp',
@@ -88,7 +88,10 @@ export class ResultScreen {
     // Placeringen och vad procenten betyder står under knapparna, så att panelen bara har de fyra siffrorna
     const place = result.klass ? `Placering ${rank} av ${total} i klassen` : `Placering ${rank} av ${total}`;
     const unit = showRaw ? null : 'effekten i procent av din lyfteffekt';
-    e.hint.textContent = [place, unit, 'tryck valfri tangent'].filter(Boolean).join(' · ');
+    // En span per del: på bred skärm står de på var sin rad bredvid knapparna, annars på en rad med punkter (game.css)
+    e.hint.replaceChildren(
+      ...[place, unit, 'tryck valfri tangent'].filter(Boolean).map((t) => Object.assign(document.createElement('span'), { textContent: t }))
+    );
   }
 
   /**
@@ -170,7 +173,7 @@ export class ResultScreen {
   #stats(rows, note = null) {
     const parts = rows.flatMap(([label, value]) => [
       Object.assign(document.createElement('dt'), { textContent: label }),
-      Object.assign(document.createElement('dd'), { textContent: value }),
+      withUnit(document.createElement('dd'), value),
     ]);
     if (note) parts.push(Object.assign(document.createElement('div'), { className: 'note', textContent: note }));
     this.el.stats.replaceChildren(...parts);
@@ -180,6 +183,17 @@ export class ResultScreen {
     this.el.note.hidden = !text;
     this.el.note.textContent = text ?? '';
   }
+}
+
+/** Sätter "432 %" som siffran plus en mindre, dämpad enhet (game.css .unit). Värden utan enhet blir ren text. */
+function withUnit(el, text) {
+  const m = /^(.*\d)\s*(%|W|m)$/.exec(text);
+  if (!m) {
+    el.textContent = text;
+    return el;
+  }
+  el.append(m[1], Object.assign(document.createElement('span'), { className: 'unit', textContent: m[2] }));
+  return el;
 }
 
 /** Omdömet i korta rader: ny rad före "men" och efter varje mening (CSS white-space: pre-line). */

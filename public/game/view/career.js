@@ -9,8 +9,8 @@ import { starSpan } from './hud.js';
 import { programOf } from '../core/exercise.js';
 
 const $ = (id) => document.getElementById(id);
-// Där rubrikens helikopter ryms i sin canvas (andelar): stjärten till vänster, medarna nere
-const HERO_RECT = [0.07, 0.16, 0.9, 0.9];
+// Där rubrikens helikopter ryms i sin canvas (andelar): hela flygplanet syns, med luft under medarna
+const HERO_RECT = [0.17, 0.09, 0.9, 0.915];
 
 const STEPS = [
   {
@@ -76,7 +76,7 @@ export class CareerMenu {
       free: $('menu-free'),
       heli: $('career-heli'),
     };
-    this.#hero = new HeroHeli(this.el.heli, (canvas, livery) => drawHeader(canvas, this.m?.colors, livery), HERO_RECT);
+    this.#hero = new HeroHeli(this.el.heli, (canvas, livery) => drawHeader(canvas, this.m?.colors, livery), HERO_RECT, true);
     this.tab = 'school';
     this.m = null;
     this.onChoose = null;

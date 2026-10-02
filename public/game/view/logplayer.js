@@ -41,6 +41,8 @@ export class FlightLogView {
       timeNow: $('log-time-now'),
       timeTotal: $('log-time-total'),
       seek: $('log-seek'),
+      seekFill: $('log-seek-fill'),
+      seekRail: $('log-seek-rail'),
       speed: $('log-speed'),
       speedValue: $('log-speed-value'),
       text: $('log-text'),
@@ -221,8 +223,11 @@ export class FlightLogView {
     this.el.timeNow.textContent = clock(this.t);
     this.el.timeTotal.textContent = clock(d);
     this.el.seek.value = String(this.t);
-    // Den spelade delen av tidslinjen fylls i blått (game.css läser --p)
-    this.el.seek.style.setProperty('--p', `${d > 0 ? (100 * Math.min(1, this.t / d)).toFixed(2) : 0}%`);
+    // Tidslinjen flyttas bara med transform: att måla om ett reglage varje bildruta gav
+    // hack på flera hundra millisekunder över kartan
+    const p = d > 0 ? 100 * Math.min(1, this.t / d) : 0;
+    this.el.seekFill.style.transform = `translateX(${(p - 100).toFixed(2)}%)`;
+    this.el.seekRail.style.transform = `translateX(${p.toFixed(2)}%)`;
     this.el.speedValue.textContent = String(this.speed);
     this.el.playIcon.setAttribute('d', this.playing ? ICON_PAUSE : ICON_PLAY);
     this.el.play.setAttribute('aria-label', this.playing ? 'Pausa' : 'Spela upp');

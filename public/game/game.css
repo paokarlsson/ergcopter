@@ -358,14 +358,16 @@ button.danger {
 .screen.attract {
   display: block;
   padding: 0;
-  background: radial-gradient(ellipse 48% 70% at 64% 52%, rgb(5 12 26 / 0.42), rgb(5 12 26 / 0) 70%);
+  background:
+    radial-gradient(ellipse 34% 26% at 66% 19%, rgb(16 38 78 / 0.5), rgb(16 38 78 / 0) 100%),
+    radial-gradient(ellipse 48% 70% at 64% 52%, rgb(5 12 26 / 0.42), rgb(5 12 26 / 0) 70%);
 }
 .idle-column {
   position: absolute;
   left: 64%;
   top: 0;
   bottom: 0;
-  width: min(46vw, 620px);
+  width: 46vw;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -396,30 +398,96 @@ button.danger {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* Menyn: fristående glaskort med luft mellan, mått i vh/vw så att menyn fyller samma del av skärmen som i
+   målbilden (överkant ~42 %, underkant ~90 %). Landskapet skymtar suddigt igenom de mörka korten. */
 .main-menu {
   display: grid;
   justify-items: center;
-  gap: clamp(8px, 1.4vh, 14px);
-  width: min(100%, 560px);
+  gap: clamp(8px, 1.7vh, 20px);
+  width: clamp(320px, 35.5vw, 760px);
+  --menu-ink-shadow: 0 1px 2px rgb(2 8 20 / 0.55);
 }
 .main-menu .btn {
+  position: relative;
   width: 100%;
+  border: 1px solid rgb(205 222 250 / 0.2);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 45%),
+    linear-gradient(180deg, rgb(20 38 78 / 0.72), rgb(10 22 50 / 0.8));
+  box-shadow: 0 10px 26px rgb(0 0 0 / 0.3), 0 2px 5px rgb(0 0 0 / 0.22), inset 0 1px 0 rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(8px) saturate(1.25);
+  text-shadow: var(--menu-ink-shadow);
+  letter-spacing: 0.02em;
 }
+.main-menu .btn:hover,
+.main-menu .btn:focus-visible {
+  border-color: rgb(170 210 255 / 0.65);
+  box-shadow: 0 0 0 3px rgb(80 160 255 / 0.28), 0 10px 26px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+/* Stora kort: ikonen i en fast spalt till vänster, texten vänsterställd på samma linje i båda. */
 .main-menu .btn.big {
   justify-content: flex-start;
-  padding-left: 1.2em;
+  gap: 0;
+  height: clamp(52px, 9.8vh, 120px);
+  padding: 0 0 0 9.5%;
+  font-size: clamp(1.3rem, 3.8vh, 2.8rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.main-menu .btn.big + .btn.big {
+  margin-top: clamp(2px, 0.8vh, 10px);
 }
 .main-menu .btn.big svg {
-  margin-right: 0.4em;
+  width: 13%;
+  height: 72%;
+  margin-right: 6.5%;
+  filter: drop-shadow(0 1px 2px rgb(2 8 20 / 0.5));
 }
+.main-menu .btn.primary {
+  border-color: rgb(140 200 255 / 0.7);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0) 50%),
+    linear-gradient(180deg, rgb(58 150 240 / 0.95), rgb(24 104 206 / 0.95));
+  box-shadow: 0 10px 28px rgb(30 110 220 / 0.38), 0 2px 5px rgb(0 0 0 / 0.25),
+    inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 -2px 0 rgb(8 50 120 / 0.35);
+}
+.main-menu .btn.primary:hover,
+.main-menu .btn.primary:focus-visible {
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.35), 0 10px 28px rgb(30 110 220 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.45);
+}
+/* Små kort: lite smalare och genomskinligare, så att de två huvudvalen bär menyn. */
 .main-menu .btn.small {
-  width: 92%;
-  font-size: clamp(1rem, 1.35vw, 1.3rem);
+  width: 94.4%;
+  height: clamp(40px, 6.4vh, 80px);
+  padding: 0 1em;
+  border-color: rgb(205 222 250 / 0.24);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 50%),
+    linear-gradient(180deg, rgb(18 36 76 / 0.62), rgb(10 22 50 / 0.7));
+  font-size: clamp(1.05rem, 3vh, 2.2rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
-.demo-btn {
+.main-menu .btn.big + .btn.small {
+  margin-top: clamp(4px, 1.9vh, 22px);
+}
+/* Demoknappen: ett eget litet glaskort nere till vänster, i samma stil som menyn. */
+.btn.demo-btn {
   position: absolute;
-  left: 24px;
-  bottom: 24px;
+  left: 3.7vw;
+  bottom: 4.2vh;
+  min-width: clamp(110px, 13.5vw, 260px);
+  height: clamp(40px, 6.4vh, 72px);
+  gap: 0.7em;
+  border-color: rgb(205 222 250 / 0.24);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 50%),
+    linear-gradient(180deg, rgb(40 50 72 / 0.62), rgb(22 30 48 / 0.7));
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.28), inset 0 1px 0 rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(8px) saturate(1.2);
+  font-size: clamp(1rem, 2.9vh, 2rem);
+  font-weight: 600;
 }
 .demo-q {
   display: inline-grid;
@@ -524,57 +592,187 @@ button.danger {
 
 /* --- Ny flygning -------------------------------------------------------------- */
 
-/* Formuläret till vänster, helikoptern på plattan syns till höger */
+/* Formuläret till vänster i nästan full höjd, helikoptern på plattan syns till höger.
+   Allt i panelen mäts i em så att den skalar med skärmhöjden som en spelmeny. */
 .screen.setup {
   place-items: center start;
-  padding-left: max(16px, 6vw);
-  background: linear-gradient(90deg, rgb(4 10 22 / 0.45), rgb(4 10 22 / 0) 55%);
+  padding: 16px max(16px, 1.6vw);
+  background: linear-gradient(90deg, rgb(4 10 22 / 0.5), rgb(4 10 22 / 0.18) 45%, rgb(4 10 22 / 0) 62%);
 }
 .setup-card {
   position: relative;
-  width: min(480px, 100%);
-  padding: 26px 30px 28px;
+  width: min(26.9em, 100%);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 1.75em 2.25em 1.4em;
+  border-color: rgb(150 190 240 / 0.16);
+  border-radius: 0.6em;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0) 5em),
+    linear-gradient(180deg, rgb(20 36 62 / 0.86), rgb(9 19 37 / 0.9));
+  box-shadow: 0 1.2em 3em rgb(0 0 0 / 0.38), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  font-family: var(--font-display);
+  font-size: max(13px, min(2.2vh, 3.4vw));
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.015em; /* luftigare smal stil, lättare att läsa på avstånd */
 }
 .setup-card h2 {
-  margin: 2px 0 14px;
+  margin: 0;
+  font-size: 2.45em;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+.setup-card .kicker {
+  margin: 0.4em 0 0.95em;
+  font-size: 0.9em;
+  letter-spacing: 0.16em;
 }
 .close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 38px;
-  height: 38px;
+  top: 0.85em;
+  right: 0.85em;
+  display: grid;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
   padding: 0;
-  border: 1px solid var(--glass-edge);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.06);
-  color: var(--ink);
-  font-size: 1.5rem;
+  border: 1px solid rgb(150 190 240 / 0.2);
+  border-radius: 0.35em;
+  background: rgb(255 255 255 / 0.04);
+  color: var(--ink-muted);
+  font-size: 1.4em;
+  font-weight: 400;
   line-height: 1;
 }
+.close:hover,
+.close:focus-visible {
+  border-color: var(--glass-edge-strong);
+  color: var(--ink);
+  outline: none;
+}
+.field {
+  display: grid;
+  grid-template-columns: 6.4em auto auto 1fr;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 1.05em;
+}
+.field label {
+  font-size: 1.5em;
+  font-weight: 600;
+}
+.field input {
+  width: 100%;
+  height: 1.9em; /* 2,9 em i panelens storlek */
+  padding: 0 0.42em;
+  border: 2px solid rgb(255 255 255 / 0.5);
+  border-radius: 0.22em;
+  background: linear-gradient(180deg, #f3f6fa, var(--field));
+  box-shadow: inset 0 2px 3px rgb(16 24 38 / 0.12), 0 1px 0 rgb(0 0 0 / 0.25);
+  color: var(--field-ink);
+  font-family: var(--font-display);
+  font-size: 1.55em;
+  font-weight: 600;
+}
+.field input::placeholder {
+  color: rgb(16 24 38 / 0.4);
+}
+.field input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgb(47 142 242 / 0.35);
+  outline: none;
+}
+.field input:not(.short) {
+  grid-column: 2 / -1;
+}
+.field input.short {
+  width: 3.9em;
+}
+.field .unit {
+  min-width: 1.4em;
+  margin-left: 0.25em;
+  color: var(--ink);
+  font-size: 1.5em;
+}
+.field-hint {
+  color: var(--ink-muted);
+  font-size: 1.05em;
+}
+.lift-box {
+  margin: 1.6em 0 0.75em;
+  padding: 1.25em 1.6em 1.35em;
+  border: 1px solid rgb(150 190 240 / 0.2);
+  border-radius: 0.45em;
+  background: linear-gradient(180deg, rgb(4 12 28 / 0.55), rgb(4 12 28 / 0.4));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+.lift-box p {
+  margin: 0;
+}
+.lift-title {
+  font-size: 1.4em;
+}
+.lift-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0.15em 0 0.35em !important;
+}
+.lift-value {
+  font-size: 2.45em;
+  font-weight: 800;
+  line-height: 1.1;
+}
+/* Utan råa watt visas ingen siffra (spec §6), bara att den räknas fram */
+.lift-value.secret-value {
+  font-size: 2.05em;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+.lift-info {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.3em;
+  height: 1.3em;
+  border: 2px solid rgb(255 255 255 / 0.85);
+  border-radius: 50%;
+  font-family: Georgia, serif;
+  font-size: 1.05em;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+}
+.lift-text {
+  color: var(--ink-muted);
+  font-size: 1.3em;
+  line-height: 1.38;
+}
+/* Ergen: en smal rad mellan lyftrutan och startknappen */
 .conn {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
-  margin: 0 0 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.04);
+  gap: 0.55em;
+  margin: 0 0 0.75em;
+  padding: 0.25em 0.3em 0.25em 0.8em;
+  border: 1px solid rgb(150 190 240 / 0.16);
+  border-radius: 0.45em;
+  background: rgb(4 12 28 / 0.35);
+  min-width: 0;
 }
+/* Rubriken "PM5" finns för skärmläsare; raden visar ändå punkten och statusen */
 .conn legend {
-  padding: 0 6px;
-  color: var(--ink-muted);
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .conn-dot {
-  width: 10px;
-  height: 10px;
+  flex: none;
+  width: 0.55em;
+  height: 0.55em;
   border-radius: 50%;
   background: var(--ink-faint);
 }
@@ -586,9 +784,13 @@ button.danger {
   background: var(--bad-ink);
 }
 .conn-status {
-  flex: 1 1 90px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--ink-muted);
-  font-size: 0.95rem;
+  font-size: 1.15em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .conn-status[data-kind='ok'] {
   color: var(--good-ink);
@@ -597,110 +799,69 @@ button.danger {
   color: var(--bad-ink);
 }
 .conn select {
-  flex: 0 1 160px;
+  flex: 0 1 auto;
   min-width: 0;
-  padding: 7px 10px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 6px;
-  background: rgb(255 255 255 / 0.08);
+  height: 1.8em;
+  padding: 0 1.9em 0 0.7em;
+  border: 1px solid rgb(150 190 240 / 0.22);
+  border-radius: 0.3em;
+  appearance: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23d6e2f5' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")
+      no-repeat right 0.65em center / 0.65em auto,
+    rgb(255 255 255 / 0.07);
   color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.1em;
+  font-weight: 600;
 }
 .conn select option {
   color: #101826;
 }
-.field {
-  display: grid;
-  grid-template-columns: 5.2em auto auto 1fr;
-  align-items: center;
-  gap: 10px;
-  margin: 14px 0;
-}
-.field label {
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 600;
-}
-.field input {
-  width: 100%;
-  padding: 9px 12px;
-  border: 2px solid transparent;
-  border-radius: 6px;
-  background: var(--field);
-  color: var(--field-ink);
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 600;
-}
-.field input:focus {
-  border-color: var(--blue);
-  outline: none;
-}
-.field input:not(.short) {
-  grid-column: 2 / -1;
-}
-.field input.short {
-  width: 5em;
-}
-.field .unit {
-  color: var(--ink-muted);
-  font-size: 1.1rem;
-}
-.field-hint {
-  color: var(--ink-muted);
-  font-size: 0.9rem;
-}
-.lift-box {
-  margin: 18px 0 8px;
-  padding: 14px 18px;
-  border: 1px solid var(--glass-edge);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.04);
-}
-.lift-box p {
-  margin: 0;
-}
-.lift-title {
-  font-size: 1.05rem;
-}
-.lift-value {
-  margin: 2px 0 6px !important;
-  font-family: var(--font-display);
-  font-size: 2.6rem;
-  font-weight: 800;
-  line-height: 1.05;
-}
-.lift-value.secret-value {
-  font-size: 1.5rem;
-  color: var(--ink-muted);
-}
-.lift-text {
-  color: var(--ink-muted);
-  font-size: 0.95rem;
+.conn .btn.small {
+  flex: none;
+  height: 2.05em;
+  padding: 0 0.95em;
+  border-radius: 0.3em;
+  font-size: 1em;
 }
 .reminder {
-  margin: 8px 0;
-  padding: 10px 12px;
+  margin: 0 0 0.75em;
+  padding: 0.5em 0.7em;
   background: rgb(246 199 68 / 0.18);
   border-left: 4px solid var(--gold);
   border-radius: 6px;
-  font-weight: 600;
+  font-size: 1.05em;
 }
 .error {
-  min-height: 1.4em;
-  margin: 6px 0;
+  margin: 0 0 0.6em;
   color: var(--bad-ink);
+  font-size: 1.05em;
+}
+.error:empty {
+  display: none;
 }
 .setup-card .btn.go {
   width: 100%;
+  height: 2.57em; /* 5,1 em i panelens storlek */
+  margin-top: 0;
+  padding: 0 1em;
+  border-radius: 0.25em;
+  background: linear-gradient(180deg, #47d564, #27b245 55%, #1d9837);
+  font-size: 2em;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 1px rgb(0 60 10 / 0.35);
 }
 
 /* --- Fjällräddaren: menyn (plan.md §2–3) ------------------------------------------ */
 
 .screen.career-screen {
   padding: 14px max(16px, 3vw) 18px;
-  /* Överst en klarblå himmel bakom rubriken, sedan mörkare bakom korten */
+  /* Överst en klarblå himmel bakom rubriken som ljusnar mot ett varmt dis, sedan mörkare bakom korten */
   background:
-    linear-gradient(180deg, rgb(40 104 196 / 0.55), rgb(48 112 200 / 0.3) 15%, rgb(48 112 200 / 0) 26%),
+    radial-gradient(42% 14% at 70% 20%, rgb(255 210 160 / 0.2), rgb(255 210 160 / 0)),
+    linear-gradient(180deg, rgb(34 88 172 / 0.6), rgb(80 128 194 / 0.4) 10%, rgb(168 190 216 / 0.3) 18%, rgb(168 190 216 / 0) 26%),
     linear-gradient(180deg, rgb(5 12 26 / 0), rgb(5 12 26 / 0.3) 19%, rgb(5 12 26 / 0.78) 34%);
 }
 .career {
@@ -719,7 +880,7 @@ button.danger {
   gap: 16px;
   height: max(118px, calc(21.5vh - 28px));
 }
-/* Helikoptern (view/hero-heli.js) fyller vänstra tredjedelen ut till skärmkanten; rotorn får skäras av upptill */
+/* Helikoptern (view/hero-heli.js) fyller vänstra tredjedelen; hela flygplanet syns, bara rotorbladen får skäras av upptill */
 .career-heli {
   position: absolute;
   top: -14px;
@@ -1147,8 +1308,10 @@ button.danger {
   align-items: stretch;
   gap: 14px clamp(14px, 2.2vw, 44px);
   text-shadow: none;
-  font-family: 'Ubuntu Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, var(--font-text);
-  font-size: clamp(1.05rem, min(3.55vh, 2.5vw), 2.5rem);
+  /* Smal men luftig sans (Ubuntu Sans Condensed där den finns) som i en spelmeny, inte hoptryckt som rubrikerna */
+  font-family: 'Ubuntu Sans', 'Roboto Condensed', 'Arial Narrow', 'Segoe UI', Roboto, Arial, var(--font-text);
+  font-stretch: condensed;
+  font-size: clamp(1.1rem, min(4vh, 2.8vw), 2.8rem);
   line-height: 1.2;
 }
 @media (max-width: 700px) {
@@ -1156,15 +1319,33 @@ button.danger {
     grid-template-columns: 1fr;
   }
 }
+/* Frostat glas: landskapet skymtar suddigt igenom, ljus överkant och en svag gradient nedåt.
+   Kanten är en maskerad gradient (::before) så att den kan vara ljusast upptill. */
 .result-cards > .glass {
-  border-color: rgb(170 200 240 / 0.17);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgb(20 32 52 / 0.84), rgb(10 18 32 / 0.88));
-  box-shadow: 0 14px 34px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.07);
+  position: relative;
+  border: 0;
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 38%),
+    linear-gradient(180deg, rgb(28 38 60 / 0.52), rgb(10 16 28 / 0.66));
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.34), 0 2px 6px rgb(0 0 0 / 0.2);
+  backdrop-filter: blur(14px) saturate(1.35) brightness(0.92);
+}
+.result-cards > .glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgb(220 232 255 / 0.36), rgb(200 216 245 / 0.14) 30%, rgb(180 200 235 / 0.09));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
 }
 .result-stats {
   display: grid;
-  grid-template-columns: 52% 1fr;
+  grid-template-columns: 56% 1fr;
   grid-auto-rows: var(--row);
   align-items: center;
   align-content: center;
@@ -1172,17 +1353,27 @@ button.danger {
   margin: 0;
   padding: 0.6vh var(--card-pad) 0.8vh;
 }
+/* Siffrorna är huvudsaken: större och fetare än etiketterna, enheten mindre och dämpad (results.js .unit) */
 .result-stats dt {
-  color: rgb(228 236 248 / 0.88);
+  color: rgb(222 230 244 / 0.9);
   font-weight: 400;
-  letter-spacing: 0.005em;
+  letter-spacing: 0.01em;
 }
 .result-stats dd {
   margin: 0;
   color: #fff;
+  font-size: 1.14em;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+.result-cards .unit {
+  margin-left: 0.2em;
+  color: rgb(214 224 240 / 0.74);
+  font-size: 0.8em;
+  font-weight: 600;
 }
 .result-stats .note {
   grid-column: 1 / -1;
@@ -1204,7 +1395,7 @@ button.danger {
   color: #fff;
   font-family: inherit;
   font-size: 1em;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.005em;
 }
 .result-peaks ol {
@@ -1217,10 +1408,11 @@ button.danger {
 }
 .result-peaks li {
   display: grid;
-  grid-template-columns: 1.1em minmax(0, 1fr) auto 1em;
+  grid-template-columns: 1.15em minmax(0, 1fr) auto 1.15em;
   align-items: center;
   gap: 0 0.45em;
   color: #fff;
+  font-weight: 500;
 }
 .result-peaks .peak-name {
   overflow: hidden;
@@ -1229,33 +1421,38 @@ button.danger {
 }
 .result-peaks .peak-h {
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
-/* Bock: två kanter i ett roterat hörn; ring: en kant runt. Grön för passerade toppar, grå för nästa. */
+.result-peaks .unit {
+  color: inherit;
+  font-size: 0.86em;
+  font-weight: 500;
+  opacity: 0.78;
+}
+/* Bock: en rundad SVG-mask fylld med textfärgen; ring: en kant runt. Grön för passerade toppar, ljusgrå för nästa. */
 .result-peaks .mark {
   justify-self: center;
   color: #4fdc6c;
 }
 .result-peaks .mark.tick {
-  width: 0.36em;
-  height: 0.66em;
-  margin-top: -0.18em;
-  border: solid currentcolor;
-  border-width: 0 0.15em 0.15em 0;
-  border-radius: 0 0 0.06em 0;
-  transform: rotate(42deg);
-  filter: drop-shadow(0 0 4px rgb(79 220 108 / 0.35));
+  width: 0.98em;
+  height: 0.98em;
+  background: currentcolor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12.8l5 5L20.5 6' fill='none' stroke='%23000' stroke-width='3.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12.8l5 5L20.5 6' fill='none' stroke='%23000' stroke-width='3.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  filter: drop-shadow(0 0 3px rgb(79 220 108 / 0.3));
 }
 .result-peaks .mark.ring {
-  width: 0.62em;
-  height: 0.62em;
-  border: 0.1em solid currentcolor;
+  width: 0.74em;
+  height: 0.74em;
+  border: 0.09em solid currentcolor;
   border-radius: 50%;
 }
 .result-peaks li.next {
   color: rgb(214 226 245 / 0.62);
 }
 .result-peaks li.next .mark {
-  color: rgb(214 226 245 / 0.62);
+  color: rgb(232 238 248 / 0.82);
   filter: none;
 }
 .result-peaks .empty {
@@ -1296,6 +1493,8 @@ button.danger {
   font-size: 1.15rem;
   font-weight: 600;
 }
+/* Knapparna: två lika breda, tjocka knappar med stora versaler. Sekundärknappen är ljust skifferglas,
+   huvudknappen klarblå. Tipsraden (placering, tangenter) hamnar under dem på smala skärmar. */
 .result-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1304,11 +1503,93 @@ button.danger {
 }
 .result-actions .btn {
   flex: 1 1 220px;
+  position: relative;
+  min-height: clamp(54px, 10.6vh, 128px);
+  padding: 0 1em;
+  border-radius: clamp(6px, 0.9vh, 10px);
+  font-size: clamp(1.3rem, min(4.2vh, 2.9vw), 3.6rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.28), 0 2px 8px rgb(0 0 0 / 0.25);
+}
+/* Skifferglas: landskapet skymtar igenom, ljus kant och ett mjukt högdager upptill */
+.result-actions .btn:not(.primary) {
+  border: 1px solid rgb(214 226 242 / 0.5);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.03) 46%, rgb(255 255 255 / 0) 54%),
+    linear-gradient(180deg, rgb(128 146 170 / 0.62), rgb(86 104 128 / 0.62));
+  box-shadow:
+    0 10px 28px rgb(0 0 0 / 0.32),
+    0 2px 5px rgb(0 0 0 / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 -2px 0 rgb(20 30 48 / 0.22);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+.result-actions .btn.primary {
+  border: 1px solid rgb(120 196 255 / 0.85);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.04) 46%, rgb(255 255 255 / 0) 54%),
+    linear-gradient(180deg, #2a95f4, #0f6fd6 60%, #0b5fc0);
+  box-shadow:
+    0 10px 30px rgb(30 120 240 / 0.42),
+    0 2px 5px rgb(0 0 0 / 0.25),
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    inset 0 -2px 0 rgb(0 40 110 / 0.3);
+}
+.result-actions .btn:not(.primary):hover,
+.result-actions .btn:not(.primary):focus-visible {
+  border-color: rgb(235 243 255 / 0.85);
+  box-shadow: 0 0 0 3px rgb(200 220 255 / 0.3), 0 10px 28px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.3);
+}
+.result-actions .btn.primary:hover,
+.result-actions .btn.primary:focus-visible {
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.4), 0 10px 30px rgb(30 120 240 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.45);
 }
 .result-hint {
-  margin: 10px 0 0;
+  flex: 1 1 100%;
+  margin: 0;
   color: var(--ink-faint);
   font-size: 0.9rem;
+}
+.result-hint span + span::before {
+  content: ' · ';
+}
+/* Bred skärm: knappraden sticker ut till höger om panelerna och börjar en bit in, som i en spelmeny.
+   Tipsraden står i det tomma fältet till vänster om knapparna. */
+@media (min-aspect-ratio: 5/4) and (min-width: 900px) {
+  .result-wrap {
+    width: min(87.7vw, 100%);
+  }
+  .result-wrap > :not(.result-actions) {
+    max-width: max(760px, 69vw);
+  }
+  .result-actions {
+    display: grid;
+    grid-template-columns: 18.8vw minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 2.6vw;
+  }
+  .result-hint {
+    order: -1;
+    align-self: center;
+    font-family: var(--font-display);
+    font-size: clamp(0.95rem, 2vh, 1.4rem);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+  }
+  .result-hint span {
+    display: block;
+    text-wrap: balance;
+  }
+  .result-hint span + span::before {
+    content: none;
+  }
+  .result-hint span:first-child {
+    color: var(--ink-muted);
+  }
 }
 /* Certifikatet efter godkänd uppflygning: papper */
 .certificate {
@@ -1384,7 +1665,7 @@ button.danger {
   padding: 0.42em 0.6em 0.44em;
   border: 1px solid rgb(150 210 255 / 0.5);
   border-radius: 7px;
-  background: linear-gradient(180deg, rgb(32 108 196 / 0.94), rgb(16 70 142 / 0.94));
+  background: linear-gradient(180deg, rgb(26 94 176 / 0.93), rgb(14 62 128 / 0.93));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 6px 18px rgb(0 10 30 / 0.35);
   font-size: clamp(1.7rem, 4.9vh, 3.8rem);
 }
@@ -2103,10 +2384,82 @@ button.danger {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.player-controls input[type='range'] {
+/* Tidslinjen: bana, blå spelad del och knopp flyttas med transform från logplayer.js. Det
+   riktiga reglaget ligger osynligt ovanpå; dess knopp är lika bred som den synliga (--knob). */
+.seek {
+  --knob: 18px;
+  position: relative;
   flex: 1;
   min-width: 0;
-  accent-color: var(--blue);
+  height: 28px;
+}
+.seek-track,
+.seek-rail {
+  position: absolute;
+  left: calc(var(--knob) / 2);
+  right: calc(var(--knob) / 2);
+}
+.seek-track {
+  top: 50%;
+  height: var(--track, 6px);
+  transform: translateY(-50%);
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.16);
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.35);
+}
+.seek-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #136fd0, #2fa6ff 70%, #5cbcff);
+  transform: translateX(-100%);
+  will-change: transform;
+}
+.seek-rail {
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.seek-knob {
+  position: absolute;
+  left: calc(var(--knob) / -2);
+  top: 50%;
+  width: var(--knob);
+  height: var(--knob);
+  margin-top: calc(var(--knob) / -2);
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #c9ebff, #3fb0ff 42%, #1680e2 78%);
+  box-shadow: 0 0 0 calc(var(--knob) * 0.2) rgb(47 166 255 / 0.28), 0 0 calc(var(--knob) * 0.9) rgb(47 166 255 / 0.55),
+    0 1px 3px rgb(0 0 0 / 0.5);
+}
+.seek:has(input:focus-visible) .seek-knob {
+  box-shadow: 0 0 0 calc(var(--knob) * 0.2) rgb(255 255 255 / 0.7), 0 0 calc(var(--knob) * 0.9) rgb(47 166 255 / 0.6);
+}
+.seek:has(input:disabled) {
+  opacity: 0.4;
+}
+.seek input {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.seek input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--knob);
+  height: var(--knob);
+}
+.seek input::-moz-range-thumb {
+  width: var(--knob);
+  height: var(--knob);
+  border: 0;
 }
 .player-controls .speed {
   min-width: 3.2em;
@@ -2119,8 +2472,7 @@ button.danger {
   font-size: 1.3rem;
   font-weight: 800;
 }
-.player-controls button:disabled,
-.player-controls input:disabled {
+.player-controls button:disabled {
   opacity: 0.4;
 }
 
@@ -2209,7 +2561,7 @@ button.danger {
 }
 .logs-screen.theater .player-controls {
   position: absolute;
-  left: 3.5vw;
+  left: 3.1vw;
   right: 1.5vw;
   bottom: 10vh;
   z-index: 1;
@@ -2217,10 +2569,13 @@ button.danger {
   min-height: 52px;
   gap: 0;
   padding: 0 0 0 2.2vw;
-  border: 1px solid rgb(180 205 240 / 0.1);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgb(12 17 26 / 0.9), rgb(4 7 13 / 0.92));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07); /* ingen suddig skugga: den kostar bildrutor över 3D-kartan */
+  border: 1px solid rgb(190 215 250 / 0.14);
+  border-top-color: rgb(225 238 255 / 0.3);
+  border-radius: 12px;
+  /* Glas: kartan skymtar igenom, suddig, med en ljus kant upptill och en skugga under */
+  background: linear-gradient(180deg, rgb(22 32 50 / 0.62), rgb(6 10 20 / 0.72) 55%, rgb(3 6 14 / 0.78));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 0 rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.42);
+  backdrop-filter: blur(12px) saturate(1.25);
 }
 /* Stor, fylld spelaknapp utan ring, som i en spelkonsols uppspelare */
 .logs-screen.theater .player-controls .play {
@@ -2241,7 +2596,7 @@ button.danger {
   transform: scale(1.08);
 }
 .logs-screen.theater .player-controls .play:focus-visible {
-  color: #bfe4ff;
+  filter: drop-shadow(0 0 0.6vh rgb(143 208 255 / 0.8));
 }
 .logs-screen.theater .player-time {
   flex: none;
@@ -2256,57 +2611,12 @@ button.danger {
 .logs-screen.theater .player-time #log-time-total {
   color: rgb(214 226 244 / 0.82);
 }
-/* Tidslinjen: tjock rundad bana, blå spelad del (--p från logplayer.js) och en lysande knopp */
-.logs-screen.theater .player-controls input[type='range'] {
-  -webkit-appearance: none;
-  appearance: none;
-  margin: 0 0 0 2.6vw;
-  height: 3.4vh;
-  background: transparent;
-  cursor: pointer;
-}
-.logs-screen.theater .player-controls input[type='range']:focus {
-  outline: none;
-}
-.logs-screen.theater .player-controls input[type='range']::-webkit-slider-runnable-track {
-  height: 0.85vh;
-  min-height: 4px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #1a8ff0, #2fa6ff var(--p, 0%), rgb(255 255 255 / 0.17) var(--p, 0%));
-}
-.logs-screen.theater .player-controls input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 3vh;
-  min-width: 14px;
-  height: 3vh;
-  min-height: 14px;
-  margin-top: calc(max(0.85vh, 4px) / 2 - max(3vh, 15px) / 2);
-  border: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #8fd0ff, #2fa6ff 45%, #1784e6);
-  box-shadow: 0 0 0 0.35vh rgb(47 166 255 / 0.3), 0 0 0 0.8vh rgb(47 166 255 / 0.12);
-}
-.logs-screen.theater .player-controls input[type='range']:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 0.35vh rgb(255 255 255 / 0.6), 0 0 0 0.8vh rgb(47 166 255 / 0.2);
-}
-.logs-screen.theater .player-controls input[type='range']::-moz-range-track {
-  height: 0.85vh;
-  border-radius: 99px;
-  background: rgb(255 255 255 / 0.17);
-}
-.logs-screen.theater .player-controls input[type='range']::-moz-range-progress {
-  height: 0.85vh;
-  border-radius: 99px;
-  background: linear-gradient(90deg, #1a8ff0, #2fa6ff);
-}
-.logs-screen.theater .player-controls input[type='range']::-moz-range-thumb {
-  width: 3vh;
-  height: 3vh;
-  border: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #8fd0ff, #2fa6ff 45%, #1784e6);
-  box-shadow: 0 0 0 0.35vh rgb(47 166 255 / 0.3), 0 0 0 0.8vh rgb(47 166 255 / 0.12);
+/* Tidslinjen i helskärm: tjock rundad bana och en lysande knopp, skalade efter skärmen */
+.logs-screen.theater .player-controls .seek {
+  --knob: max(2.7vh, 15px);
+  --track: max(0.8vh, 5px);
+  height: 4vh;
+  margin-left: 2.4vw;
 }
 /* Farten som ren text till höger, utan ram */
 .logs-screen.theater .player-controls .speed {
@@ -2316,7 +2626,7 @@ button.danger {
   height: 100%;
   padding: 0;
   border: 0;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 12px 12px 0;
   color: #f4f8ff;
   font-size: clamp(1rem, 3.3vh, 2.4rem);
   font-weight: 600;
@@ -2330,7 +2640,7 @@ button.danger {
 }
 /* Barlows ×-tecken är litet; systemfontens står i nivå med siffran */
 .player-controls .speed .times {
-  margin-left: 0.18em;
+  margin-left: 0.08em;
   font-family: system-ui, sans-serif;
   font-size: 0.8em;
   font-weight: 500;
@@ -2404,8 +2714,20 @@ body:has(.logs-screen.theater:not([hidden])) .screen-controls {
     padding-left: 8px;
   }
   .logs-screen.theater .player-time,
-  .logs-screen.theater .player-controls input[type='range'] {
+  .logs-screen.theater .player-controls .seek {
     margin-left: 0;
+  }
+  /* Smal skärm: mindre tid och fart så att tidslinjen får plats */
+  .logs-screen.theater .player-time,
+  .logs-screen.theater .player-controls .speed {
+    font-size: 1.1rem;
+  }
+  .logs-screen.theater .player-controls .speed {
+    width: auto;
+    padding: 0 12px 0 4px;
+  }
+  .logs-screen.theater .player-controls .seek {
+    min-width: 72px;
   }
   .logs-screen.theater .player-controls .back {
     top: auto;
@@ -2664,6 +2986,9 @@ dialog#settings .settings-field input[type='checkbox'] {
     left: 0;
   }
   .brand-logo {
+    width: min(100%, 560px);
+  }
+  .main-menu {
     width: min(100%, 560px);
   }
   .career-head {

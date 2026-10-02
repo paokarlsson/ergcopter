@@ -1,335 +1,414 @@
-// Fjällräddaren som figur: räddaren i röd overall med hjälm och ryggsäck, sedd bakifrån, som står på en
-// granitklippa i kvällsljus. Ritas en gång per storlek (ingen kostnad per bildruta), med solen lågt
-// bakom till höger: kanterna får varmt motljus och klippans framsidor ligger i kall skugga.
-// Används på resultatskärmen och i Fjällräddaren-menyn.
+// Fjällräddaren på klippan: räddaren i röd overall med hjälm och ryggsäck, sedd bakifrån, som står på en
+// granitklippa framför en snöig fjällkedja i kvällsljus. Ritas en gång per storlek (ingen kostnad per bildruta),
+// med solen lågt bakom till höger: kanterna får varmt motljus och klippans framsidor ligger i kall skugga.
+// Själva räddaren strålföljs i 3D i view/rescuer-figure.js. Används på resultatskärmen.
 
-const SUN = norm3(0.66, -0.6, -0.22); // x höger, y nedåt, z mot betraktaren: solen står lågt bakom till höger
+import { renderRescuerFigure } from './rescuer-figure.js';
+
+const SUN = norm3(0.66, -0.6, -0.22);
+const FEET_U = -0.148; // mitten mellan räddarens fötter, i H från högerkanten // x höger, y nedåt, z mot betraktaren: solen står lågt bakom till höger
 
 /**
  * Ritar figuren på en canvas och ritar om när storleken ändras (även när skärmen visas efter att ha varit dold).
+ * Klippan och fjällen tar närmare en sekund att räkna fram, så det görs i en egen tråd (rescuer-worker.js)
+ * redan när sidan laddas, i den storlek canvasen får när skärmen visas (92vh bred, hela höjden; se .result-figure
+ * i game.css). Då hackar varken flygningen eller övergången till resultatet. Utan workers målas bilden direkt.
  * @param {HTMLCanvasElement|null} canvas
  */
 export function mountRescuerScene(canvas) {
   if (!canvas) return;
-  let key = '';
-  const paint = () => {
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width < 2 || rect.height < 2) return;
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    const w = Math.round(rect.width * dpr);
-    const h = Math.round(rect.height * dpr);
-    if (`${w}x${h}` === key) return;
-    key = `${w}x${h}`;
+  let shown = ''; // storleken som ligger på canvasen
+  let wanted = ''; // storleken som målas just nu
+  let worker = null;
+  const put = (w, h, image) => {
     canvas.width = w;
     canvas.height = h;
-    paintRescuerScene(canvas.getContext('2d'), w, h);
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    shown = `${w}x${h}`;
   };
-  new ResizeObserver(paint).observe(canvas);
+  const paintHere = (w, h, detail) => {
+    const c = offscreen(w, h);
+    paintRescuerScene(c.getContext('2d'), w, h, detail);
+    put(w, h, c);
+  };
+  const request = (cssW, cssH, visible) => {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.round(cssW * dpr);
+    const h = Math.round(cssH * dpr);
+    const key = `${w}x${h}`;
+    if (w < 2 || h < 2 || (worker && key === wanted)) return;
+    if (key === shown) {
+      wanted = key; // en äldre beställning som fortfarande målas ska inte skriva över bilden
+      return;
+    }
+    wanted = key;
+    if (worker) worker.postMessage({ w, h, detail: 1 / dpr });
+    else if (visible) paintHere(w, h, 1 / dpr);
+  };
+  const visibleSize = () => {
+    const rect = canvas.getBoundingClientRect();
+    return rect.width >= 2 && rect.height >= 2 ? rect : null;
+  };
+  try {
+    worker = new Worker(new URL('./rescuer-worker.js', import.meta.url), { type: 'module' });
+    worker.onmessage = (e) => {
+      const { w, h, bitmap } = e.data;
+      if (`${w}x${h}` === wanted) put(w, h, bitmap);
+      bitmap.close();
+    };
+    // Tråden gick inte att starta (t.ex. utan OffscreenCanvas): måla här i stället, när skärmen syns
+    worker.onerror = () => {
+      worker?.terminate();
+      worker = null;
+      wanted = '';
+      const rect = visibleSize();
+      if (rect) request(rect.width, rect.height, true);
+    };
+  } catch {
+    worker = null;
+  }
+  new ResizeObserver(() => {
+    const rect = visibleSize();
+    if (rect) request(rect.width, rect.height, true);
+  }).observe(canvas);
+  let timer = 0;
+  const ahead = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (!visibleSize()) request(Math.min(innerHeight * 0.92, innerWidth), innerHeight, false);
+    }, 300);
+  };
+  addEventListener('resize', ahead);
+  ahead();
 }
 
 /**
- * Hela motivet: klippan i förgrunden och räddaren på dess topp. Allt mäts i canvasens höjd (H) från högerkanten,
- * så att figuren hamnar på samma plats på skärmen oavsett bildformat.
+ * Hela motivet: fjällen, klippan i förgrunden och räddaren på dess topp. Allt mäts i canvasens höjd (H) från
+ * högerkanten, så att figuren hamnar på samma plats på skärmen oavsett bildformat.
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} w, h  canvasens storlek i pixlar
+ * @param {number} [detail]  upplösning för klippan relativt canvasen (t.ex. 1/dpr); fjällen räknas i halva den
  */
-export function paintRescuerScene(ctx, w, h) {
-  ctx.clearRect(0, 0, w, h);
+export function paintRescuerScene(ctx, w, h, detail = 1) {
+  const steps = paintSteps(ctx, w, h, detail);
+  while (!steps.next().done);
+}
+
+/** Samma målning i små steg (yield mellan bitarna), så att den kan göras när webbläsaren har tid över. */
+function* paintSteps(ctx, w, h, detail) {
   const H = h;
-  const feetU = -0.148; // fötternas mitt, i H från högerkanten
-  const feetX = w + feetU * H;
-  const rock = rockLayer(w, h, H);
-  const feetY = rock.topAt(Math.round(feetX)) + 0.004 * H;
-
-  // Varmt kvällsdis runt klippans topp, där solen står lågt bakom räddaren
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const glow = ctx.createRadialGradient(w - 0.06 * H, 0.47 * H, 0, w - 0.06 * H, 0.47 * H, 0.55 * H);
-  glow.addColorStop(0, 'rgba(255,170,96,0.34)');
-  glow.addColorStop(0.35, 'rgba(240,120,70,0.14)');
-  glow.addColorStop(1, 'rgba(200,90,70,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
-
-  ctx.drawImage(rock.canvas, 0, 0);
-
-  // Räddarens skugga faller mot betraktaren och åt vänster, bort från solen
+  const feetX = w + FEET_U * H;
+  const rs = Math.min(1, detail);
+  const rock = yield* rockLayer(Math.round(w * rs), Math.round(h * rs), h * rs);
+  // Fötterna sätts på klippans lägsta punkt under kängorna, så att ingen av dem svävar; den andra sjunker en
+  // aning in bakom kanten, som om han står en bit in på hällen
+  const feetY = rock.topAt(Math.round(feetX * rs), Math.round(0.035 * H * rs)) / rs + 0.006 * H;
+  const far = rs * 0.7; // himlen och fjällen ligger långt bort i diset och tål lägre upplösning
+  const back = yield* backdropLayer(Math.round(w * far), Math.round(h * far), h * far);
+  // Räddarens skugga faller mot betraktaren och åt vänster, bort från solen. Den målas på klippan (bara där
+  // klippan finns), så att den följer med när klippans kant ritas över kängorna.
   const figH = 0.245 * H;
-  ctx.save();
-  ctx.filter = `blur(${Math.max(1, figH * 0.02)}px)`;
-  ctx.fillStyle = 'rgba(8,6,10,0.55)';
-  ctx.beginPath();
-  ctx.ellipse(feetX - figH * 0.08, feetY + figH * 0.012, figH * 0.2, figH * 0.028, -0.08, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(4,3,6,0.7)';
-  ctx.beginPath();
-  ctx.ellipse(feetX, feetY, figH * 0.13, figH * 0.016, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  const rc = rock.canvas.getContext('2d');
+  rc.save();
+  rc.globalCompositeOperation = 'source-atop';
+  rc.scale(rs, rs);
+  rc.filter = `blur(${Math.max(1, figH * 0.02 * rs)}px)`;
+  rc.fillStyle = 'rgba(8,6,10,0.6)';
+  rc.beginPath();
+  rc.ellipse(feetX - figH * 0.1, feetY + figH * 0.03, figH * 0.2, figH * 0.035, 0.18, 0, Math.PI * 2);
+  rc.fill();
+  rc.filter = `blur(${Math.max(1, figH * 0.008 * rs)}px)`;
+  rc.fillStyle = 'rgba(4,3,6,0.8)';
+  rc.beginPath();
+  rc.ellipse(feetX - figH * 0.05, feetY + figH * 0.004, figH * 0.12, figH * 0.018, 0, 0, Math.PI * 2);
+  rc.fill();
+  rc.restore();
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(back, 0, 0, w, h);
+  ctx.drawImage(rock.canvas, 0, 0, w, h);
 
   drawRescuer(ctx, feetX, feetY, figH);
+  // Klippans främre kant ritas igen över kängsulorna, så att han står på hällen och inte framför den
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(feetX - 0.08 * H, feetY - 0.006 * H, 0.16 * H, 0.03 * H);
+  ctx.clip();
+  ctx.drawImage(rock.canvas, 0, 0, w, h);
+  ctx.restore();
+
+  // Solens bländning ovanpå allt: ett mjukt sken som äter sig in i räddarens kant och ett tunt strålstreck
+  // längs horisonten, som när kameran tittar nästan rakt mot solen
+  const sx = w + SUN_AT[0] * H;
+  const sy = SUN_AT[1] * H;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const bloom = ctx.createRadialGradient(sx, sy, 0, sx, sy, 0.09 * H);
+  bloom.addColorStop(0, 'rgba(255,224,170,0.4)');
+  bloom.addColorStop(0.25, 'rgba(255,170,100,0.09)');
+  bloom.addColorStop(1, 'rgba(255,140,80,0)');
+  ctx.fillStyle = bloom;
+  ctx.fillRect(sx - 0.1 * H, sy - 0.1 * H, 0.2 * H, 0.2 * H);
+  ctx.translate(sx, sy);
+  ctx.scale(1, 0.035);
+  const streak = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.16 * H);
+  streak.addColorStop(0, 'rgba(255,220,170,0.5)');
+  streak.addColorStop(1, 'rgba(255,170,110,0)');
+  ctx.fillStyle = streak;
+  ctx.fillRect(-0.16 * H, -0.16 * H, 0.32 * H, 0.32 * H);
+  ctx.restore();
 }
 
 /**
- * Räddaren bakifrån: röd overall med mörka knä- och axelpartier, svart ryggsäck, hjälm och handskar.
- * Motljus från höger. Ritas i ett lager för sig så att kantljuset kan läggas på hela siluetten.
+ * Räddaren bakifrån, strålföljd i 3D (view/rescuer-figure.js) och ritad med fötterna på marken.
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x, y   mitt mellan fötterna, på marken
  * @param {number} size   figurens höjd i pixlar
  */
 export function drawRescuer(ctx, x, y, size) {
-  const pad = Math.ceil(size * 0.35);
-  const lw = Math.ceil(size * 0.5 + pad * 2);
-  const lh = Math.ceil(size + pad * 2);
-  const layer = offscreen(lw, lh);
+  const fig = renderRescuerFigure(Math.round(size), size > 420 ? 1 : 2);
+  const layer = offscreen(fig.width, fig.height);
   const c = layer.getContext('2d');
-  c.translate(lw / 2, lh - pad);
-  c.scale(size, size);
-  figure(c);
-
-  // Motljus: siluetten minus en förskjuten kopia ger en skära längs högra och övre kanten
-  const rim = offscreen(lw, lh);
-  const r = rim.getContext('2d');
-  const d = Math.max(1.2, size * 0.011);
-  r.drawImage(layer, 0, 0);
-  r.globalCompositeOperation = 'source-in';
-  r.fillStyle = '#ffb36b';
-  r.fillRect(0, 0, lw, lh);
-  r.globalCompositeOperation = 'destination-out';
-  r.drawImage(layer, -d, d * 0.8);
-  r.globalCompositeOperation = 'source-over';
-
-  const glow = offscreen(lw, lh);
-  const g = glow.getContext('2d');
-  g.filter = `blur(${d * 1.6}px)`;
-  g.drawImage(rim, 0, 0);
-
-  const ox = x - lw / 2;
-  const oy = y - (lh - pad);
-  ctx.drawImage(layer, ox, oy);
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.28;
-  ctx.drawImage(glow, ox, oy);
-  ctx.globalAlpha = 0.85;
-  ctx.drawImage(rim, ox, oy);
-  ctx.restore();
+  const img = c.createImageData(fig.width, fig.height);
+  img.data.set(fig.data);
+  c.putImageData(img, 0, 0);
+  ctx.drawImage(layer, Math.round(x - fig.footX), Math.round(y - fig.footY));
 }
 
-// --- Figuren, i enheter av figurens höjd: fötterna i y = 0, hjälmens topp i y = -1 ---------------------
+// --- Kvällshimlen och fjällkedjorna bakom klippan ---------------------------------------------------------
+// Ett enda täckande lager: himmel med molnband och låg sol, tre kedjor som bleknar i diset ju längre bort de
+// ligger, och allt belyst från samma sol. Lagret tonar ut åt vänster in i landskapet bakom resultatet.
 
-const RED = { dark: '#30080c', mid: '#6a1117', lit: '#8f191c', hot: '#cc4a30' };
-const BLACK = { dark: '#07080b', mid: '#15161b', lit: '#2a2a30', hot: '#7a5644' };
-const PANTS = { dark: '#20060a', mid: '#4a0c12', lit: '#681317', hot: '#b03c2a' };
-const GREY = { dark: '#101115', mid: '#202127', lit: '#38383e', hot: '#8a6650' };
+const SUN_AT = [-0.075, 0.405]; // solskivan i H från högerkanten: strax till höger om räddaren, nära horisonten
 
-/** Fyllning som går från skugga till vänster till solsidan till höger. */
-function side(c, pal, x0, x1, y0 = 0, y1 = 0) {
-  const g = c.createLinearGradient(x0, y0, x1, y1);
-  g.addColorStop(0, pal.dark);
-  g.addColorStop(0.35, pal.mid);
-  g.addColorStop(0.82, pal.lit);
-  g.addColorStop(1, pal.hot);
-  return g;
-}
+/**
+ * Kedjorna i H-enheter: top(u) är kammens höjd, haze hur mycket kvällsdiset tar över färgen,
+ * och färgerna gäller sten och snö i skugga respektive i sol.
+ */
+const RANGES = [
+  {
+    top: (u) => 0.5 - massif(u, [[-0.08, 0.05, 0.6], [-0.2, 0.062, 0.5], [-0.34, 0.04, 0.7], [-0.5, 0.055, 0.5],
+      [-0.7, 0.045, 0.6], [-0.9, 0.05, 0.6]], 13, 0.6),
+    haze: 0.42, mist: 0.45, sunny: 1, gully: 26, seed: 13,
+    rock: [[84, 88, 124], [150, 118, 126]], snow: [[146, 152, 194], [232, 202, 202]],
+  },
+  {
+    top: (u) => 0.535 - massif(u, [[-0.03, 0.1, 0.75], [-0.13, 0.062, 0.9], [-0.25, 0.048, 1.0], [-0.38, 0.07, 0.85],
+      [-0.52, 0.052, 0.9], [-0.68, 0.085, 0.7], [-0.86, 0.062, 0.8]], 0, 1),
+    haze: 0.08, mist: 0.3, sunny: 0.8, gully: 44, seed: 0,
+    rock: [[34, 42, 70], [104, 84, 98]], snow: [[96, 108, 154], [214, 188, 194]],
+  },
+  {
+    top: (u) => 0.6 - massif(u, [[-0.1, 0.05, 1.0], [-0.4, 0.06, 1.1], [-0.55, 0.085, 0.9], [-0.75, 0.05, 1.0]], 7, 1),
+    haze: 0.05, mist: 0.3, sunny: 0.5, gully: 56, seed: 7,
+    rock: [[22, 28, 48], [80, 70, 84]], snow: [[86, 98, 142], [206, 182, 186]],
+  },
+];
 
-function shape(c, pts, fill) {
-  c.beginPath();
-  c.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) {
-    const p = pts[i];
-    if (p.length === 2) c.lineTo(p[0], p[1]);
-    else if (p.length === 4) c.quadraticCurveTo(p[0], p[1], p[2], p[3]);
-    else c.bezierCurveTo(p[0], p[1], p[2], p[3], p[4], p[5]);
+/**
+ * En fjällkam som profil: varje topp [u, höjd, branthet] är en spets med raka sidor, och kammen följer den högsta.
+ * Mellan topparna blir det sadlar. Lite brus i två skalor bryter upp sidorna i axlar och små tinnar.
+ */
+function massif(u, list, seed, rough) {
+  let best = 0;
+  for (const [pu, ph, ps] of list) {
+    // Sidan mot solen (höger) är lite längre och flackare, som på riktiga fjäll med en brant nordvägg
+    // Toppen är lite avrundad, och sidorna planar ut nedåt
+    const d = u - pu;
+    const ad = Math.sqrt(d * d + 0.0003) - 0.017;
+    best = Math.max(best, ph - Math.pow(Math.max(0, ad), 0.85) * ps * 0.62 * (d > 0 ? 0.85 : 1.15));
   }
-  c.closePath();
-  if (fill) {
-    c.fillStyle = fill;
-    c.fill();
+  return best + rough * ((ridged(u * 9 + seed, seed, 3) - 0.4) * 0.024 + (ridged(u * 30 + seed, seed + 5, 3) - 0.4) * 0.01
+    + (fbm(u * 90 + seed, seed + 2, 2) - 0.5) * 0.004);
+}
+
+// Himlens grundton uppifrån: dämpat lila, rosa persika, orange och blekt guld vid horisonten
+const SKY = [
+  [0.0, [112, 92, 128]],
+  [0.12, [160, 112, 128]],
+  [0.26, [214, 138, 116]],
+  [0.38, [240, 164, 108]],
+  [0.43, [246, 184, 132]],
+  [0.5, [222, 168, 158]],
+  [0.6, [206, 160, 166]],
+];
+
+function skyBase(v, out) {
+  let k = 1;
+  while (k < SKY.length - 1 && v > SKY[k][0]) k++;
+  const [v0, c0] = SKY[k - 1];
+  const [v1, c1] = SKY[k];
+  const t = Math.max(0, Math.min(1, (v - v0) / (v1 - v0)));
+  for (let i = 0; i < 3; i++) out[i] = c0[i] + (c1[i] - c0[i]) * t;
+  return out;
+}
+
+/** Solens sken vid (u, v): ett brett varmt dis, en tät gloria och själva skivan. */
+function sunLight(u, v) {
+  const dx = u - SUN_AT[0];
+  const dy = (v - SUN_AT[1]) * 1.7; // skenet breder ut sig längs horisonten
+  const d = Math.hypot(dx, dy);
+  return { d, wide: Math.exp(-d * 6), tight: Math.exp(-d * 30), disk: smooth(0.016, 0.011, Math.hypot(dx, v - SUN_AT[1])) };
+}
+
+// Molnbanden: tunna stråk i höjd med solen och tjockare lager högre upp
+const BANDS = [[0.05, 0.06, 1.0], [0.15, 0.04, 0.95], [0.235, 0.03, 0.9], [0.3, 0.022, 0.85], [0.36, 0.014, 0.7],
+  [0.425, 0.008, 0.45]];
+
+function cloudDensity(u, v) {
+  let env = 0;
+  for (const [c, s, a] of BANDS) env = Math.max(env, a * Math.exp(-((v - c) * (v - c)) / (2 * s * s)));
+  if (env < 0.02) return 0;
+  // Mindre utdragna än förr, så att banden blir lösa molnbankar och inte penseldrag
+  const warp = fbm(u * 2.2 + 4, v * 8, 2) * 0.9;
+  const n = fbm(u * 3.2 + warp, v * 15 + warp * 2, 5);
+  return smooth(0.38, 0.68, n + (env - 0.5) * 0.5) * env;
+}
+
+function* backdropLayer(w, h, H) {
+  const canvas = offscreen(w, h);
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const data = img.data;
+  const inv = 1 / H;
+  const sky = new Float32Array(w * h * 3);
+  const base = [0, 0, 0];
+  const yMax = Math.min(h, Math.ceil(0.62 * H)); // himlen syns aldrig nedanför den närmaste kedjan
+
+  // Himlen med moln. Tätheten räknas först så att molnens undersidor kan få solljuset i nästa varv.
+  const dens = new Float32Array(w * yMax);
+  for (let y = 0; y < yMax; y++) {
+    if (y % 16 === 0) yield;
+    for (let x = 0; x < w; x++) dens[y * w + x] = cloudDensity((x - w) * inv, y * inv);
   }
-}
-
-/** Mjuk skugga eller ljus inuti senast ritade form (clip), t.ex. veck och skuggan under ryggsäcken. */
-function inside(c, pts, paint) {
-  c.save();
-  shape(c, pts);
-  c.clip();
-  paint();
-  c.restore();
-}
-
-function blob(c, x, y, rx, ry, color, rot = 0) {
-  c.fillStyle = color;
-  c.beginPath();
-  c.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
-  c.fill();
-}
-
-function stroke(c, color, width, pts) {
-  c.strokeStyle = color;
-  c.lineWidth = width;
-  c.lineCap = 'round';
-  c.beginPath();
-  c.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) {
-    const p = pts[i];
-    if (p.length === 2) c.lineTo(p[0], p[1]);
-    else c.quadraticCurveTo(p[0], p[1], p[2], p[3]);
-  }
-  c.stroke();
-}
-
-/** En lem som tjock linje genom leder, med fyllning från skuggsidan till solsidan. */
-function limb(c, pts, width, pal, x0, x1, cap = 'round') {
-  c.strokeStyle = side(c, pal, x0, x1);
-  c.lineWidth = width;
-  c.lineCap = cap;
-  c.lineJoin = 'round';
-  c.beginPath();
-  c.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
-  c.stroke();
-}
-
-function figure(c) {
-  // Benen i lätt bredbent ställning, vikten på höger ben. Lår och vader som tjocka linjer.
-  const legs = [
-    { hip: [-0.05, -0.5], knee: [-0.066, -0.285], ankle: [-0.092, -0.08], x0: -0.13, x1: -0.02 },
-    { hip: [0.05, -0.5], knee: [0.06, -0.285], ankle: [0.078, -0.08], x0: 0.01, x1: 0.12 },
-  ];
-  for (const l of legs) {
-    limb(c, [l.hip, l.knee], 0.094, PANTS, l.x0, l.x1);
-    limb(c, [l.knee, l.ankle], 0.076, PANTS, l.x0, l.x1);
-    // Mörkt knäparti och veck bakom knät
-    limb(c, [[l.knee[0], l.knee[1] - 0.03], [l.knee[0] + 0.002, l.knee[1] + 0.03]], 0.08, BLACK, l.x0, l.x1, 'butt');
-    stroke(c, 'rgba(25,0,0,0.5)', 0.006, [[l.knee[0] - 0.03, l.knee[1] + 0.07], [l.knee[0], l.knee[1] + 0.08,
-      l.knee[0] + 0.032, l.knee[1] + 0.068]]);
-    // Kängan
-    const [ax, ay] = l.ankle;
-    shape(c, [[ax - 0.04, ay - 0.025], [ax - 0.046, ay + 0.04, ax - 0.048, ay + 0.07], [ax + 0.046, ay + 0.078],
-      [ax + 0.046, ay + 0.03, ax + 0.038, ay - 0.025]], side(c, BLACK, l.x0, l.x1));
-    c.fillStyle = '#060608';
-    c.fillRect(ax - 0.05, ay + 0.064, 0.098, 0.016);
-    stroke(c, 'rgba(120,90,70,0.5)', 0.006, [[ax - 0.04, ay - 0.018], [ax + 0.038, ay - 0.018]]);
-  }
-
-  // Jackan
-  const torso = [[-0.11, -0.8], [-0.126, -0.73, -0.112, -0.66], [-0.098, -0.58, -0.102, -0.48], [0, -0.465, 0.104, -0.48],
-    [0.1, -0.58, 0.116, -0.66], [0.13, -0.73, 0.112, -0.8], [0.07, -0.85, 0, -0.858], [-0.07, -0.85, -0.11, -0.8]];
-  shape(c, torso, side(c, RED, -0.13, 0.13));
-  inside(c, torso, () => {
-    // Mörkt axelparti och midjebälte
-    shape(c, [[-0.2, -0.88], [0.2, -0.88], [0.2, -0.775], [0.08, -0.76, 0, -0.758], [-0.08, -0.76, -0.2, -0.775]],
-      side(c, GREY, -0.13, 0.13));
-    c.fillStyle = side(c, GREY, -0.13, 0.13);
-    c.fillRect(-0.2, -0.552, 0.4, 0.026);
-    // Skuggan under ryggsäcken
-    const g = c.createLinearGradient(0, -0.6, 0, -0.5);
-    g.addColorStop(0, 'rgba(15,0,0,0.6)');
-    g.addColorStop(1, 'rgba(15,0,0,0)');
-    c.fillStyle = g;
-    c.fillRect(-0.2, -0.6, 0.4, 0.1);
-  });
-
-  // Armarna, lätt ut från kroppen, den högra något böjd
-  const arms = [
-    { pts: [[-0.104, -0.785], [-0.136, -0.66], [-0.148, -0.55]], x0: -0.17, x1: -0.11 },
-    { pts: [[0.106, -0.785], [0.14, -0.665], [0.156, -0.56]], x0: 0.1, x1: 0.18 },
-  ];
-  for (const a of arms) {
-    limb(c, [a.pts[0], a.pts[1]], 0.066, RED, a.x0, a.x1);
-    limb(c, [a.pts[1], a.pts[2]], 0.056, RED, a.x0, a.x1);
-    limb(c, [a.pts[0], [a.pts[0][0] + (a.pts[1][0] - a.pts[0][0]) * 0.2, -0.765]], 0.062, BLACK, a.x0, a.x1);
-    // Reflexband och veck i armbågen
-    const [ex, ey] = a.pts[1];
-    stroke(c, 'rgba(190,186,186,0.4)', 0.009, [[ex - 0.026, ey - 0.03], [ex + 0.024, ey - 0.035]]);
-    stroke(c, 'rgba(25,0,0,0.5)', 0.005, [[ex - 0.022, ey + 0.01], [ex, ey + 0.018, ex + 0.022, ey + 0.006]]);
-    // Handsken
-    const [wx, wy] = a.pts[2];
-    blob(c, wx, wy + 0.03, 0.026, 0.038, side(c, BLACK, a.x0, a.x1));
-    stroke(c, '#2d2e35', 0.012, [[wx - 0.024, wy], [wx + 0.024, wy]]);
-  }
-
-  // Axelremmarna, och ryggsäcken: stor, något till höger och med toppen över axellinjen
-  stroke(c, '#141519', 0.024, [[-0.03, -0.85], [-0.07, -0.85, -0.09, -0.8]]);
-  stroke(c, '#141519', 0.024, [[0.08, -0.85], [0.108, -0.85, 0.116, -0.8]]);
-  c.save();
-  c.translate(0.05, -0.73);
-  c.scale(0.82, 1);
-  c.translate(-0.03, 0.73);
-  const pack = [[-0.07, -0.84], [-0.074, -0.885, -0.03, -0.9], [0.08, -0.9], [0.122, -0.89, 0.126, -0.845],
-    [0.134, -0.64], [0.132, -0.585, 0.1, -0.575], [-0.05, -0.572], [-0.084, -0.58, -0.086, -0.63]];
-  shape(c, pack, side(c, BLACK, -0.09, 0.14));
-  inside(c, pack, () => {
-    // Locket
-    shape(c, [[-0.2, -0.95], [0.2, -0.95], [0.2, -0.83], [0.05, -0.82, -0.2, -0.827]], side(c, BLACK, -0.09, 0.14));
-    stroke(c, 'rgba(0,0,0,0.6)', 0.006, [[-0.1, -0.826], [0.05, -0.818, 0.14, -0.828]]);
-    // Framficka med dragkedja
-    shape(c, [[-0.05, -0.76], [0.096, -0.762], [0.104, -0.62], [0.07, -0.6, 0.02, -0.598], [-0.03, -0.6, -0.056, -0.62]],
-      side(c, BLACK, -0.06, 0.11));
-    stroke(c, 'rgba(0,0,0,0.7)', 0.005, [[-0.05, -0.76], [0.096, -0.762]]);
-    stroke(c, 'rgba(160,160,170,0.35)', 0.0035, [[-0.04, -0.75], [0.088, -0.752]]);
-    // Kompressionsremmar med spännen
-    for (const yy of [-0.725, -0.66]) {
-      stroke(c, '#0a0a0d', 0.011, [[-0.1, yy], [0.14, yy + 0.004]]);
-      c.fillStyle = '#5a5a62';
-      c.fillRect(0.074, yy - 0.008, 0.016, 0.016);
+  const e = Math.max(1, Math.round(0.006 * H));
+  for (let y = 0; y < h; y++) {
+    if (y % 24 === 0) yield;
+    const v = Math.min(y, yMax - 1) * inv;
+    for (let x = 0; x < w; x++) {
+      const u = (x - w) * inv;
+      skyBase(v, base);
+      const s = sunLight(u, v);
+      let r = base[0] + 255 * (s.wide * 0.32 + s.tight * 0.55);
+      let g = base[1] + 205 * (s.wide * 0.3 + s.tight * 0.55);
+      let b = base[2] + 130 * (s.wide * 0.22 + s.tight * 0.45);
+      const yy = Math.min(y, yMax - 1);
+      const dn = dens[yy * w + x];
+      if (dn > 0) {
+        // Undersidan, som vetter mot den låga solen, lyser; ovansidan ligger i lila skugga
+        const below = dens[Math.min(yMax - 1, yy + e) * w + x];
+        const above = dens[Math.max(0, yy - e) * w + x];
+        const under = Math.max(0, Math.min(1, (dn - below) * 3 + 0.3));
+        const top = Math.max(0, Math.min(1, (dn - above) * 3));
+        const near = Math.exp(-s.d * 3.2);
+        const lit = Math.min(1, 0.12 + under * (0.35 + 0.6 * near) + near * 0.35 - top * 0.15);
+        const cr = 138 + (255 - 138) * lit;
+        const cg = 92 + (176 - 92) * lit + s.tight * 60;
+        const cb = 108 + (124 - 108) * lit + s.tight * 40;
+        const a = Math.min(1, dn * 1.5) * (1 - s.tight * 0.6);
+        r += (cr - r) * a;
+        g += (cg - g) * a;
+        b += (cb - b) * a;
+        // Silverkant: tunna molnkanter nära solen genomlyses
+        const edge = dn * (1 - dn) * 4 * Math.exp(-s.d * 9);
+        r += 60 * edge;
+        g += 48 * edge;
+        b += 30 * edge;
+      }
+      r += (255 - r) * s.disk;
+      g += (246 - g) * s.disk;
+      b += (222 - b) * s.disk;
+      const o = (y * w + x) * 3;
+      sky[o] = r;
+      sky[o + 1] = g;
+      sky[o + 2] = b;
     }
-    // Röd märkflik och reflexlogga
-    c.fillStyle = '#a8231c';
-    c.fillRect(0.0, -0.835, 0.03, 0.02);
-    c.fillStyle = 'rgba(220,220,225,0.5)';
-    c.fillRect(-0.036, -0.69, 0.05, 0.008);
-    // Sidoficka på solsidan
-    shape(c, [[0.108, -0.75], [0.136, -0.75], [0.14, -0.62], [0.112, -0.616]], side(c, GREY, 0.1, 0.14));
-    // Ambient skugga nertill, solljus på lockets ovansida
-    const g = c.createLinearGradient(0, -0.64, 0, -0.57);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.5)');
-    c.fillStyle = g;
-    c.fillRect(-0.2, -0.64, 0.4, 0.08);
-    blob(c, 0.07, -0.895, 0.06, 0.012, 'rgba(255,170,110,0.22)');
-  });
-  c.restore();
-  // Höftbälte från säcken runt midjan
-  stroke(c, '#121317', 0.018, [[-0.07, -0.585], [-0.1, -0.58, -0.112, -0.56]]);
-  stroke(c, '#121317', 0.018, [[0.11, -0.585], [0.13, -0.58, 0.116, -0.56]]);
+  }
 
-  // Kragen och hjälmen; huvudet är lite vridet åt vänster mot dalen
-  shape(c, [[-0.044, -0.85], [-0.048, -0.87, -0.036, -0.882], [0.034, -0.884], [0.048, -0.87, 0.046, -0.85],
-    [0, -0.842]], side(c, RED, -0.05, 0.05));
-  c.save();
-  c.translate(-0.008, 0);
-  const helmet = [[-0.056, -0.9], [-0.066, -0.952, -0.044, -0.99], [0.0, -1.004, 0.04, -0.99], [0.064, -0.956, 0.054, -0.9],
-    [0.03, -0.872, -0.01, -0.87], [-0.04, -0.872, -0.056, -0.9]];
-  shape(c, helmet, side(c, { dark: '#120a0c', mid: '#3a0d12', lit: '#7a1a1c', hot: '#d0603e' }, -0.07, 0.07, -0.9, -0.99));
-  inside(c, helmet, () => {
-    stroke(c, 'rgba(0,0,0,0.45)', 0.006, [[-0.018, -0.998], [-0.028, -0.95, -0.023, -0.91]]);
-    stroke(c, 'rgba(0,0,0,0.45)', 0.006, [[0.02, -0.998], [0.03, -0.95, 0.028, -0.91]]);
-    stroke(c, 'rgba(0,0,0,0.55)', 0.008, [[-0.06, -0.905], [0, -0.89, 0.06, -0.905]]); // hjälmkanten
-    stroke(c, '#1c1d22', 0.012, [[-0.07, -0.944], [0, -0.932, 0.07, -0.944]]); // glasögonbandet
-    stroke(c, 'rgba(255,190,120,0.25)', 0.003, [[-0.07, -0.951], [0, -0.939, 0.07, -0.951]]);
-    blob(c, 0.028, -0.982, 0.024, 0.011, 'rgba(255,200,150,0.4)', -0.5);
+  const tops = RANGES.map((rg) => {
+    const t = new Float32Array(w + 2);
+    for (let x = -1; x <= w; x++) t[x + 1] = rg.top((x - w) * inv);
+    return t;
   });
-  // Skymten av glasögonen på vänster sida, där huvudet är vridet
-  shape(c, [[-0.064, -0.95], [-0.078, -0.94, -0.074, -0.918], [-0.058, -0.916]], '#33414e');
-  c.restore();
-
-  // Ljuset i stort: mörkare nedåt mot kängorna, varmt ljus på axlarna från den låga solen
-  c.save();
-  c.globalCompositeOperation = 'source-atop';
-  const fall = c.createLinearGradient(0, -0.55, 0, 0);
-  fall.addColorStop(0, 'rgba(10,0,4,0)');
-  fall.addColorStop(1, 'rgba(10,0,4,0.42)');
-  c.fillStyle = fall;
-  c.fillRect(-0.3, -0.55, 0.6, 0.6);
-  const warm = c.createRadialGradient(0.1, -0.86, 0, 0.1, -0.86, 0.2);
-  warm.addColorStop(0, 'rgba(255,150,90,0.22)');
-  warm.addColorStop(1, 'rgba(255,150,90,0)');
-  c.fillStyle = warm;
-  c.fillRect(-0.3, -1.1, 0.6, 0.6);
-  c.restore();
+  // Kammens lutning, utjämnad, ger sidornas ljus i stort
+  const slopes = tops.map((t) => {
+    const s = new Float32Array(w);
+    const k = Math.max(1, Math.round(0.02 * H));
+    for (let x = 0; x < w; x++) s[x] = (t[Math.min(w + 1, x + 1 + k)] - t[Math.max(0, x + 1 - k)]) * H / (2 * k);
+    return s;
+  });
+  const snowline = RANGES.map((rg) => {
+    const s = new Float32Array(w);
+    for (let x = 0; x < w; x++) s[x] = 0.008 + 0.03 * fbm((x - w) * inv * 7 + rg.seed, rg.seed, 3);
+    return s;
+  });
+  for (let x = 0; x < w; x++) {
+    const u = (x - w) * inv;
+    // Borta åt vänster, så att bakgrunden smälter in i det tredimensionella landskapet bakom resultatet
+    const side = smooth(-0.86, -0.52, u);
+    if (x % 24 === 0) yield;
+    // Diset har himlens färg vid horisonten, så att kedjorna nära solen bleks i guld
+    const hz = Math.round(Math.min(yMax - 1, 0.45 * H)) * w + x;
+    // Lite kallare och dovare än själva horisonten: diset ligger mellan betraktaren och de skuggade sidorna
+    const hr = sky[hz * 3] * 0.6 + 150 * 0.4;
+    const hg = sky[hz * 3 + 1] * 0.6 + 130 * 0.4;
+    const hb = sky[hz * 3 + 2] * 0.6 + 158 * 0.4;
+    const glowCol = Math.exp(-Math.abs(u - SUN_AT[0]) * 5);
+    for (let y = 0; y < h; y++) {
+      const v = y * inv;
+      const o3 = (y * w + x) * 3;
+      let cr = sky[o3];
+      let cg = sky[o3 + 1];
+      let cb = sky[o3 + 2];
+      for (let k = 0; k < RANGES.length; k++) {
+        const rg = RANGES[k];
+        const d = v - tops[k][x + 1];
+        const a = Math.min(1, Math.max(0, d * H + 0.5));
+        if (a <= 0) continue;
+        const slope = slopes[k][x] * Math.exp(-d * 18);
+        // Rännor och utsprång nedför fjällsidan, med lite krokiga linjer; deras högra sidor fångar ljuset
+        // De följer kammens fallinje, så att ribborna löper snett ned från topparna som på riktiga fjäll
+        const tilt = Math.max(-1.4, Math.min(1.4, -slopes[k][x] * 1.3));
+        const warp = fbm(u * 6 + rg.seed, d * 10, 3) * 1.6;
+        const gu = (u + Math.min(d, 0.05) * tilt) * rg.gully + warp + rg.seed;
+        const gv = d * rg.gully * 0.7 + rg.seed;
+        const gl = fbm(gu - 0.25, gv, 4);
+        const gr = fbm(gu + 0.25, gv, 4);
+        // Närmare kedjor ser vi mer i motljus: bara kanterna som vetter mot solen lyser
+        const lit = smooth(-0.2, 0.25, slope * 2 + (gr - gl) * 5 + 0.02) * rg.sunny;
+        // Snö högt upp och i rännorna, bruten av mörka klippribbor och glesare nedåt
+        const sl = snowline[k][x] * (0.4 + 1.4 * fbm(gu * 0.9, gv * 0.6 + 3, 3));
+        const ribs = smooth(0.4, 0.52, fbm(gu * 1.7 + 5, gv * 0.9, 4));
+        // Snön ligger i stråk längs rännorna, inte i hela fält
+        const streak = smooth(0.32, 0.62, fbm(gu * 2.6 + 11, gv * 0.35, 4));
+        const snow = smooth(sl, sl * 0.3, d) * (1 - ribs * 0.95) * (0.35 + 0.65 * streak);
+        // Diset tätnar nedåt mot dalen, och kammen närmast solen får en varm kant av motljus
+        const mist = smooth(0.0, 0.1, d) * rg.mist;
+        const haze = Math.min(0.88, rg.haze + mist);
+        const rim = Math.exp(-d / 0.004) * (0.25 + 0.75 * glowCol) * (1 - rg.haze * 0.5);
+        // Långt ned i dalen är diset kallare och mörkare, i skugga under kammarna
+        const cool = smooth(0.02, 0.12, d) * 0.55;
+        const mix = (i, hzc, valley, rimc) => {
+          const s0 = rg.snow[0][i] + (rg.snow[1][i] - rg.snow[0][i]) * lit;
+          const r0 = rg.rock[0][i] + (rg.rock[1][i] - rg.rock[0][i]) * lit * 0.85;
+          const m = r0 + (s0 - r0) * snow;
+          const air = hzc + (valley - hzc) * cool;
+          return m + (air - m) * haze + rimc * rim;
+        };
+        cr += (mix(0, hr, 64, 120) - cr) * a;
+        cg += (mix(1, hg, 66, 80) - cg) * a;
+        cb += (mix(2, hb, 96, 40) - cb) * a;
+      }
+      const o = (y * w + x) * 4;
+      data[o] = cr;
+      data[o + 1] = cg;
+      data[o + 2] = cb;
+      data[o + 3] = 255 * side;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
 }
 
 // --- Klippan: höjdfält med brus, belyst per pixel ---------------------------------------------------------
@@ -340,25 +419,22 @@ function figure(c) {
  * höger vetter mot solen och lyser; kanter som stiger åt höger hamnar i skugga.
  */
 const BLOCKS = [
-  // Hällen räddaren står på: bred och nästan plan överst
-  { z: 0.0, cap: 0.028, pts: [[-0.36, 0.66], [-0.3, 0.6], [-0.26, 0.568], [-0.21, 0.546], [-0.16, 0.538], [-0.1, 0.536],
-    [-0.05, 0.54], [0.0, 0.544], [0.03, 0.55]] },
+  // Hällen räddaren står på: en bred, nästan plan topp med en skarp axel åt vänster
+  { z: 0.0, cap: 0.04, pts: [[-0.36, 0.67], [-0.315, 0.596], [-0.27, 0.566], [-0.225, 0.545], [-0.04, 0.537], [0.03, 0.548]] },
   // Lägre häll till vänster, bakom förgrundsblocket
-  { z: 0.03, cap: 0.03, pts: [[-0.62, 0.71], [-0.55, 0.675], [-0.48, 0.655], [-0.42, 0.648], [-0.37, 0.66], [-0.33, 0.69]] },
-  // Förgrundsblocket med sin solbelysta, sluttande rygg
-  { z: 0.08, cap: 0.055, pts: [[-0.46, 0.68], [-0.4, 0.628], [-0.34, 0.604], [-0.28, 0.598], [-0.23, 0.608],
-    [-0.18, 0.628], [-0.11, 0.66], [-0.05, 0.69], [0.0, 0.715], [0.03, 0.73]] },
+  { z: 0.03, cap: 0.035, pts: [[-0.62, 0.71], [-0.56, 0.67], [-0.44, 0.645], [-0.37, 0.665], [-0.33, 0.69]] },
+  // Förgrundsblocket: ett lutande flak som stupar ned åt höger
+  { z: 0.08, cap: 0.07, pts: [[-0.47, 0.69], [-0.43, 0.63], [-0.36, 0.6], [-0.3, 0.596], [-0.2, 0.632], [0.03, 0.735]] },
   // Avsatser i förgrundsblockets framsida
-  { z: 0.14, cap: 0.03, pts: [[-0.36, 0.7], [-0.3, 0.672], [-0.24, 0.676], [-0.2, 0.69], [-0.16, 0.72]] },
-  { z: 0.14, cap: 0.035, pts: [[-0.12, 0.74], [-0.07, 0.732], [-0.02, 0.75], [0.03, 0.77]] },
+  { z: 0.14, cap: 0.035, pts: [[-0.37, 0.705], [-0.33, 0.676], [-0.25, 0.672], [-0.17, 0.725]] },
+  { z: 0.14, cap: 0.04, pts: [[-0.13, 0.745], [-0.08, 0.73], [0.03, 0.772]] },
   // Avsats på hällen räddaren står på, till höger under toppen
-  { z: 0.035, cap: 0.025, pts: [[-0.12, 0.62], [-0.08, 0.6], [-0.03, 0.598], [0.01, 0.61], [0.03, 0.62]] },
-  { z: 0.12, cap: 0.05, pts: [[-0.82, 0.8], [-0.74, 0.75], [-0.66, 0.725], [-0.58, 0.72], [-0.51, 0.735], [-0.45, 0.77]] },
+  { z: 0.035, cap: 0.03, pts: [[-0.12, 0.625], [-0.09, 0.602], [-0.02, 0.598], [0.03, 0.616]] },
+  { z: 0.12, cap: 0.05, pts: [[-0.82, 0.8], [-0.75, 0.748], [-0.6, 0.718], [-0.45, 0.77]] },
   // Närmast, längst ned
-  { z: 0.17, cap: 0.06, pts: [[-0.56, 0.9], [-0.46, 0.84], [-0.36, 0.82], [-0.24, 0.83], [-0.12, 0.865], [0.0, 0.9],
-    [0.03, 0.91]] },
+  { z: 0.17, cap: 0.08, pts: [[-0.56, 0.9], [-0.47, 0.84], [-0.3, 0.82], [-0.13, 0.86], [0.03, 0.91]] },
 ];
-const SLOPE = 1.5; // hur brant ovansidan stiger mot betraktaren
+const SLOPE = 1.2; // hur brant ovansidan stiger mot betraktaren
 
 /** Överkantens höjd vid u; utanför ändpunkterna faller kanten brant så att hällen får rundade gavlar. */
 function edgeAt(pts, u) {
@@ -367,17 +443,67 @@ function edgeAt(pts, u) {
   if (u >= pts[n - 1][0]) return pts[n - 1][1] + (u - pts[n - 1][0]) * 3;
   for (let k = 1; k < n; k++) {
     if (u <= pts[k][0]) {
+      // Raka kanter mellan punkterna, så att hällarna får brutna, kantiga konturer och inte mjuka kullar
       const [u0, v0] = pts[k - 1];
       const [u1, v1] = pts[k];
       const t = (u - u0) / (u1 - u0);
       const s = t * t * (3 - 2 * t);
-      return v0 + (v1 - v0) * (t * 0.4 + s * 0.6);
+      return v0 + (v1 - v0) * (t * 0.92 + s * 0.08);
     }
   }
   return pts[n - 1][1];
 }
 
-function rockLayer(w, h, H) {
+/** Brusvärde som går rakt mellan heltalspunkterna (inte mjukt), för kantiga konturer. 0–1. */
+function chips(x, seed) {
+  const xi = Math.floor(x);
+  const t = x - xi;
+  return hash(xi, seed) * (1 - t) + hash(xi + 1, seed) * t;
+}
+
+/**
+ * Brottytor i graniten: ett voronoimönster där varje cell är en plan yta med egen lutning. Ger cellens lutning
+ * (gx, gy), hur nära en gräns punkten ligger (border, 0 vid gränsen) och om gränsen är en öppen spricka.
+ */
+const facetOut = { gx: 0, gy: 0, border: 1, crack: 0, id: 0 };
+function facet(x, y, seed) {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  let d1 = 9;
+  let d2 = 9;
+  let c1 = 0;
+  let c2 = 0;
+  for (let j = -1; j <= 1; j++) {
+    for (let i = -1; i <= 1; i++) {
+      const cx = xi + i;
+      const cy = yi + j;
+      const px = cx + 0.15 + 0.7 * hash(cx * 7 + seed, cy * 13);
+      const py = cy + 0.15 + 0.7 * hash(cx * 11, cy * 5 + seed);
+      const d = (px - x) * (px - x) + (py - y) * (py - y);
+      const id = (cx * 92821 + cy * 68917 + seed) | 0;
+      if (d < d1) {
+        d2 = d1;
+        c2 = c1;
+        d1 = d;
+        c1 = id;
+      } else if (d < d2) {
+        d2 = d;
+        c2 = id;
+      }
+    }
+  }
+  const a = hash(c1, 3) * Math.PI * 2;
+  const m = 0.35 + 0.75 * hash(c1, 17);
+  facetOut.gx = Math.cos(a) * m;
+  facetOut.gy = Math.sin(a) * m * 0.8 - 0.25; // fler ytor lutar uppåt, som avsatser
+  facetOut.border = Math.sqrt(d2) - Math.sqrt(d1);
+  // Ungefär var tredje gräns är en öppen spricka, resten bara ett veck mellan två ytor
+  facetOut.crack = hash(Math.min(c1, c2), Math.max(c1, c2)) < 0.4 ? 1 : 0;
+  facetOut.id = c1;
+  return facetOut;
+}
+
+function* rockLayer(w, h, H) {
   const canvas = offscreen(w, h);
   const ctx = canvas.getContext('2d');
   const img = ctx.createImageData(w, h);
@@ -387,6 +513,10 @@ function rockLayer(w, h, H) {
   const occl = new Float32Array(w * h);
   const albedo = new Float32Array(w * h);
   const alpha = new Float32Array(w * h);
+  const fgx = new Float32Array(w * h); // brottytans lutning
+  const fgy = new Float32Array(w * h);
+  const crack = new Float32Array(w * h); // 1 mitt i en spricka
+  const lichen = new Float32Array(w * h);
   const top = new Int32Array(w).fill(h);
   const inv = 1 / H;
   const edge = 1.0 * inv; // kantens mjukhet, ungefär en pixel
@@ -396,7 +526,11 @@ function rockLayer(w, h, H) {
     const u = (x - w) * inv;
     BLOCKS.forEach((b, k) => {
       // Taggig kontur: vassa krön längs kanten och lite finare brus
-      const jag = (ridged(u * 11 + k * 3.1, k * 1.7, 3) - 0.35) * -0.022 + (fbm(u * 45 + k, k * 2.3, 3) - 0.5) * 0.004;
+      // Kantig kontur: raka brottkanter mellan slumpade knäckpunkter i två storlekar, och lite finare brus
+      // Under räddarens kängor är hällen jämnare, så att han får stå stadigt
+      const calm = k === 0 ? 0.2 + 0.8 * smooth(0.035, 0.08, Math.abs(u - FEET_U)) : 1;
+      const jag = ((chips(u * 28 + k * 7.3, k) - 0.5) * 0.016 + (chips(u * 90 + k * 3.1, k + 9) - 0.5) * 0.005) * calm
+        + (fbm(u * 45 + k, k * 2.3, 3) - 0.5) * 0.003;
       edges[k][x] = edgeAt(b.pts, u) + jag;
       caps[k][x] = b.cap * (0.5 + fbm(u * 9 + k * 5.3, k, 3)); // ovansidans djup varierar längs hällen
     });
@@ -406,6 +540,7 @@ function rockLayer(w, h, H) {
   for (let y = 0; y < h; y++) {
     const v = y * inv;
     if (v < 0.47) continue;
+    if (y % 8 === 0) yield;
     for (let x = 0; x < w; x++) {
       const u = (x - w) * inv;
       let best = -1;
@@ -420,7 +555,9 @@ function rockLayer(w, h, H) {
           continue;
         }
         const cap = caps[k][x];
-        const hb = b.z + cap * (1 - Math.exp((-Math.max(0, d) * SLOPE) / cap));
+        // Ovansidan är ett plant, sluttande flak som bryts skarpt mot framsidan, inte en rundad kupol
+        const r = Math.max(0, d) * SLOPE / cap;
+        const hb = b.z + cap * (r < 0.85 ? r : 0.85 + 0.15 * (1 - Math.exp(-(r - 0.85) / 0.15)));
         if (hb > best) {
           best = hb;
           depth = Math.max(0, d);
@@ -434,16 +571,35 @@ function rockLayer(w, h, H) {
       const crag = ridged(u * 13 + 1.3, v * 17 - 4.1, 3);
       const grain = ridged(u * 46 - 5.2, v * 58 + 2.9, 3); // grovkornig granit som gnistrar i motljuset
       const i = y * w + x;
-      hf[i] = best + n1 * 0.03 + crag * 0.01 + grain * 0.0045 + n2 * 0.002 + noise(u * 180, v * 180) * 0.0012;
-      hm[i] = best + n1 * 0.045;
+      hf[i] = best + n1 * 0.014 + crag * 0.011 + grain * 0.0065 + n2 * 0.002 + noise(u * 180, v * 180) * 0.0012;
+      hm[i] = best + n1 * 0.02;
       alpha[i] = cover;
+      // Brottytor i två storlekar: stora plana flak och mindre avslag i dem. Cellerna är utdragna på bredden,
+      // som skivorna i en granithäll.
+      const big = facet(u * 15 + 40, v * 24, 3);
+      let gx = big.gx;
+      let gy = big.gy;
+      // Sprickorna är olika breda längs sin längd
+      const wid = 0.03 + 0.09 * fbm(u * 30 + 1.1, v * 30, 2);
+      let cr = big.crack * (1 - smooth(0, wid, big.border));
+      let fold = 1 - smooth(0, 0.035, big.border);
+      const small = facet(u * 42 + 9, v * 60, 11);
+      gx = gx * 0.75 + small.gx * 0.4;
+      gy = gy * 0.75 + small.gy * 0.4;
+      fold = Math.max(fold, 1 - smooth(0, 0.06, small.border));
+      fgx[i] = gx;
+      fgy[i] = gy;
+      crack[i] = cr;
+      lichen[i] = smooth(0.56, 0.7, fbm(u * 20 + 3.3, v * 26, 4)) * (1 - cr) * (0.5 + 0.5 * smooth(0.3, 0.6, noise(u * 160, v * 160)));
       // Skrevor ovanför närmare hällar, och framsidan som viker in under sig längre ned
-      occl[i] = (0.25 + 0.75 * smooth(0, 0.03, gap)) * (0.35 + 0.65 * Math.exp(-depth / 0.09));
+      occl[i] = (0.25 + 0.75 * smooth(0, 0.03, gap)) * (0.35 + 0.65 * Math.exp(-depth / 0.09)) * (1 - cr * 0.85)
+        * (1 - fold * 0.25);
       albedo[i] = n2 * 0.35 + grain * 0.35 + noise(u * 300, v * 300) * 0.3;
     }
   }
 
   for (let y = 0; y < h; y++) {
+    if (y % 16 === 0) yield;
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const a = alpha[i];
@@ -455,8 +611,10 @@ function rockLayer(w, h, H) {
       const hr = x < w - 1 && alpha[i + 1] > 0 ? hf[i + 1] : hc;
       const hu = y > 0 && alpha[i - w] > 0 ? hf[i - w] : hc - 0.002;
       const hd = y < h - 1 && alpha[i + w] > 0 ? hf[i + w] : hc;
-      let nx = -(hr - hl) * H * 0.5 * 1.3;
-      let ny = -(hd - hu) * H * 0.5 * 1.3;
+      // Brottytans lutning läggs på höjdfältets, så att varje flak blir en plan yta som antingen fångar solen
+      // eller ligger i skugga
+      let nx = -(hr - hl) * H * 0.5 * 0.9 - fgx[i] * 0.9;
+      let ny = -(hd - hu) * H * 0.5 * 0.9 - fgy[i] * 0.9;
       let nz = 1;
       const l = Math.hypot(nx, ny, nz);
       nx /= l;
@@ -468,33 +626,37 @@ function rockLayer(w, h, H) {
       const mr = x < w - 3 && alpha[i + 3] > 0 ? hm[i + 3] : hm[i];
       const mu = y > 2 && alpha[i - 3 * w] > 0 ? hm[i - 3 * w] : hm[i] - 0.004;
       const md = y < h - 3 && alpha[i + 3 * w] > 0 ? hm[i + 3 * w] : hm[i];
-      let mx = -(mr - ml) * H / 6;
-      let my = -(md - mu) * H / 6;
+      const mx = -(mr - ml) * H / 6 - fgx[i] * 0.9;
+      const my = -(md - mu) * H / 6 - fgy[i] * 0.9;
       const ll = Math.hypot(mx, my, 1);
-      const macro = smooth(-0.1, 0.35, (mx * SUN[0] + my * SUN[1] + SUN[2]) / ll);
-      const sun = Math.pow(Math.max(0, nx * SUN[0] + ny * SUN[1] + nz * SUN[2]), 1.5) * (0.2 + 0.8 * macro);
-      const glint = Math.pow(sun, 3);
-      const sky = Math.max(0, 0.3 + 0.7 * -ny);
-      const front = Math.max(0, nz) * 0.5 + 0.3;
+      const macro = smooth(0.05, 0.35, (mx * SUN[0] + my * SUN[1] + SUN[2]) / ll);
+      const sun = Math.pow(Math.max(0, nx * SUN[0] + ny * SUN[1] + nz * SUN[2]), 1.2) * macro;
+      const glint = Math.pow(sun, 4);
+      const sky = Math.max(0, 0.25 + 0.75 * -ny);
+      const front = Math.max(0, nz) * 0.4 + 0.2;
       const ao = occl[i];
-      // Granit: mörk gråbrun med ljusa korn och lav i ockra
+      // Granit: mörk gråbrun med ljusa korn, och lavfläckar i blekt grågrönt och ockra
       const al = albedo[i];
-      let ar = 0.062 + al * 0.085;
-      let ag = 0.062 + al * 0.08;
-      let ab = 0.066 + al * 0.082;
-      if (al > 0.68) {
-        ar += 0.09;
-        ag += 0.055;
-        ab += 0.012;
+      let ar = 0.05 + al * 0.07;
+      let ag = 0.054 + al * 0.068;
+      let ab = 0.064 + al * 0.074;
+      if (al > 0.7) {
+        ar += 0.08;
+        ag += 0.05;
+        ab += 0.01;
       }
+      const lc = lichen[i];
+      ar += lc * 0.16;
+      ag += lc * 0.15;
+      ab += lc * 0.09;
       // Djupare skugga längre ned mot förgrunden
-      const fall = Math.max(0.3, 1.05 - (v - 0.55) * 1.4);
-      // Ljuset bryts upp i fläckar av kornen och lavarna, som på skrovlig granit
-      const speck = 0.25 + 1.35 * smooth(0.3, 0.85, al);
-      const hot = (sun * 6.5 + glint * 9) * Math.min(1, ao * 1.3) * speck;
-      const lr = hot * 1.0 + (sky * 0.06 + front * 0.05) * ao;
-      const lg = hot * 0.42 + (sky * 0.08 + front * 0.045) * ao;
-      const lb = hot * 0.13 + (sky * 0.17 + front * 0.07) * ao;
+      const fall = Math.max(0.26, 1.0 - (v - 0.55) * 1.6);
+      // Solbelysta flak lyser jämnt, med kornen som lätt gnistrar; sprickorna förblir svarta
+      const speck = 0.35 + 1.3 * smooth(0.3, 0.85, al);
+      const hot = (sun * 4.4 + glint * 8) * Math.min(1, ao * 1.3) * speck;
+      const lr = hot * 1.0 + (sky * 0.06 + front * 0.055) * ao;
+      const lg = hot * 0.36 + (sky * 0.08 + front * 0.06) * ao;
+      const lb = hot * 0.1 + (sky * 0.22 + front * 0.1) * ao;
       const o = i * 4;
       data[o] = tone(ar * lr * fall);
       data[o + 1] = tone(ag * lg * fall);
@@ -514,9 +676,10 @@ function rockLayer(w, h, H) {
 
   return {
     canvas,
-    topAt: (x) => {
-      let best = h;
-      for (let dx = -3; dx <= 3; dx++) best = Math.min(best, top[Math.max(0, Math.min(w - 1, x + dx))]);
+    /** Klippans överkant vid x: den lägsta punkten (största y) inom ±r pixlar. */
+    topAt: (x, r = 3) => {
+      let best = 0;
+      for (let dx = -r; dx <= r; dx++) best = Math.max(best, top[Math.max(0, Math.min(w - 1, x + dx))]);
       return best;
     },
   };
@@ -534,7 +697,9 @@ function tone(x) {
 
 // --- Hjälpfunktioner --------------------------------------------------------------------------------------
 
+// OffscreenCanvas när den finns, så att samma kod kan måla i rescuer-worker.js där det inte finns något document
 function offscreen(w, h) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(Math.max(1, w), Math.max(1, h));
   const c = document.createElement('canvas');
   c.width = Math.max(1, w);
   c.height = Math.max(1, h);

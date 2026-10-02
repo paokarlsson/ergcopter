@@ -664,6 +664,8 @@ function frame() {
     dusk: stage.dusk,
     guides: guides.lines,
     landingPad: guides.landingPad,
+    // Längre hovringar ses framifrån över en platta (render.js); korta mellansteg stannar i sidovyn
+    hoverPad: run?.step?.type === 'hover' && run.step.holdS >= 10,
     blind: guides.blind,
     workshop: school,
     // Aspiranten ser räddningshelikoptern som väntar vid verkstan.
