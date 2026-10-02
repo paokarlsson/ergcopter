@@ -44,14 +44,35 @@
           <section class="glass drill-card">
             <p class="drill-step" id="drill-step"></p>
             <p class="drill-text" id="drill-text"></p>
+            <p class="drill-lead" id="drill-lead" hidden></p>
             <p class="drill-note" id="drill-note" hidden></p>
             <div class="drill-bar" id="drill-bar" hidden><div class="drill-bar-fill" id="drill-bar-fill"></div></div>
             <ol class="drill-stars" id="drill-stars" hidden></ol>
+            <!-- Stjärnorna i kraven: guldtoning och glans, används med <use href="#drill-star"> -->
+            <svg class="drill-star-defs" width="0" height="0" aria-hidden="true">
+              <defs>
+                <linearGradient id="drill-star-gold" x1="0" y1="0" x2="0.25" y2="1">
+                  <stop offset="0" stop-color="#fffad0" />
+                  <stop offset="0.35" stop-color="#ffe455" />
+                  <stop offset="0.72" stop-color="#ffc425" />
+                  <stop offset="1" stop-color="#f08d10" />
+                </linearGradient>
+                <linearGradient id="drill-star-gloss" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#ffffff" stop-opacity="0.75" />
+                  <stop offset="0.48" stop-color="#ffffff" stop-opacity="0.12" />
+                  <stop offset="0.5" stop-color="#ffffff" stop-opacity="0" />
+                </linearGradient>
+                <symbol id="drill-star" viewBox="0 0 24 24">
+                  <path d="M12 1.5L15.35 8.19L22.75 9.31L17.42 14.56L18.64 21.94L12 18.5L5.36 21.94L6.58 14.56L1.25 9.31L8.65 8.19Z" />
+                </symbol>
+              </defs>
+            </svg>
           </section>
           <dl class="glass drill-stats">
             <div><dt>Höjd</dt><dd id="ds-h">0 m</dd></div>
             <div id="ds-goal-row"><dt>Mål</dt><dd id="ds-goal">–</dd></div>
-            <div><dt id="ds-vy-label">Stigning</dt><dd id="ds-vy">0,0 m/s</dd></div>
+            <div id="ds-vy-row"><dt id="ds-vy-label">Stigning</dt><dd id="ds-vy">0,0 m/s</dd></div>
+            <div><dt>Effekt</dt><dd id="ds-fx">±0 %</dd></div>
           </dl>
           <section class="glass drill-graph">
             <div class="hud-label">Effekt senaste 30 s</div>
@@ -93,20 +114,132 @@
     <section id="screen-idle" class="screen attract" hidden>
       <div class="idle-column">
         <header class="brand">
-          <svg class="brand-mark" viewBox="0 0 240 84" aria-hidden="true">
-            <defs>
-              <linearGradient id="brand-snow" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#ffffff" />
-                <stop offset="1" stop-color="#c9d6e6" />
-              </linearGradient>
-            </defs>
-            <path fill="url(#brand-snow)" d="M0 84 L58 34 L72 44 L118 4 L150 32 L162 24 L240 84 Z" />
-            <path fill="#7e93b0" d="M118 4 L104 40 L96 84 L132 84 L124 52 L130 30 Z M58 34 L52 58 L46 84 L64 84 L62 56 Z M162 24 L170 52 L184 84 L198 84 L178 46 Z" opacity="0.55" />
-            <path fill="none" stroke="#0d1a2e" stroke-width="2.5" stroke-linejoin="round" opacity="0.5"
-              d="M118 4 L110 26 L116 22 L120 34 M58 34 L62 44 M162 24 L158 38" />
-          </svg>
           <h1 class="brand-name">Ergcopter</h1>
-          <p class="brand-tagline">Driv högre. Nå längre.</p>
+          <!-- Loggan som en enda SVG: fjällsymbol, ordmärke och undertitel. textLength låser bredden oavsett typsnittets mått. -->
+          <svg class="brand-logo" viewBox="0 0 1122 488" role="img" aria-label="Ergcopter. Driv högre. Nå längre.">
+            <defs>
+              <!-- Ordmärkets yta: nästan platt kall benvit, bara en svag ton nedåt. -->
+              <linearGradient id="logo-face" gradientUnits="userSpaceOnUse" x1="0" y1="-210" x2="0" y2="0">
+                <stop offset="0" stop-color="#fbfcfd" />
+                <stop offset="0.65" stop-color="#eef2f6" />
+                <stop offset="1" stop-color="#d3dbe5" />
+              </linearGradient>
+              <!-- Fjällsymbolens fot slutar i taggiga snöstråk i stället för en rak kant. -->
+              <mask id="logo-base">
+                <path fill="#fff" d="M250 140 L250 186 L262 186 L275 167 L286 186 L307 164 L324 186 L336 174 L347 186 L357 164 L375 186 L389 175 L402 186 L420 165 L434 186 L456 171 L467 186 L481 170 L491 186 L511 168 L533 186 L547 170 L559 186 L573 167 L593 186 L614 165 L625 186 L644 166 L664 186 L680 160 L693 186 L705 169 L722 186 L736 174 L754 186 L768 176 L782 186 L801 167 L823 186 L841 170 L857 186 L873 167 L890 186 L890 0 L250 0 Z" />
+              </mask>
+              <!-- Sliten, väderbiten färg: fläckar, repor och gropar som visar det mörka underlaget, lätt tuggade kanter
+                   och en mjuk fasning med ljus snett uppifrån vänster. Statisk, ritas en gång. -->
+              <filter id="logo-grit" x="-2%" y="-6%" width="104%" height="112%" color-interpolation-filters="sRGB">
+                <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="2" seed="11" result="edgeNoise" />
+                <feDisplacementMap in="SourceGraphic" in2="edgeNoise" scale="7" xChannelSelector="R" yChannelSelector="G" result="chewed" />
+                <!-- Fasning: belysning på en suddad alfakarta. -->
+                <feGaussianBlur in="SourceAlpha" stdDeviation="2.2" result="bump" />
+                <feDiffuseLighting in="bump" surfaceScale="2.2" diffuseConstant="1.12" lighting-color="#ffffff" result="diffuse">
+                  <feDistantLight azimuth="225" elevation="58" />
+                </feDiffuseLighting>
+                <feSpecularLighting in="bump" surfaceScale="2.2" specularConstant="0.6" specularExponent="18" lighting-color="#ffffff" result="spec">
+                  <feDistantLight azimuth="225" elevation="40" />
+                </feSpecularLighting>
+                <feComposite in="chewed" in2="diffuse" operator="arithmetic" k1="1" result="lit" />
+                <feComposite in="spec" in2="chewed" operator="in" result="specIn" />
+                <feComposite in="lit" in2="specIn" operator="arithmetic" k2="1" k3="0.55" result="shaded" />
+                <!-- Grå fläckar i mellanstorlek: syns även när loggan visas liten. -->
+                <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="4" seed="4" result="blotch" />
+                <feColorMatrix in="blotch" type="matrix" result="blotchA"
+                  values="0 0 0 0 0.64  0 0 0 0 0.69  0 0 0 0 0.77  0 0 0 2.1 -0.95" />
+                <!-- Vågräta repor och penseldrag. -->
+                <feTurbulence type="fractalNoise" baseFrequency="0.014 0.22" numOctaves="2" seed="9" result="scr" />
+                <feColorMatrix in="scr" type="matrix" result="scrA"
+                  values="0 0 0 0 0.58  0 0 0 0 0.63  0 0 0 0 0.71  0 0 0 7 -4.75" />
+                <feMerge result="stain">
+                  <feMergeNode in="blotchA" />
+                  <feMergeNode in="scrA" />
+                </feMerge>
+                <feComposite in="stain" in2="chewed" operator="in" result="stainIn" />
+                <feMerge result="worn">
+                  <feMergeNode in="shaded" />
+                  <feMergeNode in="stainIn" />
+                </feMerge>
+                <!-- Gropar: små hål där färgen flagnat, så att den mörka kanten under syns. -->
+                <feTurbulence type="fractalNoise" baseFrequency="0.15" numOctaves="2" seed="21" result="pit" />
+                <feColorMatrix in="pit" type="matrix" result="pitA"
+                  values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 18 -13.4" />
+                <feComposite in="worn" in2="pitA" operator="out" />
+              </filter>
+              <filter id="logo-drop" x="-5%" y="-10%" width="110%" height="130%">
+                <feGaussianBlur stdDeviation="5" />
+              </filter>
+              <filter id="logo-glow" x="-10%" y="-20%" width="120%" height="140%">
+                <feGaussianBlur stdDeviation="9" />
+              </filter>
+              <text id="logo-word" x="0" y="0" text-anchor="middle" font-family="'Barlow Condensed', sans-serif" font-weight="800"
+                font-size="300" letter-spacing="24" textLength="1132" lengthAdjust="spacingAndGlyphs">ERGCOPTER</text>
+              <text id="logo-tag" x="554" y="482" text-anchor="middle" font-family="'Barlow Condensed', sans-serif" font-weight="600"
+                font-size="68" textLength="846">DRIV HÖGRE. NÅ LÄNGRE.</text>
+            </defs>
+
+            <!-- Fjällsymbolen: en hög mittopp med lägre axlar, vita snöfält på solsidan och mörk klippa i skuggan. -->
+            <path fill="#04101f" fill-opacity="0.3" filter="url(#logo-glow)" d="M566 8 L730 186 L272 186 Z" />
+            <g mask="url(#logo-base)" transform="translate(10 0)">
+              <clipPath id="logo-pk0"><path fill="#000" d="M356 100 L365 112 L385 125 L399 148 L414 161 L424 174 L439 185 L265 183 L282 172 L290 158 L308 147 L324 123 L346 114 Z" /></clipPath>
+              <path fill="#46628a" stroke="#0b1830" stroke-width="4" stroke-linejoin="round" d="M356 100 L365 112 L385 125 L399 148 L414 161 L424 174 L439 185 L265 183 L282 172 L290 158 L308 147 L324 123 L346 114 Z" />
+              <g clip-path="url(#logo-pk0)">
+              <path fill="#dfe8f2" d="M356 100 L369 117 L353 134 L375 152 L364 169 L372 186 L265 183 L282 172 L290 158 L308 147 L324 123 L346 114 Z" />
+              <path fill="#c9d6e4" d="M360 124 L373 134 L375 137 L392 153 L371 145 L361 135 Z" />
+              <path fill="#c9d6e4" d="M363 140 L379 154 L382 157 L405 179 L378 168 L364 153 Z" />
+              </g>
+              <clipPath id="logo-pk1"><path fill="#000" d="M760 86 L778 102 L799 118 L813 133 L833 149 L855 167 L876 182 L690 187 L704 164 L711 155 L724 136 L738 119 L747 103 Z" /></clipPath>
+              <path fill="#46628a" stroke="#0b1830" stroke-width="4" stroke-linejoin="round" d="M760 86 L778 102 L799 118 L813 133 L833 149 L855 167 L876 182 L690 187 L704 164 L711 155 L724 136 L738 119 L747 103 Z" />
+              <g clip-path="url(#logo-pk1)">
+              <path fill="#dfe8f2" d="M760 86 L771 106 L759 126 L776 146 L767 166 L776 186 L690 187 L704 164 L711 155 L724 136 L738 119 L747 103 Z" />
+              <path fill="#c9d6e4" d="M764 113 L778 124 L780 127 L798 145 L776 136 L765 124 Z" />
+              <path fill="#c9d6e4" d="M769 145 L797 169 L802 173 L843 215 L793 189 L770 161 Z" />
+              </g>
+              <clipPath id="logo-pk2"><path fill="#000" d="M436 48 L451 66 L478 91 L496 121 L525 144 L535 162 L565 192 L322 181 L341 160 L357 139 L374 119 L398 90 L418 72 Z" /></clipPath>
+              <path fill="#2b466e" stroke="#0b1830" stroke-width="4" stroke-linejoin="round" d="M436 48 L451 66 L478 91 L496 121 L525 144 L535 162 L565 192 L322 181 L341 160 L357 139 L374 119 L398 90 L418 72 Z" />
+              <g clip-path="url(#logo-pk2)">
+              <path fill="#f7fafc" d="M436 48 L446 76 L437 103 L453 131 L447 158 L456 186 L322 181 L341 160 L357 139 L374 119 L398 90 L418 72 Z" />
+              <path fill="#2b466e" d="M378 112 L394 125 L411 133 L393 130 L378 118 Z" />
+              <path fill="#e6eef6" d="M438 66 L452 78 L455 82 L473 99 L451 92 L439 80 Z" />
+              <path fill="#e6eef6" d="M443 101 L464 118 L468 120 L498 152 L462 131 L444 110 Z" />
+              <path fill="#e6eef6" d="M447 129 L477 154 L482 157 L526 203 L473 173 L448 143 Z" />
+              </g>
+              <clipPath id="logo-pk3"><path fill="#000" d="M676 40 L702 64 L729 89 L742 107 L771 142 L798 161 L816 181 L558 188 L573 168 L599 140 L616 119 L636 87 L651 71 Z" /></clipPath>
+              <path fill="#2b466e" stroke="#0b1830" stroke-width="4" stroke-linejoin="round" d="M676 40 L702 64 L729 89 L742 107 L771 142 L798 161 L816 181 L558 188 L573 168 L599 140 L616 119 L636 87 L651 71 Z" />
+              <g clip-path="url(#logo-pk3)">
+              <path fill="#f7fafc" d="M676 40 L685 69 L677 98 L689 128 L682 157 L690 186 L558 188 L573 168 L599 140 L616 119 L636 87 L651 71 Z" />
+              <path fill="#2b466e" d="M598 133 L615 144 L631 153 L613 152 L598 142 Z" />
+              <path fill="#e6eef6" d="M677 57 L692 70 L695 72 L715 93 L690 82 L678 68 Z" />
+              <path fill="#e6eef6" d="M680 93 L700 110 L704 114 L732 142 L698 127 L681 109 Z" />
+              <path fill="#e6eef6" d="M685 146 L713 170 L718 173 L759 216 L710 189 L686 161 Z" />
+              </g>
+              <clipPath id="logo-pk4"><path fill="#000" d="M556 2 L576 25 L593 47 L607 62 L628 82 L646 102 L669 122 L686 145 L710 166 L727 190 L400 190 L417 166 L442 145 L457 121 L472 111 L493 78 L506 66 L523 41 L538 26 Z" /></clipPath>
+              <path fill="#233b61" stroke="#0b1830" stroke-width="4" stroke-linejoin="round" d="M556 2 L576 25 L593 47 L607 62 L628 82 L646 102 L669 122 L686 145 L710 166 L727 190 L400 190 L417 166 L442 145 L457 121 L472 111 L493 78 L506 66 L523 41 L538 26 Z" />
+              <g clip-path="url(#logo-pk4)">
+              <path fill="#f7fafc" d="M556 2 L567 25 L553 48 L571 71 L558 94 L580 117 L561 140 L587 163 L578 186 L400 190 L417 166 L442 145 L457 121 L472 111 L493 78 L506 66 L523 41 L538 26 Z" />
+              <path fill="#233b61" d="M501 64 L516 75 L531 83 L514 85 L501 77 Z" />
+              <path fill="#233b61" d="M472 98 L492 112 L511 122 L490 124 L472 113 Z" />
+              <path fill="#233b61" d="M446 130 L479 156 L511 171 L475 164 L446 141 Z" />
+              <path fill="#e6eef6" d="M557 16 L572 29 L574 32 L594 51 L570 43 L558 31 Z" />
+              <path fill="#e6eef6" d="M562 56 L585 77 L589 82 L621 114 L582 98 L563 77 Z" />
+              <path fill="#e6eef6" d="M564 72 L594 98 L600 102 L646 150 L590 119 L565 86 Z" />
+              <path fill="#e6eef6" d="M569 114 L602 143 L609 147 L659 200 L598 166 L570 131 Z" />
+              <path fill="#e6eef6" d="M572 145 L616 183 L624 187 L691 258 L610 211 L573 163 Z" />
+              </g>
+            </g>
+
+            <!-- Ordmärket: kursivt, sliten benvit färg på en mörk, lätt upphöjd kant. -->
+            <g transform="translate(552 404) skewX(-11)">
+              <use href="#logo-word" fill="#04101f" fill-opacity="0.5" transform="translate(9 16)" filter="url(#logo-drop)" />
+              <use href="#logo-word" fill="#26385a" stroke="#26385a" stroke-width="5" stroke-linejoin="round" transform="translate(3 4.5)" />
+              <use href="#logo-word" fill="#7d8ca4" stroke="#16243c" stroke-width="4.5" stroke-linejoin="round" />
+              <use href="#logo-word" fill="url(#logo-face)" filter="url(#logo-grit)" />
+            </g>
+
+            <use href="#logo-tag" fill="#04101f" fill-opacity="0.6" transform="translate(3 5)" filter="url(#logo-drop)" />
+            <use href="#logo-tag" fill="#f4f7fb" />
+          </svg>
         </header>
 
         <nav class="main-menu" id="main-menu" aria-label="Meny">
@@ -241,17 +374,57 @@
 
     <!-- FINISHED: resultatet (spec §7) -->
     <section id="screen-finished" class="screen result" hidden>
+      <canvas class="result-figure" id="fin-figure" aria-hidden="true"></canvas>
       <div class="result-wrap" id="result-wrap">
-        <p class="result-kicker" id="fin-kicker">
-          <svg class="crown" id="fin-crown" viewBox="0 0 32 24" aria-hidden="true">
-            <path d="M2 7 L9 13 L16 3 L23 13 L30 7 L27 21 H5 Z" fill="currentColor" />
-            <circle cx="2" cy="6" r="2" fill="currentColor" /><circle cx="16" cy="2.5" r="2" fill="currentColor" /><circle cx="30" cy="6" r="2" fill="currentColor" />
-          </svg>
-          <span id="fin-kicker-text"></span>
-        </p>
-        <p class="result-big"><output id="fin-height">0 m</output></p>
-        <p class="result-stars" id="fin-stars" hidden></p>
-        <p class="result-verdict" id="fin-verdict"></p>
+        <div class="result-head">
+          <p class="result-kicker" id="fin-kicker">
+            <svg class="crown" id="fin-crown" viewBox="0 0 40 30" aria-hidden="true">
+              <defs>
+                <linearGradient id="fin-crown-fill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#fff3b0" /><stop offset="0.45" stop-color="#f7cd3c" /><stop offset="1" stop-color="#c9860f" />
+                </linearGradient>
+                <linearGradient id="fin-crown-band" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#ffe27a" /><stop offset="1" stop-color="#b8740a" />
+                </linearGradient>
+              </defs>
+              <path d="M3 9 L12 16.5 L20 4.5 L28 16.5 L37 9 L33.5 22 H6.5 Z" fill="url(#fin-crown-fill)" stroke="#a96a08" stroke-width="0.7" stroke-linejoin="round" />
+              <path d="M5.2 11.6 L12 17.4 L20 6.6 L28 17.4 L34.8 11.6" fill="none" stroke="#fffbe0" stroke-width="0.9" stroke-linejoin="round" opacity="0.75" />
+              <rect x="6" y="23.2" width="28" height="4.8" rx="1.2" fill="url(#fin-crown-band)" stroke="#a96a08" stroke-width="0.6" />
+              <path d="M7.5 24.3 H32.5" stroke="#fff6c8" stroke-width="0.8" stroke-linecap="round" opacity="0.8" />
+              <circle cx="13" cy="25.6" r="1.1" fill="#e2453c" /><circle cx="20" cy="25.6" r="1.2" fill="#3fa9f5" /><circle cx="27" cy="25.6" r="1.1" fill="#e2453c" />
+              <circle cx="3" cy="8" r="2.6" fill="url(#fin-crown-fill)" /><circle cx="20" cy="3.4" r="2.8" fill="url(#fin-crown-fill)" />
+              <circle cx="37" cy="8" r="2.6" fill="url(#fin-crown-fill)" />
+              <circle cx="2.3" cy="7.2" r="0.8" fill="#fff" opacity="0.85" /><circle cx="19.2" cy="2.5" r="0.9" fill="#fff" opacity="0.85" />
+              <circle cx="36.3" cy="7.2" r="0.8" fill="#fff" opacity="0.85" />
+            </svg>
+            <!-- Utan rekord: en guldkantad medalj med ett snöklätt fjäll på blå emalj -->
+            <svg class="kicker-peak" viewBox="0 0 40 40" aria-hidden="true">
+              <defs>
+                <linearGradient id="fin-medal-rim" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#fff1a8" /><stop offset="0.5" stop-color="#f2c234" /><stop offset="1" stop-color="#b8740a" />
+                </linearGradient>
+                <linearGradient id="fin-medal-sky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#2f7fd6" /><stop offset="1" stop-color="#123a78" />
+                </linearGradient>
+                <clipPath id="fin-medal-clip"><circle cx="20" cy="20" r="14" /></clipPath>
+              </defs>
+              <circle cx="20" cy="20" r="18.6" fill="url(#fin-medal-rim)" stroke="#9c6207" stroke-width="0.8" />
+              <circle cx="20" cy="20" r="14.6" fill="#8a5606" />
+              <circle cx="20" cy="20" r="14" fill="url(#fin-medal-sky)" />
+              <g clip-path="url(#fin-medal-clip)">
+                <circle cx="27.5" cy="13" r="2.6" fill="#ffe9a0" opacity="0.9" />
+                <path d="M4 34 L16 15 L21.5 22 L26 16.5 L37 34 Z" fill="#e8f2fb" />
+                <path d="M16 15 L4 34 H14 L18.5 25 L15.5 23 L17.5 20 Z M26 16.5 L21.5 22 L24 24.5 L26.5 21.5 Z" fill="#9fbad6" />
+                <path d="M2 34 L12 27 L19 31 L28 26 L38 34 Z" fill="#35618f" />
+              </g>
+              <path d="M8.5 13 A13.5 13.5 0 0 1 26 6.8" fill="none" stroke="#fffbe0" stroke-width="1.2" stroke-linecap="round" opacity="0.8" />
+            </svg>
+            <span id="fin-kicker-text"></span>
+          </p>
+          <p class="result-big"><output id="fin-height">0 m</output></p>
+          <p class="result-stars" id="fin-stars" hidden></p>
+          <p class="result-verdict" id="fin-verdict"></p>
+        </div>
         <div class="result-cards">
           <dl class="glass result-stats" id="fin-stats"></dl>
           <section class="glass result-peaks" id="fin-peaks">
@@ -311,11 +484,15 @@
             </div>
             <div class="player-controls">
               <button type="button" class="play" id="log-play" aria-label="Spela upp">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path id="log-play-icon" d="M7 4 L20 12 L7 20 Z" fill="currentColor" /></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path id="log-play-icon" d="M7 4 L20 12 L7 20 Z" fill="currentColor" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" /></svg>
               </button>
-              <output class="player-time" id="log-time">00:00 / 00:00</output>
+              <output class="player-time" id="log-time"><span id="log-time-now">00:00</span><span class="sep"> / </span><span id="log-time-total">00:00</span></output>
               <input type="range" id="log-seek" min="0" max="1" step="0.01" value="0" aria-label="Tid i flygningen" />
-              <button type="button" class="speed" id="log-speed" aria-label="Uppspelningsfart">4×</button>
+              <button type="button" class="speed" id="log-speed" aria-label="Uppspelningsfart"><span id="log-speed-value">4</span><span class="times">×</span></button>
+              <button type="button" class="back" id="log-back" aria-label="Tillbaka till listan" title="Tillbaka till listan (Esc)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6 H19 M5 12 H19 M5 18 H19" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none" /></svg>
+                <span class="back-label">Alla loggar</span><kbd>Esc</kbd>
+              </button>
             </div>
           </div>
         </div>

@@ -49,9 +49,9 @@ export class ResultScreen {
     const e = this.el;
     this.#reset();
     e.kicker.classList.toggle('record', Boolean(record));
-    e.kickerText.textContent = record ? RECORDS[record] : [result.name, result.klass].filter(Boolean).join(' · ');
+    e.kickerText.textContent = record ? RECORDS[record] : result.name ? `Bra flygat, ${result.name}!` : 'Bra flygat!';
     e.height.textContent = `${fmtM(result.hMax)} m`;
-    e.verdict.textContent = verdict;
+    e.verdict.textContent = verdictLines(verdict);
     const s = result.stats;
     const effect = (pct) => (showRaw ? `${Math.round((pct / 100) * s.P0)} W` : `${Math.round(pct)} %`);
     this.#stats([
@@ -59,26 +59,36 @@ export class ResultScreen {
       ['Medeleffekt', s.strokes ? effect(s.avgPct) : '–'],
       ['Maxeffekt', s.strokes ? effect(s.maxPct) : '–'],
       ['Antal drag', String(s.strokes)],
-      ['Placering', result.klass ? `${rank} av ${total} i klassen` : `${rank} av ${total}`],
-    ], showRaw ? null : 'Effekten i procent av din lyfteffekt');
+    ]);
     e.peaks.hidden = false;
+    // Långa namn (Stora Härjångsstöten) krymper hela listan lite, så att raderna förblir lika och inget kortas av
+    const longest = Math.max(0, ...peaks.map((p) => p.name.length));
+    e.peakList.style.setProperty('--peak-scale', longest <= 11 ? '1' : longest <= 13 ? '0.9' : '0.76');
     e.peakList.replaceChildren(
       ...(peaks.length
         ? peaks.map((p) => {
             const li = document.createElement('li');
             li.className = p.passed ? 'passed' : 'next';
+            // Bocken och ringen ritas i CSS så att de blir lika feta i alla typsnitt; texten finns kvar för skärmläsare
             li.append(
-              Object.assign(document.createElement('span'), { className: 'ok', textContent: p.passed ? '✓' : '' }),
-              Object.assign(document.createElement('span'), { textContent: p.name }),
+              Object.assign(document.createElement('span'), { className: 'mark tick', ariaHidden: 'true' }),
+              Object.assign(document.createElement('span'), { className: 'peak-name', textContent: p.name }),
               Object.assign(document.createElement('span'), { className: 'peak-h', textContent: `${fmtM(p.h)} m` }),
-              Object.assign(document.createElement('span'), { className: 'ok', textContent: p.passed ? '✓' : '○' })
+              Object.assign(document.createElement('span'), {
+                className: `mark ${p.passed ? 'tick' : 'ring'}`,
+                title: p.passed ? 'Passerad' : 'Nästa topp',
+                ariaLabel: p.passed ? 'passerad' : 'inte nådd',
+              })
             );
             return li;
           })
         : [Object.assign(document.createElement('li'), { className: 'empty', textContent: 'Inga toppar i listan' })])
     );
     e.next.textContent = 'Till topplistan';
-    e.hint.textContent = 'Tryck valfri tangent';
+    // Placeringen och vad procenten betyder står under knapparna, så att panelen bara har de fyra siffrorna
+    const place = result.klass ? `Placering ${rank} av ${total} i klassen` : `Placering ${rank} av ${total}`;
+    const unit = showRaw ? null : 'effekten i procent av din lyfteffekt';
+    e.hint.textContent = [place, unit, 'tryck valfri tangent'].filter(Boolean).join(' · ');
   }
 
   /**
@@ -170,6 +180,11 @@ export class ResultScreen {
     this.el.note.hidden = !text;
     this.el.note.textContent = text ?? '';
   }
+}
+
+/** Omdömet i korta rader: ny rad före "men" och efter varje mening (CSS white-space: pre-line). */
+function verdictLines(text) {
+  return text.replace(/ (men) /, '\n$1 ').replace(/([.!?]) (?=\S)/g, '$1\n');
 }
 
 /** Den nya helikoptern på certifikatet, stilla på marken. */

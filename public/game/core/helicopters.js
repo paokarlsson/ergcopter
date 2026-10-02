@@ -18,7 +18,7 @@ export const HELICOPTERS = [
     ceiling: 0,
     winch: true,
     seats: 1,
-    livery: { body: '#f4f5f7', accent: '#d7263d', trim: '#ffffff', label: '112' },
+    livery: { body: '#f4f5f7', accent: '#d3302a', trim: '#ffffff', label: '112' },
   },
 ];
 

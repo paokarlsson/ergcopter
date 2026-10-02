@@ -73,14 +73,15 @@
   --heli-glass: #20354d;
   --heli-metal: #2f343c;
   --heli-rotor: #22262d;
-  --scene-tick: rgb(255 255 255 / 0.55);
+  --scene-tick: rgb(255 255 255 / 0.88);
   --scene-text: #ffffff;
-  --scene-text-muted: rgb(255 255 255 / 0.85);
+  --scene-text-muted: rgb(255 255 255 / 0.97);
   --scene-surface: #ffffff;
   --line-milestone: rgb(255 255 255 / 0.75);
   --line-record: #f6c744;
   --line-session: #4aa3ff;
   --gauge-track: rgb(255 255 255 / 0.35);
+  --gauge-now: #3fd6ff; /* höjdskalans markör och höjden hittills */
   --mountain-rock: #6e7d93;
   --mountain-snow: #f4f7fb;
   --mountain-shade: rgb(20 30 60 / 0.38);
@@ -369,45 +370,31 @@ button.danger {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: clamp(16px, 4vh, 44px);
-  padding: 64px 0 24px;
+  padding: 3.4vh 0 24px;
 }
+/* Loggan är huvudsaken: överst och bredare än menyn, lite åt höger som i målbilden. */
 .brand {
-  display: grid;
-  justify-items: center;
-  color: var(--ink);
-  text-align: center;
-  filter: drop-shadow(0 6px 22px rgb(0 0 0 / 0.45));
+  position: relative;
+  left: 2.5vw;
+  margin-bottom: 0.8vh;
+  filter: drop-shadow(0 4px 20px rgb(4 14 32 / 0.5));
 }
-.brand-mark {
-  width: clamp(120px, 15vw, 230px);
+.brand-logo {
+  display: block;
+  width: min(52.5vw, 77vh);
   height: auto;
-  margin-bottom: -0.4vw;
+  overflow: visible;
 }
+/* Rubriken finns för skärmläsare; loggan visar namnet. */
 .brand-name {
-  margin: 0;
-  padding: 0 0.12em;
-  background: linear-gradient(180deg, #ffffff 30%, #c3d0e0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-family: var(--font-display);
-  font-size: clamp(3.6rem, min(8.4vw, 16vh), 9rem);
-  font-weight: 800;
-  font-style: italic;
-  letter-spacing: 0.02em;
-  line-height: 0.92;
-  text-transform: uppercase;
-  -webkit-text-stroke: 1px rgb(20 40 70 / 0.35);
-}
-.brand-tagline {
-  margin: 0.3em 0 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2vw, 1.9rem);
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .main-menu {
   display: grid;
@@ -446,7 +433,7 @@ button.danger {
 
 .board-panel {
   width: min(100%, 560px);
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - min(52.5vw, 77vh) * 0.435 - 80px);
   overflow: auto;
   padding: 18px 20px 16px;
   --border: rgb(255 255 255 / 0.14);
@@ -710,8 +697,11 @@ button.danger {
 /* --- Fjällräddaren: menyn (plan.md §2–3) ------------------------------------------ */
 
 .screen.career-screen {
-  padding: 60px max(16px, 3vw) 18px;
-  background: linear-gradient(180deg, rgb(5 12 26 / 0.25), rgb(5 12 26 / 0.78) 30%);
+  padding: 14px max(16px, 3vw) 18px;
+  /* Överst en klarblå himmel bakom rubriken, sedan mörkare bakom korten */
+  background:
+    linear-gradient(180deg, rgb(40 104 196 / 0.55), rgb(48 112 200 / 0.3) 15%, rgb(48 112 200 / 0) 26%),
+    linear-gradient(180deg, rgb(5 12 26 / 0), rgb(5 12 26 / 0.3) 19%, rgb(5 12 26 / 0.78) 34%);
 }
 .career {
   display: grid;
@@ -722,37 +712,52 @@ button.danger {
   height: 100%;
 }
 .career-head {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) auto minmax(160px, 1fr);
-  align-items: center;
+  grid-template-columns: minmax(160px, 1.2fr) auto minmax(160px, 1fr);
+  align-items: start;
   gap: 16px;
+  height: max(118px, calc(21.5vh - 28px));
 }
+/* Helikoptern (view/hero-heli.js) fyller vänstra tredjedelen ut till skärmkanten; rotorn får skäras av upptill */
 .career-heli {
-  width: min(100%, 300px);
-  height: auto;
+  position: absolute;
+  top: -14px;
+  left: calc(-1 * max(16px, 3vw));
+  width: min(37vw, 640px);
+  height: calc(100% + 14px);
+  pointer-events: none;
 }
 .career-title {
+  grid-column: 2;
+  padding-top: 1.2vh;
   text-align: center;
-  text-shadow: 0 4px 20px rgb(0 0 0 / 0.5);
+  text-shadow: 0 2px 4px rgb(0 0 0 / 0.35), 0 4px 22px rgb(0 0 0 / 0.45);
 }
 .career-title h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.4rem, 4.6vw, 4.4rem);
+  font-size: clamp(2.4rem, min(5.5vw, 8vh), 6.4rem);
   font-weight: 800;
+  letter-spacing: 0.015em;
   line-height: 1;
   text-transform: uppercase;
 }
 .career-title p {
-  margin: 4px 0 0;
+  margin: 0.9vh 0 0;
+  color: #e9f0f8;
   font-family: var(--font-display);
-  font-size: clamp(1rem, 1.7vw, 1.5rem);
+  font-size: clamp(1rem, min(2.25vw, 3.3vh), 2.1rem);
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
 }
 .career-who {
+  grid-column: 3;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
   justify-self: end;
+  max-width: 19vw;
+  padding-top: 46px;
   text-align: right;
 }
 .career-who p {
@@ -1015,42 +1020,85 @@ button.danger {
 .screen.result {
   place-items: center start;
   padding-left: max(16px, 6vw);
-  background: linear-gradient(90deg, rgb(4 10 22 / 0.62), rgb(4 10 22 / 0.3) 50%, rgb(4 10 22 / 0) 72%);
+  padding-top: max(24px, 3vh); /* rubriken ligger till vänster, skärmknapparna till höger */
+  background:
+    radial-gradient(ellipse 34% 30% at 37% 24%, rgb(6 14 32 / 0.38), rgb(6 14 32 / 0.18) 60%, rgb(6 14 32 / 0)),
+    linear-gradient(90deg, rgb(4 10 22 / 0.62), rgb(4 10 22 / 0.3) 50%, rgb(4 10 22 / 0) 72%);
+}
+/* Fjällräddaren på klippan till höger (view/rescuer.js); under resultatet i staplingsordningen */
+.result-figure {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 92vh;
+  max-width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+@media (max-aspect-ratio: 5/4) {
+  .result-figure {
+    display: none;
+  }
 }
 .result-wrap {
-  width: min(760px, 100%);
+  width: min(max(760px, 69vw), 100%);
   max-height: calc(100vh - 80px);
   overflow: auto;
   text-shadow: 0 2px 16px rgb(0 0 0 / 0.45);
 }
+/* Rubriken: ikonen hänger ut till vänster så att etikett, höjd och omdöme delar samma vänsterkant.
+   Skärmens bakgrund har en mjuk mörk fläck bakom blocket så att texten syns mot ljusa snötoppar, utan blur. */
+.result-head {
+  --head-icon: 1.25em;
+  --head-gap: 0.55em;
+  padding-left: clamp(0px, 18.5vw, 360px);
+}
 .result-kicker {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 0;
-  color: var(--gold);
+  gap: var(--head-gap);
+  margin: 0 0 0 calc(-1 * (var(--head-icon) + var(--head-gap)));
   font-family: var(--font-display);
-  font-size: clamp(1.4rem, 2.5vw, 2.3rem);
+  font-size: clamp(1.5rem, min(3.9vw, 5.7vh), 4rem);
   font-weight: 800;
-  letter-spacing: 0.03em;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
+  text-shadow: none;
 }
-.result-kicker:not(.record) {
-  color: var(--cyan);
+/* Guldtext med ljus överkant; skuggan läggs med filter eftersom text-shadow hamnar över klippt bakgrund */
+#fin-kicker-text {
+  color: var(--gold);
+  background: linear-gradient(180deg, #fff2b0 0%, #f9d24a 48%, #e3a51e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 2px rgb(40 20 0 / 0.45)) drop-shadow(0 0 14px rgb(255 190 60 / 0.28));
 }
-.crown {
-  width: 1.4em;
-  height: 1.05em;
+.crown,
+.kicker-peak {
+  flex: none;
+  width: var(--head-icon);
+  height: calc(var(--head-icon) * 0.75);
+  filter: drop-shadow(0 2px 3px rgb(30 15 0 / 0.5)) drop-shadow(0 0 10px rgb(255 196 64 / 0.45));
 }
-.result-kicker:not(.record) .crown {
+.kicker-peak {
+  height: var(--head-icon);
+}
+.result-kicker:not(.record) .crown,
+.result-kicker.record .kicker-peak {
   display: none;
 }
 .result-big {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(4.5rem, 11vw, 9.5rem);
+  margin: 0.02em 0 0 -0.04em;
+  font-family: 'Ubuntu Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, var(--font-text);
+  font-size: clamp(4.5rem, min(10vw, 14.8vh), 11rem);
   font-weight: 800;
   line-height: 1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 24px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.3);
 }
 .result-big output[data-status='passed'] {
   color: var(--good-ink);
@@ -1067,84 +1115,152 @@ button.danger {
   font-size: clamp(2rem, 4vw, 3rem);
   letter-spacing: 0.08em;
 }
+/* Omdömet radbryts vid meningarna (results.js), som en tredelad bildtext */
 .result-verdict {
-  max-width: 34ch;
-  margin: 8px 0 18px;
-  font-size: clamp(1.2rem, 2vw, 1.75rem);
+  max-width: 40ch;
+  margin: 0.35em 0 clamp(18px, 7.5vh, 96px); /* knapparna får lika mycket mer luft ovanför (.result-actions) */
+  font-family: 'Ubuntu Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, var(--font-text);
+  font-size: clamp(1.25rem, min(2.45vw, 3.5vh), 2.4rem);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.38;
+  white-space: pre-line;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.55), 0 2px 14px rgb(0 0 0 / 0.5);
 }
+@media (max-width: 700px) {
+  .result-head {
+    padding-left: 0;
+  }
+  .result-kicker {
+    margin-left: 0;
+  }
+  .screen.result {
+    padding-top: 64px;
+  }
+}
+/* Två paneler i samma höjd: siffrorna lite bredare än topparna. Raderna har samma takt i båda (--row)
+   så att varje etikett står i höjd med en topp, och texten är lika stor som i en spelmeny, inte en tabell. */
 .result-cards {
+  --row: clamp(38px, 6.7vh, 76px);
+  --card-pad: clamp(16px, 1.75vw, 36px);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  align-items: start;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px clamp(14px, 2.2vw, 44px);
   text-shadow: none;
+  font-family: 'Ubuntu Sans', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, var(--font-text);
+  font-size: clamp(1.05rem, min(3.55vh, 2.5vw), 2.5rem);
+  line-height: 1.2;
+}
+@media (max-width: 700px) {
+  .result-cards {
+    grid-template-columns: 1fr;
+  }
+}
+.result-cards > .glass {
+  border-color: rgb(170 200 240 / 0.17);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgb(20 32 52 / 0.84), rgb(10 18 32 / 0.88));
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(255 255 255 / 0.07);
 }
 .result-stats {
   display: grid;
-  grid-template-columns: auto auto;
-  gap: 8px 28px;
-  align-content: start;
+  grid-template-columns: 52% 1fr;
+  grid-auto-rows: var(--row);
+  align-items: center;
+  align-content: center;
+  min-height: calc(4 * var(--row) + 1.4vh);
   margin: 0;
-  padding: 16px 20px;
+  padding: 0.6vh var(--card-pad) 0.8vh;
 }
 .result-stats dt {
-  color: var(--ink-muted);
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 600;
+  color: rgb(228 236 248 / 0.88);
+  font-weight: 400;
+  letter-spacing: 0.005em;
 }
 .result-stats dd {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 800;
+  color: #fff;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 .result-stats .note {
   grid-column: 1 / -1;
+  align-self: start;
   color: var(--ink-faint);
-  font-size: 0.85rem;
+  font-size: 0.55em;
 }
 .result-peaks {
-  padding: 16px 20px;
+  display: grid;
+  align-content: center;
+  padding: 0.6vh var(--card-pad) 0.8vh calc(var(--card-pad) * 0.8);
 }
 .result-peaks h3 {
-  margin: 0 0 8px;
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  font-weight: 800;
+  display: flex;
+  align-items: center;
+  height: var(--row);
+  margin: 0;
+  padding-left: 0.1em;
+  color: #fff;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0.005em;
 }
 .result-peaks ol {
   display: grid;
-  gap: 6px;
+  grid-auto-rows: var(--row);
   margin: 0;
   padding: 0;
   list-style: none;
+  font-size: calc(var(--peak-scale, 1) * 1em);
 }
 .result-peaks li {
   display: grid;
-  grid-template-columns: 1.4em 1fr auto 1.4em;
+  grid-template-columns: 1.1em minmax(0, 1fr) auto 1em;
   align-items: center;
-  gap: 8px;
-  font-size: 1.15rem;
+  gap: 0 0.45em;
+  color: #fff;
+}
+.result-peaks .peak-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .result-peaks .peak-h {
   font-variant-numeric: tabular-nums;
 }
-.result-peaks .ok {
-  color: var(--good-ink);
-  font-weight: 800;
+/* Bock: två kanter i ett roterat hörn; ring: en kant runt. Grön för passerade toppar, grå för nästa. */
+.result-peaks .mark {
+  justify-self: center;
+  color: #4fdc6c;
+}
+.result-peaks .mark.tick {
+  width: 0.36em;
+  height: 0.66em;
+  margin-top: -0.18em;
+  border: solid currentcolor;
+  border-width: 0 0.15em 0.15em 0;
+  border-radius: 0 0 0.06em 0;
+  transform: rotate(42deg);
+  filter: drop-shadow(0 0 4px rgb(79 220 108 / 0.35));
+}
+.result-peaks .mark.ring {
+  width: 0.62em;
+  height: 0.62em;
+  border: 0.1em solid currentcolor;
+  border-radius: 50%;
 }
 .result-peaks li.next {
-  color: var(--ink-muted);
+  color: rgb(214 226 245 / 0.62);
 }
-.result-peaks li.next .ok {
-  color: var(--ink-muted);
+.result-peaks li.next .mark {
+  color: rgb(214 226 245 / 0.62);
+  filter: none;
 }
 .result-peaks .empty {
-  display: block;
+  display: flex;
+  align-items: center;
   color: var(--ink-muted);
 }
 .fin-list {
@@ -1184,7 +1300,7 @@ button.danger {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  margin-top: 22px;
+  margin-top: calc(22px + 1.5vh);
 }
 .result-actions .btn {
   flex: 1 1 220px;
@@ -1258,26 +1374,29 @@ button.danger {
   font-weight: 600;
   letter-spacing: 0.04em;
 }
-/* Höjden i en blå ruta på höjdskalan; --alt-y sätts av ui.js efter skalan i canvasen */
+/* Höjden i en blå ruta till höger om höjdskalan; --alt-y sätts av hud.js efter skalan i canvasen */
 .alt-box {
   position: absolute;
-  left: 18px;
+  left: 60px;
   top: 0;
   /* Aldrig ned över tiden nere till vänster */
   transform: translateY(calc(min(var(--alt-y, 50vh), 100vh - 150px) - 50%));
-  padding: 2px 16px 4px;
-  border: 1px solid rgb(140 200 255 / 0.65);
-  border-radius: 8px;
-  background: linear-gradient(180deg, #1c6fcf, #0f4a94);
-  box-shadow: 0 0 0 4px rgb(30 120 230 / 0.2), 0 10px 30px rgb(0 0 0 / 0.35);
+  padding: 0.42em 0.6em 0.44em;
+  border: 1px solid rgb(150 210 255 / 0.5);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgb(32 108 196 / 0.94), rgb(16 70 142 / 0.94));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 6px 18px rgb(0 10 30 / 0.35);
+  font-size: clamp(1.7rem, 4.9vh, 3.8rem);
 }
 .alt-big {
   display: flex;
   align-items: baseline;
-  font-size: clamp(2.6rem, 4.8vw, 4.6rem);
-  font-weight: 800;
+  font-size: 1em;
+  font-weight: 600;
   line-height: 1.05;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgb(0 20 50 / 0.45);
 }
 /* Höjdmätaren: rullande siffror (ui.js #setAltitude) */
 .odo-digit {
@@ -1303,8 +1422,8 @@ button.danger {
   white-space: pre;
 }
 .odo-unit {
-  margin-left: 0.15em;
-  font-size: 0.5em;
+  margin-left: 0.2em;
+  font-size: 0.86em;
   font-weight: 600;
 }
 .hud-title {
@@ -1432,94 +1551,180 @@ button.danger {
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
+/* Övningens paneler (plan.md §3). Under en övning tar uppgiftspanelen effektstapelns plats överst
+   och kolumnen följer skärmens höjd: uppgift, siffror och graf fyller högerkanten. */
+@media (min-width: 701px) {
+  .hud-right.drilling {
+    top: 8.3vh;
+    right: 1.2vw;
+    width: max(340px, 34.5vw);
+    gap: 0;
+  }
+}
+.hud-right.drilling > .effect {
+  display: none;
+}
 .drill {
   display: grid;
-  gap: 12px;
+  gap: 2vh;
+}
+/* Nästan täckande paneler utan bakgrundsoskärpa: lättläst och billigt över 3D-scenen */
+.drill > .glass {
+  background: linear-gradient(180deg, rgb(22 37 62 / 0.95), rgb(11 21 39 / 0.96));
+  border-color: rgb(160 195 240 / 0.16);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.07);
+  backdrop-filter: none;
 }
 .drill-card {
-  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 39.7vh;
+  padding: clamp(16px, 2.6vh, 30px) clamp(20px, 3.5vh, 38px) clamp(16px, 2.9vh, 32px);
 }
 .drill-card p {
   margin: 0;
 }
 .drill-step {
-  color: var(--ink-muted);
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  color: rgb(150 196 255 / 0.85);
+  font-size: clamp(13px, 1.8vh, 20px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 .drill-text {
-  margin-top: 2px !important;
-  font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+  margin-top: 0.5vh !important;
+  font-size: clamp(22px, 3.65vh, 40px);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
+  text-wrap: balance;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+.drill-lead,
+.drill-note {
+  margin-top: 1.3vh !important;
+  font-size: clamp(17px, 2.95vh, 32px);
+  font-weight: 600;
+  line-height: 1.22;
+  text-wrap: pretty;
+}
+.drill-lead {
+  color: rgb(222 232 248 / 0.84);
 }
 .drill-note {
-  margin-top: 8px !important;
   color: #ffe28a;
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.2;
 }
 .drill-bar {
-  height: 10px;
-  margin-top: 10px;
-  border-radius: 5px;
-  background: rgb(255 255 255 / 0.15);
+  height: clamp(6px, 0.85vh, 10px);
+  margin-top: 1.8vh;
+  border-radius: 99px;
+  background: rgb(0 0 0 / 0.35);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 0 rgb(255 255 255 / 0.06);
   overflow: hidden;
 }
 .drill-bar-fill {
   width: 0;
   height: 100%;
-  background: var(--guide);
+  border-radius: inherit;
+  background: linear-gradient(180deg, #7ff0ae, var(--guide) 55%, #22b56b);
+  box-shadow: 0 0 8px rgb(62 224 143 / 0.6);
+  transition: width 0.3s linear;
 }
+/* Stjärnkraven: tre rader, stora guldstjärnor och kravet bredvid */
 .drill-stars {
   display: grid;
-  gap: 2px;
-  margin: 10px 0 0;
-  padding: 0;
+  gap: 1.5vh;
+  margin: auto 0 0;
+  padding: 2.4vh 0 0 0.6vh;
   list-style: none;
-  font-size: 1.15rem;
-  font-weight: 600;
 }
 .drill-stars li {
   display: grid;
-  grid-template-columns: 4.2em 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
+  column-gap: clamp(12px, 1.9vh, 24px);
 }
-.drill-stars .s {
-  color: var(--gold);
-  letter-spacing: 0.06em;
+.drill-stars .stars {
+  display: flex;
+  gap: 0.35vh;
 }
-.drill-stars .s .off {
-  color: rgb(255 255 255 / 0.25);
+.drill-stars .star {
+  display: block;
+  width: clamp(22px, 3.65vh, 40px);
+  height: clamp(22px, 3.65vh, 40px);
+  overflow: visible;
 }
+.drill-stars .star.on {
+  filter: drop-shadow(0 0.25vh 0.3vh rgb(0 0 0 / 0.55));
+}
+.drill-stars .star .body {
+  stroke-linejoin: round;
+  stroke-width: 1.1px;
+}
+.drill-stars .star.on .body {
+  fill: url(#drill-star-gold);
+  stroke: #a85a08;
+}
+.drill-stars .star.on .gloss {
+  fill: url(#drill-star-gloss);
+}
+.drill-stars .star.off .body {
+  fill: rgb(0 0 0 / 0.32);
+  stroke: rgb(200 220 255 / 0.2);
+}
+.drill-stars .req {
+  display: block;
+  color: rgb(226 236 250 / 0.9);
+  font-size: clamp(16px, 2.75vh, 30px);
+  font-weight: 600;
+  line-height: 1.15;
+}
+.drill-stars .req b {
+  color: var(--ink);
+  font-weight: 800;
+}
+.drill-stars .req::first-letter {
+  text-transform: uppercase;
+}
+.drill-star-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+/* Siffrorna läses på avstånd från ergen: stora, ljusa rader som fyller panelen som en spel-HUD */
 .drill-stats {
   display: grid;
   margin: 0;
-  padding: 6px 18px;
+  padding: 0.4vh clamp(18px, 1.7vw, 34px) 0.4vh clamp(20px, 2.1vw, 42px);
 }
 .drill-stats > div {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  padding: 6px 0;
-  border-top: 1px solid rgb(255 255 255 / 0.1);
+  padding: 0.9vh 0;
+  border-top: 1px solid rgb(200 220 250 / 0.12);
 }
 .drill-stats > div:first-child {
   border-top: 0;
 }
 .drill-stats dt {
-  color: var(--ink-muted);
-  font-size: 1.2rem;
+  color: rgb(236 242 250 / 0.94);
+  font-size: clamp(1.3rem, 3.4vh, 2.3rem);
   font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.03em;
 }
 .drill-stats dd {
   margin: 0;
-  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3.9vh, 2.7rem);
   font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
 }
 .drill-stats dd[data-ok='true'] {
   color: var(--good-ink);
@@ -1534,6 +1739,14 @@ button.danger {
   display: block;
   width: 100%;
   height: 84px;
+}
+/* Siffrorna och grafen fyller resten av kolumnen under uppgiftspanelen */
+.hud-right.drilling .drill-stats {
+  min-height: 22.6vh;
+  align-content: stretch;
+}
+.hud-right.drilling .drill-graph canvas {
+  height: max(84px, calc(22vh - 44px));
 }
 .timer {
   position: absolute;
@@ -1675,6 +1888,31 @@ button.danger {
   }
 }
 
+/* Fri flygning: helikoptern står mitt i nedre delen av bilden, så notisen ligger till vänster om den */
+.chase-view .toast {
+  left: 17.5vw;
+  bottom: 17%;
+  max-width: 18.5vw;
+  padding: 10px 20px 12px 18px;
+  font-size: clamp(1.3rem, 2.3vw, 2.5rem);
+  animation-name: toast-side;
+}
+@keyframes toast-side {
+  0% {
+    opacity: 0;
+    transform: translate(-30%, 0) skewX(-8deg);
+  }
+  12%,
+  85% {
+    opacity: 1;
+    transform: translate(0, 0) skewX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, 12px);
+  }
+}
+
 /* --- Flygloggar med uppspelning (spec §9.1) ---------------------------------------------- */
 
 .screen.logs-screen {
@@ -1732,6 +1970,7 @@ button.danger {
 .log-item {
   display: grid;
   gap: 6px;
+  cursor: pointer;
   padding: 10px 12px;
   border: 1px solid var(--glass-edge);
   border-radius: 8px;
@@ -1883,6 +2122,295 @@ button.danger {
 .player-controls button:disabled,
 .player-controls input:disabled {
   opacity: 0.4;
+}
+
+/* Uppspelningen i helskärm (Spela upp): kartan fyller skärmen, rubriken, rutan och
+   uppspelningsraden ligger ovanpå den som i spelets HUD. Esc går tillbaka till listan. */
+.player-controls .back {
+  display: none;
+}
+.screen.logs-screen.theater {
+  display: block;
+  padding: 0;
+  background: #0a1526;
+}
+.logs-screen.theater .logs {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.logs-screen.theater .logs-head,
+.logs-screen.theater .logs-side {
+  display: none;
+}
+.logs-screen.theater .logs-body,
+.logs-screen.theater .player {
+  display: block;
+  height: 100%;
+}
+.logs-screen.theater .player-stage {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+}
+/* Mörkare himmel bakom rubriken så att den står tydligt utan någon platta */
+.logs-screen.theater .player-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 34%;
+  background: linear-gradient(180deg, rgb(8 26 60 / 0.82), rgb(12 34 70 / 0.5) 45%, rgb(12 34 70 / 0));
+  pointer-events: none;
+}
+.logs-screen.theater .player-title {
+  display: block;
+  left: 3.2vw;
+  top: 3.3vh;
+  z-index: 1;
+  font-size: clamp(1.3rem, 5.2vh, 3.6rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.55), 0 2px 14px rgb(0 10 30 / 0.55);
+}
+.logs-screen.theater .player-card {
+  right: 2.4vw;
+  top: 2.4vh;
+  z-index: 1;
+  min-width: 26.8vw;
+  padding: 1.6vh 2.2vw 2vh;
+  border: 1px solid rgb(170 200 240 / 0.16);
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgb(14 24 42 / 0.78), rgb(6 12 24 / 0.84));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(8px);
+}
+.logs-screen.theater .player-head {
+  font-size: clamp(1.15rem, 4.2vh, 3rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.logs-screen.theater .player-date {
+  margin-top: 0.9vh;
+  color: rgb(220 230 246 / 0.86);
+  font-size: clamp(0.85rem, 2.7vh, 1.8rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.logs-screen.theater .player-controls {
+  position: absolute;
+  left: 3.5vw;
+  right: 1.5vw;
+  bottom: 10vh;
+  z-index: 1;
+  height: 8.8vh;
+  min-height: 52px;
+  gap: 0;
+  padding: 0 0 0 2.2vw;
+  border: 1px solid rgb(180 205 240 / 0.1);
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgb(12 17 26 / 0.9), rgb(4 7 13 / 0.92));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07); /* ingen suddig skugga: den kostar bildrutor över 3D-kartan */
+}
+/* Stor, fylld spelaknapp utan ring, som i en spelkonsols uppspelare */
+.logs-screen.theater .player-controls .play {
+  flex: none;
+  width: 5.8vh;
+  min-width: 36px;
+  height: 5.8vh;
+  min-height: 36px;
+  border-radius: 6px;
+  outline: none;
+  transition: transform 0.12s;
+}
+.logs-screen.theater .player-controls .play svg {
+  width: 100%;
+  height: 100%;
+}
+.logs-screen.theater .player-controls .play:hover {
+  transform: scale(1.08);
+}
+.logs-screen.theater .player-controls .play:focus-visible {
+  color: #bfe4ff;
+}
+.logs-screen.theater .player-time {
+  flex: none;
+  margin-left: 3.6vw;
+  color: #f4f8ff;
+  font-size: clamp(1rem, 3.3vh, 2.4rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+.logs-screen.theater .player-time .sep,
+.logs-screen.theater .player-time #log-time-total {
+  color: rgb(214 226 244 / 0.82);
+}
+/* Tidslinjen: tjock rundad bana, blå spelad del (--p från logplayer.js) och en lysande knopp */
+.logs-screen.theater .player-controls input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0 0 0 2.6vw;
+  height: 3.4vh;
+  background: transparent;
+  cursor: pointer;
+}
+.logs-screen.theater .player-controls input[type='range']:focus {
+  outline: none;
+}
+.logs-screen.theater .player-controls input[type='range']::-webkit-slider-runnable-track {
+  height: 0.85vh;
+  min-height: 4px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #1a8ff0, #2fa6ff var(--p, 0%), rgb(255 255 255 / 0.17) var(--p, 0%));
+}
+.logs-screen.theater .player-controls input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 3vh;
+  min-width: 14px;
+  height: 3vh;
+  min-height: 14px;
+  margin-top: calc(max(0.85vh, 4px) / 2 - max(3vh, 15px) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #8fd0ff, #2fa6ff 45%, #1784e6);
+  box-shadow: 0 0 0 0.35vh rgb(47 166 255 / 0.3), 0 0 0 0.8vh rgb(47 166 255 / 0.12);
+}
+.logs-screen.theater .player-controls input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 0.35vh rgb(255 255 255 / 0.6), 0 0 0 0.8vh rgb(47 166 255 / 0.2);
+}
+.logs-screen.theater .player-controls input[type='range']::-moz-range-track {
+  height: 0.85vh;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.17);
+}
+.logs-screen.theater .player-controls input[type='range']::-moz-range-progress {
+  height: 0.85vh;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #1a8ff0, #2fa6ff);
+}
+.logs-screen.theater .player-controls input[type='range']::-moz-range-thumb {
+  width: 3vh;
+  height: 3vh;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #8fd0ff, #2fa6ff 45%, #1784e6);
+  box-shadow: 0 0 0 0.35vh rgb(47 166 255 / 0.3), 0 0 0 0.8vh rgb(47 166 255 / 0.12);
+}
+/* Farten som ren text till höger, utan ram */
+.logs-screen.theater .player-controls .speed {
+  flex: none;
+  width: 7.6vw;
+  min-width: 3em;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0 6px 6px 0;
+  color: #f4f8ff;
+  font-size: clamp(1rem, 3.3vh, 2.4rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  outline: none;
+}
+.logs-screen.theater .player-controls .speed:hover,
+.logs-screen.theater .player-controls .speed:focus-visible {
+  color: #8fd0ff;
+}
+/* Barlows ×-tecken är litet; systemfontens står i nivå med siffran */
+.player-controls .speed .times {
+  margin-left: 0.18em;
+  font-family: system-ui, sans-serif;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+/* Tillbaka till listan: en diskret knapp under raden (Esc gör samma sak) */
+.logs-screen.theater .player-controls .back {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 1.6vh);
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  height: auto;
+  padding: 0.5vh 0.4vw;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(230 238 250 / 0.72);
+  font-family: var(--font-display);
+  font-size: clamp(0.85rem, 2.1vh, 1.5rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.7);
+  cursor: pointer;
+}
+.logs-screen.theater .player-controls .back:hover,
+.logs-screen.theater .player-controls .back:focus-visible {
+  color: #fff;
+}
+.logs-screen.theater .player-controls .back svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+.logs-screen.theater .player-controls .back kbd {
+  padding: 0.05em 0.4em;
+  border: 1px solid rgb(230 238 250 / 0.35);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.85em;
+}
+/* Skärmknapparna skulle täcka rutan uppe till höger; Esc och listknappen går tillbaka */
+body:has(.logs-screen.theater:not([hidden])) .screen-controls {
+  display: none;
+}
+@media (max-width: 700px) {
+  .logs-screen.theater .player-title {
+    left: 16px;
+    top: 18px;
+    font-size: 1.5rem;
+    white-space: nowrap;
+  }
+  .logs-screen.theater .player-card {
+    left: 16px;
+    right: 16px;
+    top: 56px;
+    min-width: 0;
+    padding: 10px 14px;
+  }
+  .logs-screen.theater .player-head {
+    font-size: 1.4rem;
+    white-space: normal;
+  }
+  .logs-screen.theater .player-date {
+    font-size: 0.95rem;
+  }
+  .logs-screen.theater .player-controls {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    gap: 8px;
+    padding-left: 8px;
+  }
+  .logs-screen.theater .player-time,
+  .logs-screen.theater .player-controls input[type='range'] {
+    margin-left: 0;
+  }
+  .logs-screen.theater .player-controls .back {
+    top: auto;
+    bottom: calc(100% + 8px);
+  }
 }
 
 /* --- Varning, frånkoppling och skärmknappar ------------------------------------------- */
@@ -2132,13 +2660,27 @@ dialog#settings .settings-field input[type='checkbox'] {
     overflow: auto;
     justify-content: flex-start;
   }
+  .brand {
+    left: 0;
+  }
+  .brand-logo {
+    width: min(100%, 560px);
+  }
   .career-head {
     grid-template-columns: 1fr;
     justify-items: center;
+    height: auto;
+    padding-top: 44px;
     text-align: center;
   }
   .career-heli {
     display: none;
+  }
+  .career-title,
+  .career-who {
+    grid-column: 1;
+    max-width: none;
+    padding-top: 0;
   }
   .career-who {
     justify-self: center;

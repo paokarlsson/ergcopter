@@ -23,7 +23,9 @@ const GAUGE_STEPS_M = [2000, 3000, 5000, 7000, 9500];
 const SCHOOL_GAUGE_STEPS_M = [250, 500, 1000, 1500]; // skolhelikopterns tak är 1 500 m
 const GAUGE_X = 46; // höjdskalan till vänster
 const GAUGE_TOP_PX = 100; // plats för övningens rubrik ovanför
-const GAUGE_BOTTOM_PX = 156; // och för tiden nedanför, så att höjdrutan på 0 m inte täcker den
+const GAUGE_TOP_FREE = 0.055; // i fri flygning börjar skalan nära överkanten (andel av höjden)
+const GAUGE_BOTTOM_FREE = 0.155; // och slutar ovanför tiden, så att höjdrutan på 0 m inte täcker den
+const GAUGE_HEADROOM = 0.12; // andel av skalan ovanför den översta siffran
 const LABEL_LEFT_PX = 260; // övningarnas etiketter till höger om höjdrutan
 const GUIDE_LABEL_TOP_PX = 110; // och under övningens rubrik
 const HELI_X = 0.4; // helikopterns plats i sidled under flygningen, andel av bredden
@@ -44,8 +46,11 @@ const DOWNWASH_M = 30; // rotorvinden blåser upp damm under den här höjden
 export const RING_SPEED_PX = 320; // ringbanan: landskapet och ringarna rullar i jämn fart
 const BUDDY_DX = 200; // instruktörens helikopter flyger så här långt framför (px vid skala 1)
 const LAKE_M = 44; // sjön i dalen bakom plattan, px över marken
-const TERRAIN_SCALE = { start: 0.5, min: 0.3, max: 0.75 }; // 3D-landskapets upplösning per CSS-pixel
+const TERRAIN_SCALE = { start: 1, min: 0.7, max: 1 }; // 3D-landskapets upplösning per CSS-pixel
 const TERRAIN_REFRESH_S = 0.5; // står kameran still ritas landskapet om så här ofta (molnen driver)
+// Fri flygning med 3D-helikoptern: kameran bakom och ovanför, helikoptern mitt i nedre delen av bilden
+// (andel av bredd och höjd för modellens mitt, skalan i px per meter vid 1080 px höjd, vinklar i rad).
+const CHASE = { x: 0.49, y: 0.75, pxPerM: 88, yaw: 0.05, pitch: 0.38, dist: 30 };
 const DUSK_SUN = { x: 0.87, y: 0.15 }; // kvällssolen i 3D, andel av bredd och höjd: till höger, över fjällen
 
 export class GameRenderer {
@@ -53,11 +58,14 @@ export class GameRenderer {
    * @param {HTMLCanvasElement} canvas
    * @param {object} [opts]
    * @param {import('./terrain.js').TerrainRenderer|null} [opts.terrain]  3D-landskapet bakom, om det finns
+   * @param {import('./heli3d.js').Heli3D|null} [opts.heli3d]  helikoptern i 3D (fri flygning), om WebGL2 finns
    */
-  constructor(canvas, { terrain = null } = {}) {
+  constructor(canvas, { terrain = null, heli3d = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.terrain = terrain;
+    this.heli3d = heli3d;
+    this.chaseBox = null; // 3D-helikopterns ruta i bild, så att etiketterna lyfts över den
     this.terrainOff = false; // för långsam dator: tillbaka till 2D för resten av besöket
     this.terrainScale = TERRAIN_SCALE.start;
     this.terrainQuality = 'high'; // färre steg i shadern om datorn inte hinner med
@@ -202,7 +210,8 @@ export class GameRenderer {
     const dt = Math.min(0.1, frameS);
     this.lastDraw = t;
     const ease = (now, target) => (now === null ? target : now + (target - now) * Math.min(1, dt / EASE_S));
-    this.heliX = ease(this.heliX, v.heliX ?? HELI_X);
+    const chase = Boolean(v.chase && this.heli3d && !this.heli3d.lost);
+    this.heliX = ease(this.heliX, v.heliX ?? (chase ? CHASE.x : HELI_X));
     this.heliY = ease(this.heliY, v.heliY ?? 0.5);
     this.dusk = ease(this.dusk, v.dusk ?? 0);
     const dusk = this.dusk;
@@ -217,6 +226,10 @@ export class GameRenderer {
     const y = (alt) => heliY0 - (alt - cam) * pxPerM;
     const scale = Math.max(0.6, Math.min(1.9, W / 1000)); // helikopterns storlek
     const hx = W * this.heliX;
+    // 3D-helikoptern bakifrån: lyfter från plattan och stannar sedan i nedre delen av bilden
+    const chasePx = CHASE.pxPerM * Math.min(H / 1080, W / 1500);
+    const chaseY = chase ? Math.max(y(v.h) - 1.45 * chasePx, H * CHASE.y) : 0;
+    this.chaseBox = chase ? { x0: hx - 4 * chasePx, x1: hx + 4 * chasePx, top: chaseY - 2.4 * chasePx, bottom: H } : null;
     const airborne = Math.min(1, v.h / 3);
     const thin = Math.min(1, Math.max(0, cam / SKY_TOP_M));
     this.lastH = v.h;
@@ -246,6 +259,7 @@ export class GameRenderer {
     if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk, td);
     if (!td) drawFog(ctx, W, H, fogAmount(cam), c);
     if (v.blind) drawCloudBank(ctx, W, H, t, this.distance, c);
+    if (v.gauge && !v.blind) gaugeScrim(ctx, W, H);
     this.#lines(ctx, W, H, v, y, c);
     const front = this.#guides(ctx, W, H, v, y, c, dt, scale, hx);
     this.effects.drawStreaks(ctx, W, H, dt, this.speed, v.vy * pxPerM, fast ** 1.5, c.streak);
@@ -258,6 +272,13 @@ export class GameRenderer {
       y(v.h) - 32 * scale + airborne * 2.5 * Math.sin(t * 2.1) + shake * (Math.sin(t * 43) + Math.sin(t * 71)) * 0.5;
     if (v.winch) drawWinch(ctx, hx, hy + 20 * scale, Math.min(H + 20, y(0)), v.winch, scale, c);
     ctx.fillStyle = c.shadow;
+    if (chase) {
+      this.#heli3d(ctx, v, hx, chaseY + airborne * 2.5 * Math.sin(t * 2.1), chasePx, t, airborne, dusk, shake);
+      front?.();
+      if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
+      else this.gaugeY = H / 2;
+      return;
+    }
     if (y(0) < H) {
       const sw = 60 * scale * Math.max(0.2, 1 - v.h / 120);
       ctx.beginPath();
@@ -276,6 +297,43 @@ export class GameRenderer {
 
     if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
     else this.gaugeY = H / 2;
+  }
+
+  /**
+   * Räddningshelikoptern i 3D, sedd bakifrån och ovanifrån (heli3d.js). Den gungar lite
+   * i luften, lutar nosen framåt i fart och skakar av kraften i full stigning.
+   */
+  #heli3d(ctx, v, x, y, pxPerM, t, airborne, dusk, shake) {
+    const climb = Math.max(-1, Math.min(1, v.vy / 40));
+    const out = this.heli3d.render({
+      pxPerM,
+      dpr: devicePixelRatio || 1,
+      yaw: CHASE.yaw,
+      pitch: CHASE.pitch,
+      dist: CHASE.dist,
+      roll: airborne * (0.035 * Math.sin(t * 0.7) + 0.015 * Math.sin(t * 1.9)) + shake * 0.004 * Math.sin(t * 61),
+      nose: airborne * (0.07 - 0.05 * climb),
+      rotor: v.rotor,
+      livery: v.livery,
+      dusk,
+      time: t,
+    });
+    if (!out) return;
+    const sx = x + shake * Math.sin(t * 57) * 0.5;
+    ctx.drawImage(out.canvas, sx + out.x0, y + out.y0, out.w, out.h);
+    // Ljussken kring lamporna
+    ctx.globalCompositeOperation = 'lighter';
+    for (const l of out.lights) {
+      if (l.a <= 0.02) continue;
+      const r = pxPerM * (0.35 + 0.5 * l.a);
+      const g = ctx.createRadialGradient(sx + l.x, y + l.y, 0, sx + l.x, y + l.y, r);
+      g.addColorStop(0, alpha(l.color, 0.7 * l.a));
+      g.addColorStop(0.25, alpha(l.color, 0.22 * l.a));
+      g.addColorStop(1, alpha(l.color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(sx + l.x - r, y + l.y - r, 2 * r, 2 * r);
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   /** Stjärnor när luften blir tunn. */
@@ -349,7 +407,7 @@ export class GameRenderer {
     const shown = (m) => (this.signAlpha.get(m.name) ?? 0) > 0;
     const order = [...visible].sort((a, b) => shown(b.m) - shown(a.m));
     // Helikoptern flyger över toppen: etiketten lyfts mjukt över den i stället för att hamna bakom.
-    const heli = { x0: hx - 130 * scale, x1: hx + 100 * scale, top: y(v.h) - 86 * scale, bottom: y(v.h) };
+    const heli = this.chaseBox ?? { x0: hx - 130 * scale, x1: hx + 100 * scale, top: y(v.h) - 86 * scale, bottom: y(v.h) };
     const signs = [];
     for (const { m, sx, sy, passed } of order) {
       const L = labelLayout(ctx, m, sx, sy, passed, s, fmtM);
@@ -445,6 +503,7 @@ export class GameRenderer {
       cx: o.hx,
       cy: o.heliY0,
       focal,
+      gridFocal: basePxPerM * PLANE_M, // terrängens rutnät följer inte utzoomningen
       camX,
       camY: o.cam,
       dusk: o.dusk,
@@ -639,7 +698,11 @@ export class GameRenderer {
       .filter((line) => line.yy > -20 && line.yy < H + 20);
 
     for (const line of lines) {
-      ctx.strokeStyle = line.color;
+      // Linjen tonar in efter höjdskalan i stället för att skära rakt genom den
+      const fade = ctx.createLinearGradient(GAUGE_X, 0, GAUGE_X + W * 0.2, 0);
+      fade.addColorStop(0, alpha(line.color, 0));
+      fade.addColorStop(1, line.color);
+      ctx.strokeStyle = fade;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(GAUGE_X, line.yy);
@@ -659,55 +722,93 @@ export class GameRenderer {
     }
   }
 
-  /** Höjdskalan till vänster: från marken till en bit över det man siktar på. */
+  /**
+   * Höjdskalan till vänster: från marken till en bit över det man siktar på. Ett tunt
+   * vitt band med streck åt höger och siffror med mjuk skugga, så att den syns mot både
+   * himmel och moln. Under höjdrutan lyser skalan cyan en bit och tonar sedan ut.
+   */
   #gauge(ctx, W, H, v, c) {
     const x = GAUGE_X;
-    const top = GAUGE_TOP_PX;
-    const bottom = H - GAUGE_BOTTOM_PX;
+    const u = Math.max(0.8, Math.min(1.6, H / 720)); // storlekar efter skärmhöjden
+    const top = v.workshop ? GAUGE_TOP_PX : Math.round(H * GAUGE_TOP_FREE); // övningens rubrik behöver plats
+    const bottom = Math.round(H * (1 - GAUGE_BOTTOM_FREE));
     // Fasta steg så att skalan inte zoomar om vid varje passerad topp.
     const guideTop = Math.max(0, ...(v.guides ?? []).map((g) => g.hi ?? g.h));
     const reach = Math.max(v.h, v.hMax ?? 0, v.todayBest ?? 0, guideTop) * 1.15;
     const steps = v.workshop ? SCHOOL_GAUGE_STEPS_M : GAUGE_STEPS_M;
     const range = steps.find((r) => r >= reach) ?? Math.ceil(reach / 1000) * 1000;
-    const gy = (alt) => bottom - (Math.min(alt, range) / range) * (bottom - top);
-    const major = [50, 100, 250, 500, 1000, 2000, 2500].find((s) => range / s <= 6);
+    // Skalan fortsätter en bit ovanför den översta siffran, så att den inte slutar tvärt i den.
+    const scaleTop = top + (bottom - top) * GAUGE_HEADROOM;
+    const gy = (alt) => bottom - (Math.min(alt, range) / range) * (bottom - scaleTop);
+    const major = [50, 100, 250, 500, 1000, 2000, 2500].find((s) => range / s <= 5);
+    const cur = gy(v.h);
+    const boxHalf = H * 0.05; // höjdrutan täcker ungefär så här mycket åt varje håll
 
     ctx.save();
-    ctx.shadowColor = 'rgb(0 0 0 / 0.5)';
-    ctx.shadowBlur = 4;
+    ctx.lineCap = 'butt';
+    // Skuggan gör vita streck läsbara mot moln och snö; en enda väg per färg håller det billigt.
+    ctx.shadowColor = 'rgb(0 18 45 / 0.55)';
+    ctx.shadowBlur = 4 * u;
+    ctx.shadowOffsetY = 1;
     ctx.strokeStyle = c.tick;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, 2 * u);
     ctx.beginPath();
     ctx.moveTo(x, top);
     ctx.lineTo(x, bottom);
+    // Streck åt höger: långa vid siffrorna, mellanlånga halvvägs, korta däremellan
+    const minor = major / 4;
+    const minorPx = (bottom - scaleTop) * (minor / range);
+    for (let i = 0; bottom - i * minorPx >= top - 0.5; i++) {
+      const yy = Math.round(bottom - i * minorPx) + 0.5;
+      const len = i % 4 === 0 ? 24 : i % 2 === 0 ? 14 : 8;
+      ctx.moveTo(x, yy);
+      ctx.lineTo(x + len * u, yy);
+    }
     ctx.stroke();
-    ctx.font = '600 17px "Barlow Condensed", system-ui, sans-serif';
+
+    ctx.font = `600 ${Math.round(25 * u)}px "Barlow Condensed", system-ui, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = c.tickText;
-    for (let alt = 0; alt <= range + 1e-9; alt += major / 5) {
-      const yy = Math.round(gy(alt)) + 0.5;
-      const big = Math.abs(alt / major - Math.round(alt / major)) < 1e-6;
-      ctx.lineWidth = big ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x - (big ? 10 : 5), yy);
-      ctx.lineTo(x + (big ? 10 : 5), yy);
-      ctx.stroke();
-      if (big) ctx.fillText(`${fmtM(alt)} m`, x + 18, yy);
+    ctx.shadowBlur = 7 * u;
+    ctx.shadowColor = 'rgb(0 18 45 / 0.85)';
+    for (let alt = 0; alt <= range + 1e-9; alt += major) {
+      const yy = Math.round(gy(alt));
+      // Siffrorna bakom höjdrutan tonar bort i stället för att sticka ut runt den
+      const near = Math.abs(yy - cur) / boxHalf;
+      if (near < 1.1) continue;
+      ctx.globalAlpha = Math.min(1, (near - 1.1) / 0.5);
+      ctx.fillText(alt === range ? `${fmtM(alt)} m` : fmtM(alt), x + 34 * u, yy + 1);
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
 
-    // Höjden hittills: blå linje från marken
-    ctx.strokeStyle = c.sessionMax;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
+    // Cyan glöd som lyser starkast vid helikoptern och tonar ut en bit nedåt
+    ctx.save();
+    const glow = ctx.createLinearGradient(0, cur, 0, bottom);
+    const span = Math.max(1, bottom - cur);
+    glow.addColorStop(0, c.gaugeNow);
+    glow.addColorStop(Math.min(0.5, (H * 0.07) / span), alpha(c.gaugeNow, 0.6));
+    glow.addColorStop(Math.min(1, Math.max(0.6, (H * 0.3) / span)), alpha(c.gaugeNow, 0));
+    glow.addColorStop(1, alpha(c.gaugeNow, 0));
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = Math.max(3, 3 * u);
+    ctx.shadowColor = c.gaugeNow;
+    ctx.shadowBlur = 8 * u;
     ctx.beginPath();
     ctx.moveTo(x, bottom);
-    ctx.lineTo(x, gy(v.h));
+    ctx.lineTo(x, cur);
     ctx.stroke();
+    // Markören vid höjdrutan
+    ctx.fillStyle = c.gaugeNow;
+    ctx.shadowBlur = 10 * u;
+    roundRect(ctx, x - 5 * u, cur - 2 * u, 15 * u, 4 * u, 2 * u);
+    ctx.fill();
+    ctx.restore();
+
     // Milstolparna som korta streck till vänster
     ctx.fillStyle = c.milestone;
-    for (const m of v.milestones) if (m.h <= range) ctx.fillRect(x - 16, Math.round(gy(m.h)), 8, 2);
+    for (const m of v.milestones) if (m.h <= range) ctx.fillRect(x - 14, Math.round(gy(m.h)), 6, 2);
     // Dagens rekord och maxhöjden: trianglar
     for (const [alt, color] of [[v.todayBest, c.record], [v.hMax, c.sessionMax]]) {
       if (!alt) continue;
@@ -726,8 +827,28 @@ export class GameRenderer {
       else continue;
       ctx.fill();
     }
-    this.gaugeY = gy(v.h);
+    this.gaugeY = cur;
   }
+}
+
+/**
+ * Blå toning längs vänsterkanten bakom höjdskalan, som i en färdig flyg-HUD: den
+ * djupnar himlen och skuggar molnen så att skalans vita streck och siffror alltid syns.
+ * En enda gradientfyllning per bildruta, ingen oskärpa.
+ */
+function gaugeScrim(ctx, W, H) {
+  const w = Math.min(W * 0.3, 620);
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  // Multiplicera: vitt blir blått och himlen mättare, i stället för en grå slöja
+  g.addColorStop(0, 'rgb(92 140 208)');
+  g.addColorStop(0.3, 'rgb(140 182 234)');
+  g.addColorStop(0.65, 'rgb(212 230 250)');
+  g.addColorStop(1, 'rgb(255 255 255)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, H);
+  ctx.restore();
 }
 
 /**
@@ -771,6 +892,7 @@ function readColors(el) {
     rotor: v('--heli-rotor'),
     tick: v('--scene-tick'),
     tickText: v('--scene-text-muted'),
+    gaugeNow: v('--gauge-now'),
     lineText: v('--scene-text'),
     milestone: v('--line-milestone'),
     record: v('--line-record'),

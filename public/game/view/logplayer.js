@@ -15,8 +15,11 @@ const $ = (id) => document.getElementById(id);
 
 const SPEEDS = [1, 2, 4, 8, 16];
 const PAD = { left: 74, right: 36, top: 100, bottom: 34 };
+// I helskärm ligger rubriken ovanför diagrammet och uppspelningsraden under det
+const THEATER_PAD = (W, H) => ({ left: Math.max(74, W * 0.06), right: Math.max(36, W * 0.04), top: H * 0.2, bottom: H * 0.3 });
+let pad = PAD; // marginalerna för den bild som ritas just nu
 const ICON_PLAY = 'M7 4 L20 12 L7 20 Z';
-const ICON_PAUSE = 'M6 4 H10 V20 H6 Z M14 4 H18 V20 H14 Z';
+const ICON_PAUSE = 'M6 5 H9 V19 H6 Z M15 5 H18 V19 H15 Z';
 const CLIMB_MS = 2; // över det är linjen grön, under minus det röd, däremellan gul
 const ROTOR = { blur: 1, angle: 0, tailAngle: 0 };
 const MAX_PHOTO_PEAKS = 12; // som terrain.js MAX_PEAKS
@@ -35,11 +38,14 @@ export class FlightLogView {
       empty: $('player-empty'),
       play: $('log-play'),
       playIcon: $('log-play-icon'),
-      time: $('log-time'),
+      timeNow: $('log-time-now'),
+      timeTotal: $('log-time-total'),
       seek: $('log-seek'),
       speed: $('log-speed'),
+      speedValue: $('log-speed-value'),
       text: $('log-text'),
       textHint: $('log-text-hint'),
+      back: $('log-back'),
     };
     this.line = null; // logTimeline för vald logg
     /** Bild av 3D-landskapet: (view) → canvas eller null. Sätts av main.js. */
@@ -54,11 +60,17 @@ export class FlightLogView {
     this.el.play.addEventListener('click', () => this.toggle());
     this.el.seek.addEventListener('input', () => this.seek(Number(this.el.seek.value)));
     this.el.speed.addEventListener('click', () => this.cycleSpeed());
+    this.el.back.addEventListener('click', () => this.back());
     new ResizeObserver(() => this.#draw()).observe(this.el.canvas);
   }
 
   get isOpen() {
     return !this.el.screen.hidden;
+  }
+
+  /** Uppspelningen i helskärm täcker hela scenen bakom. */
+  get coversScreen() {
+    return this.isOpen && this.el.screen.classList.contains('theater');
   }
 
   /**
@@ -67,6 +79,7 @@ export class FlightLogView {
    */
   open(logs, actions) {
     this.el.screen.hidden = false;
+    this.#theater(false);
     this.render(logs, actions);
     const current = logs.find((x) => x.id === this.currentId) ?? logs[0];
     if (current) this.select(current);
@@ -76,6 +89,25 @@ export class FlightLogView {
   close() {
     this.el.screen.hidden = true;
     this.playing = false;
+    this.#theater(false);
+  }
+
+  /** Esc och Tillbaka: från uppspelningen i helskärm till listan, annars stänger den. */
+  back() {
+    if (this.el.screen.classList.contains('theater')) this.#theater(false);
+    else this.close();
+  }
+
+  /** Spelar upp loggen från början i helskärm. */
+  #play(entry) {
+    this.select(entry, true);
+    if (this.line) this.#theater(true);
+  }
+
+  /** Uppspelningen i helskärm: kartan fyller skärmen och listan döljs. */
+  #theater(on) {
+    this.el.screen.classList.toggle('theater', on);
+    if (on) this.el.play.focus({ preventScroll: true }); // knappen man tryckte på döljs
   }
 
   /** Listan, med Spela upp, Kopiera och Ladda ned per logg. */
@@ -97,10 +129,14 @@ export class FlightLogView {
       ...logs.map((entry) => {
         const li = Object.assign(document.createElement('li'), { className: 'log-item' });
         li.setAttribute('aria-current', String(entry.id === this.currentId));
+        // Hela raden spelar upp, utom knapparna för att kopiera och ladda ned
+        li.addEventListener('click', (e) => {
+          if (!e.target.closest('button')) this.#play(entry);
+        });
         const date = new Date(entry.ts).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
         const actionsRow = Object.assign(document.createElement('div'), { className: 'log-actions' });
         actionsRow.append(
-          button('Spela upp', () => this.select(entry, true)),
+          button('Spela upp', () => this.#play(entry)),
           button('Kopiera', (b) => actions.copy(entry, b)),
           button('Ladda ned', () => actions.download(entry))
         );
@@ -182,9 +218,12 @@ export class FlightLogView {
 
   #sync() {
     const d = this.line?.duration ?? 0;
-    this.el.time.textContent = `${clock(this.t)} / ${clock(d)}`;
+    this.el.timeNow.textContent = clock(this.t);
+    this.el.timeTotal.textContent = clock(d);
     this.el.seek.value = String(this.t);
-    this.el.speed.textContent = `${this.speed}×`;
+    // Den spelade delen av tidslinjen fylls i blått (game.css läser --p)
+    this.el.seek.style.setProperty('--p', `${d > 0 ? (100 * Math.min(1, this.t / d)).toFixed(2) : 0}%`);
+    this.el.speedValue.textContent = String(this.speed);
     this.el.playIcon.setAttribute('d', this.playing ? ICON_PAUSE : ICON_PLAY);
     this.el.play.setAttribute('aria-label', this.playing ? 'Pausa' : 'Spela upp');
   }
@@ -215,9 +254,9 @@ export class FlightLogView {
     if (!this.photo) return null;
     const key = `${this.currentId}|${W}x${H}|${yMax}`;
     if (key !== this.photoKey) {
-      const k = (H - PAD.top - PAD.bottom) / yMax;
+      const k = (H - pad.top - pad.bottom) / yMax;
       const seed = [...String(this.currentId)].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) >>> 0;
-      const view = logPhotoView(W, H, k, H - PAD.bottom, peaks.map((p) => ({ x: x(p.t), h: p.h })), seed);
+      const view = logPhotoView(W, H, k, H - pad.bottom, peaks.map((p) => ({ x: x(p.t), h: p.h })), seed);
       const image = this.photo(view);
       if (!image) return null; // inte klart än: försök igen nästa gång
       this.photoKey = key;
@@ -226,33 +265,16 @@ export class FlightLogView {
     return this.photoImage;
   }
 
-  #draw() {
-    const canvas = this.el.canvas;
-    const W = canvas.clientWidth;
-    const H = canvas.clientHeight;
-    if (!W || !H) return;
-    const dpr = devicePixelRatio || 1;
-    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
-      canvas.width = Math.round(W * dpr);
-      canvas.height = Math.round(H * dpr);
-    }
+  /** Bakgrundsbilden med axel, svag linje och sättningar; byggs om bara när loggen eller storleken ändras. */
+  #base(W, H, dpr, yMax, x, y, peaks, c) {
+    const photo = this.#photo(W, H, yMax, x, peaks);
+    const key = `${this.currentId}|${W}x${H}|${dpr}|${pad.top},${pad.bottom}`;
+    if (this.baseCanvas && this.baseKey === key && this.basePhoto === photo) return this.baseCanvas;
+    const canvas = this.baseCanvas ?? document.createElement('canvas');
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const c = this.colors();
-    const line = this.line;
-    if (!line) {
-      backdrop(ctx, W, H, c);
-      return;
-    }
-
-    // Plats ovanför den högsta toppen för etiketten
-    const yMax = niceMax(Math.max(line.hMax, ...line.peaks.map((p) => p.h)) * 1.3 + 20);
-    const x = (t) => PAD.left + (t / Math.max(1, line.duration)) * (W - PAD.left - PAD.right);
-    const y = (h) => H - PAD.bottom - (h / yMax) * (H - PAD.top - PAD.bottom);
-
-    // Topparna man passerade, med toppen där linjen nådde höjden. Högst först.
-    const peaks = [...line.peaks].sort((a, b) => b.h - a.h);
-    const photo = this.#photo(W, H, yMax, x, peaks);
     if (photo) {
       ctx.drawImage(photo, 0, 0, W, H);
       // Mörkare upptill och nedtill, så att linjen och etiketterna syns
@@ -269,36 +291,55 @@ export class FlightLogView {
     }
     ctx.fillStyle = alpha('#0b1a2e', 0.25);
     ctx.fillRect(0, y(0), W, H - y(0));
-
     axis(ctx, W, H, yMax, y);
-
-    // Linjen: svag hela vägen, stark fram till nu. Grön när den stiger, röd när den sjunker.
-    const pts = line.trace;
-    for (const [upTo, a] of [[Infinity, 0.3], [this.t, 1]]) {
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.shadowColor = 'rgb(0 0 0 / 0.4)';
-      ctx.shadowBlur = a === 1 ? 6 : 0;
-      for (let i = 1; i < pts.length && pts[i - 1].t <= upTo; i++) {
-        const p = pts[i - 1];
-        const q = pts[i].t <= upTo ? pts[i] : { ...pts[i], t: upTo, h: traceAt(pts, upTo).h };
-        const v = (p.v + q.v) / 2;
-        ctx.strokeStyle = alpha(v > CLIMB_MS ? '#49e35f' : v < -CLIMB_MS ? '#ff5d55' : '#f6c744', a);
-        ctx.beginPath();
-        ctx.moveTo(x(p.t), y(p.h));
-        ctx.lineTo(x(q.t), y(q.h));
-        ctx.stroke();
-      }
-    }
-    ctx.shadowBlur = 0;
-
+    // Hela linjen svagt, så att man ser vart flygningen går
+    strokeTrace(ctx, this.line.trace, Infinity, x, y, 0.3);
     // Sättningar som vita prickar vid marken
     ctx.fillStyle = '#ffffff';
-    for (const td of line.touchdowns) {
+    for (const td of this.line.touchdowns) {
       ctx.beginPath();
       ctx.arc(x(td.t), y(0), 4, 0, Math.PI * 2);
       ctx.fill();
     }
+    this.baseCanvas = canvas;
+    this.baseKey = key;
+    this.basePhoto = photo;
+    return canvas;
+  }
+
+  #draw() {
+    const canvas = this.el.canvas;
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    if (!W || !H) return;
+    const dpr = devicePixelRatio || 1;
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pad = this.el.screen.classList.contains('theater') ? THEATER_PAD(W, H) : PAD;
+    const c = this.colors();
+    const line = this.line;
+    if (!line) {
+      backdrop(ctx, W, H, c);
+      return;
+    }
+
+    // Plats ovanför den högsta toppen för etiketten
+    const yMax = niceMax(Math.max(line.hMax, ...line.peaks.map((p) => p.h)) * 1.3 + 20);
+    const x = (t) => pad.left + (t / Math.max(1, line.duration)) * (W - pad.left - pad.right);
+    const y = (h) => H - pad.bottom - (h / yMax) * (H - pad.top - pad.bottom);
+
+    // Topparna man passerade, med toppen där linjen nådde höjden. Högst först.
+    const peaks = [...line.peaks].sort((a, b) => b.h - a.h);
+    const pts = line.trace;
+    // Bakgrunden, axeln och den svaga linjen ändras inte under uppspelningen: ritas en gång
+    ctx.drawImage(this.#base(W, H, dpr, yMax, x, y, peaks, c), 0, 0, W, H);
+
+    // Linjen fram till nu, stark. Grön när den stiger, röd när den sjunker.
+    strokeTrace(ctx, pts, this.t, x, y, 1);
 
     // Etiketter på topparna, de högsta först; de som krockar hoppas över
     const s = Math.max(0.7, Math.min(1.2, W / 1100));
@@ -308,7 +349,7 @@ export class FlightLogView {
     for (const p of peaks) {
       const L = labelLayout(ctx, p, x(p.t), y(p.h), this.t >= p.t, s, fmtM);
       if (taken.some((r) => r.x < L.x + L.w && L.x < r.x + r.w && r.y < L.y + L.h && L.y < r.y + r.h)) continue;
-      if (L.x < PAD.left || L.x + L.w > W - 4 || L.y < PAD.top - 20) continue;
+      if (L.x < pad.left || L.x + L.w > W - 4 || L.y < pad.top - 20) continue;
       taken.push(L);
       drawLabel(ctx, p, x(p.t), y(p.h), this.t >= p.t, s, c, L);
     }
@@ -357,6 +398,35 @@ export function logPhotoView(W, H, k, y0, peaks, seed) {
   };
 }
 
+/**
+ * Höjdlinjen fram till tiden upTo, i färgade bitar efter stigningen. Bitar i följd med
+ * samma färg blir en enda väg, och skuggan är en bredare mörk linje under: en canvasskugga
+ * per bit kostar för mycket i helskärm.
+ */
+function strokeTrace(ctx, pts, upTo, x, y, a) {
+  const runs = [];
+  for (let i = 1; i < pts.length && pts[i - 1].t <= upTo; i++) {
+    const p = pts[i - 1];
+    const q = pts[i].t <= upTo ? pts[i] : { ...pts[i], t: upTo, h: traceAt(pts, upTo).h };
+    const v = (p.v + q.v) / 2;
+    const color = v > CLIMB_MS ? '#49e35f' : v < -CLIMB_MS ? '#ff5d55' : '#f6c744';
+    if (runs.at(-1)?.color !== color) runs.push({ color, pts: [p] });
+    runs.at(-1).pts.push(q);
+  }
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const passes = a === 1 ? [[8, 'rgb(0 0 0 / 0.28)'], [4, null]] : [[4, null]];
+  for (const [width, style] of passes) {
+    ctx.lineWidth = width;
+    for (const run of runs) {
+      ctx.strokeStyle = style ?? alpha(run.color, a);
+      ctx.beginPath();
+      run.pts.forEach((p, i) => (i ? ctx.lineTo(x(p.t), y(p.h)) : ctx.moveTo(x(p.t), y(p.h))));
+      ctx.stroke();
+    }
+  }
+}
+
 /** Himmel och två avlägsna fjällkedjor bakom diagrammet. */
 function backdrop(ctx, W, H, c) {
   const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -389,15 +459,15 @@ function axis(ctx, W, H, yMax, y) {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   ctx.beginPath();
-  ctx.moveTo(PAD.left - 22, y(yMax));
-  ctx.lineTo(PAD.left - 22, y(0));
+  ctx.moveTo(pad.left - 22, y(yMax));
+  ctx.lineTo(pad.left - 22, y(0));
   ctx.stroke();
   for (let h = 0; h <= yMax + 1e-9; h += step) {
     ctx.beginPath();
-    ctx.moveTo(PAD.left - 28, y(h));
-    ctx.lineTo(PAD.left - 16, y(h));
+    ctx.moveTo(pad.left - 28, y(h));
+    ctx.lineTo(pad.left - 16, y(h));
     ctx.stroke();
-    ctx.fillText(fmtM(h), PAD.left - 32, y(h));
+    ctx.fillText(fmtM(h), pad.left - 32, y(h));
   }
 }
 

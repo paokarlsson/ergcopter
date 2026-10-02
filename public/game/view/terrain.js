@@ -1,8 +1,7 @@
-// Landskapet i 3D med WebGL2: terrängen strålföljs i en fragment-shader, som i
-// Inigo Quilez "Elevated". Alpina fjäll med snö, sten, hed och skog, en sjö i dalen som
-// speglar fjällen, stackmoln i 3D, slöjmoln, dis och himmel i dags- och kvällsljus.
-// Ritas på en egen canvas bakom spelets 2D-canvas (render.js), som ritar helikoptern,
-// etiketterna och instrumenten.
+// Landskapet i 3D med WebGL2, i stil med Inigo Quilez "Elevated": alpina fjäll med snö,
+// sten, hed och skog, en sjö i dalen som speglar fjällen, stackmoln i 3D, slöjmoln, dis
+// och himmel i dags- och kvällsljus. Ritas på en egen canvas bakom spelets 2D-canvas
+// (render.js), som ritar helikoptern, etiketterna och instrumenten.
 //
 // Kameran står på helikopterns höjd och tittar rakt in i bilden (+z, ingen lutning).
 // Helikoptern flyger i ett plan PLANE_M framför kameran, där skalan är densamma som i
@@ -10,6 +9,18 @@
 // dalbottnen där. Allt på en viss höjd ligger på helikopterns linje när helikoptern är
 // på den höjden, hur långt bort det än är – därför passerar fjälltopparna helikoptern
 // precis när milstolpen nås. Saknas WebGL2 ritar render.js det enklare landskapet själv.
+//
+// Så ritas en bild, för att hinna med 60 bilder/s i full upplösning:
+// 1. Höjdrutnätet: terrängens höjd, lutning och skugga i ett rutnät som sitter fast i
+//    världen – rader på fasta avstånd framåt (tätare nära) och kolumner med en bredd som
+//    växer med avståndet, så att varje kolumn är ungefär två pixlar bred i bild. Bara
+//    rutor som är nya sedan förra bilden räknas (kameran har flyttat sig i sidled, en
+//    topp har flyttat sig eller solen har gått ned); resten finns kvar i texturen.
+// 2. Rutnätet ritas som trianglar med djupbuffert till en G-buffert: avstånd, lutning,
+//    skugga och om det är vatten. Sjön speglar en andra, upp-och-nedvänd ritning.
+// 3. Stackmolnen strålföljs i halv upplösning fram till terrängen.
+// 4. En sista bildpunktsshader färgar terrängen, vattnet och himlen, lägger på dis och
+//    moln och tonar bilden. Den räknar bara en gång per bildpunkt.
 
 /** Helikopterns plan: så här långt framför kameran (m). */
 export const PLANE_M = 400;
@@ -17,24 +28,53 @@ export const PLANE_M = 400;
 export const MAX_PEAKS = 12;
 const NOISE_SIZE = 64; // 3D-brustexturen för molnen
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render/i;
-/** Antal steg i shaderns slingor: hög kvalitet, och lägre för en svag grafikprocessor. */
+const WATER_M = -1; // sjöns yta, som i shadern
+// Höjdrutnätet: rader från z0 till zFar (m), varje rad rowStep gånger längre bort än
+// den förra; kolumnerna är px CSS-pixlar breda i bild (utan utzoomning).
+const GRID = { z0: 250, zFar: 82000, rowStep: 1.004, margin: 64, zoomRoom: 1.4 };
+const MAX_DIRTY = MAX_PEAKS * 2; // rutor som räknas om när topparna flyttar sig
+/** Kvalitet: kolumnbredd i rutnätet (CSS-px) och antal steg genom molnen. */
 export const QUALITY = {
-  high: { steps: 320, cloudSteps: 110, shadowSteps: 40 },
-  low: { steps: 200, cloudSteps: 60, shadowSteps: 24 },
+  high: { px: 2, cloudSteps: 110 },
+  low: { px: 3, cloudSteps: 64 },
 };
 
 const VERTEX = `#version 300 es
-in vec2 aPos;
+layout(location = 0) in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
-const FRAGMENT = `#version 300 es
+// Rutnätet: delas av alla shaders, så att de räknar fram samma kolumner.
+const GRID_GLSL = `
+uniform vec3 uCam;      // kamerans läge (m)
+uniform float uRowZ0;   // första radens avstånd (m)
+uniform float uRowLog;  // ln(kvoten mellan två raders avstånd)
+uniform float uColK;    // kolumnens bredd i världen per meter avstånd
+uniform float uA;       // fönstrets vänsterkant, i kolumner till vänster om kameran
+uniform float uPrevCamX;
+uniform float uPrevA;
+uniform int uNC;        // kolumner i texturen
+uniform int uNR;        // rader
+const float WATER = ${WATER_M.toFixed(1)};
+
+float rowZ(float j) { return uRowZ0 * exp(j * uRowLog); }
+// Första kolumnen (världsindex) i fönstret för raden på avståndet z
+float rowStart(float z, float camX, float a) { return floor(camX / (uColK * z) - a); }
+// Texturkolumnen för världskolumnen n (ringbuffert)
+int texCol(float n) { return int(n + float(uNC) * 8192.0) % uNC; }
+// Världskolumnen som texturkolumnen c håller när fönstret börjar vid n0
+float colAt(int c, float n0) { return n0 + float((c - texCol(n0) + uNC) % uNC); }
+`;
+
+// Brus, terräng, ljus, himmel, dis och moln: delas av bildpunktsshaderna.
+const COMMON = `
 precision highp float;
+precision highp int;
+precision highp sampler2D;
 precision highp sampler3D;
 uniform vec2 uRes;      // målets storlek i pixlar
 uniform float uScale;   // målets pixlar per CSS-pixel
 uniform vec2 uCenter;   // optiska mitten i CSS-pixlar (y uppifrån)
 uniform float uFocal;   // brännvidd i CSS-pixlar
-uniform vec3 uCam;      // kamerans läge (m)
 uniform float uTime;    // s, för molnens drift och vågorna
 uniform float uDusk;    // 0 dag, 1 kvällssol
 uniform float uThin;    // 0–1, tunn luft högt upp: mörkare himmel och stjärnor
@@ -42,20 +82,15 @@ uniform float uTop;     // högsta terrängen (m), strålar över den träffar i
 uniform vec4 uPeaks[${MAX_PEAKS}];  // milstolparnas toppar: x, z, höjd, radie (höjd 0 = tom)
 uniform vec4 uPeakBox;  // rutan (x0, z0, x1, z1) som alla toppar ryms i
 uniform vec3 uPad;      // helikopterplattan: x, z, radie (0 = ingen)
-uniform vec2 uSun;      // kvällssolen syns här i bild (andel av bredd och höjd)
+uniform vec3 uLight;    // solljusets riktning över terrängen
+uniform vec3 uSunDir;   // solen på himlen, se sunDir()
 uniform float uClouds;  // 0 = klart, 1 = vanligt med stackmoln
 uniform int uPeakCount; // antal toppar i uPeaks
-// Antal steg i slingorna. Som uniforms, så att kompilatorn inte vecklar ut dem (långsam
-// kompilering i Windows) och så att de går att sänka på en svag dator.
-uniform int uSteps;      // strålen mot marken
-uniform int uCloudSteps; // genom molnen
-uniform int uShadowSteps;
+uniform int uCloudSteps;
 uniform sampler3D uNoise;
-out vec4 outColor;
-
+${GRID_GLSL}
 #define PLANE ${PLANE_M.toFixed(1)}
 #define NOISE_SIZE ${NOISE_SIZE.toFixed(1)}
-const float WATER = -1.0;          // sjöns yta (m)
 const float CLOUD_BASE = 1250.0;   // stackmolnens bas
 const float CLOUD_TOP = 2350.0;    // och de högsta topparna
 const float CLOUD_NEAR = 1300.0;   // inga moln närmare kameran än så här (z), så att man ser
@@ -216,14 +251,28 @@ float heightAt(vec2 p, int oct) {
   return h;
 }
 
+// Detaljnivån efter avståndet
+int octFor(float t) {
+  return t < 1500.0 ? 10 : t < 5000.0 ? 8 : t < 14000.0 ? 7 : 6;
+}
+
 // --- Ljus och himmel -------------------------------------------------------------------
 
-// Dagsolen står högt till höger. Kvällssolen står lågt och syns på samma ställe i bild
-// på varje skärm (uSun), oavsett var helikoptern är.
+// Strålen genom bildpunkten frag (CSS-pixlar, y uppifrån)
+vec3 rayDir(vec2 frag) {
+  return normalize(vec3((frag.x - uCenter.x) / uFocal, (uCenter.y - frag.y) / uFocal, 1.0));
+}
+
+vec2 cssFrag() {
+  return vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uScale;
+}
+
+// Solen på himlen: dagsolen står högt till höger. Kvällssolen står lågt och syns på
+// samma ställe i bild på varje skärm, oavsett var helikoptern är. Terrängen belyses
+// från uLight, en fast riktning nära solens, så att skuggorna kan sparas.
+// Räknas ut en gång per bild i JavaScript (sunDir i terrain.js).
 vec3 sunDir() {
-  vec2 size = uRes / uScale;
-  vec3 dusk = normalize(vec3((uSun.x * size.x - uCenter.x) / uFocal, (uCenter.y - uSun.y * size.y) / uFocal, 1.0));
-  return normalize(mix(vec3(0.72, 0.6, 0.34), dusk, uDusk));
+  return uSunDir;
 }
 
 vec3 sunColor() {
@@ -302,18 +351,24 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
 
 // --- Moln ------------------------------------------------------------------------------
 
-// Stackmolnens täthet: enskilda moln med platt bas och bulliga toppar, högre där
-// molnet är kraftigt, med luckor emellan
+// Hur mycket stackmoln det finns här ovanifrån sett (0–1): enskilda moln med luckor emellan
+float cloudCover(vec2 xz) {
+  vec2 c = (xz + vec2(uTime * 5.0, uTime * 1.5)) * 0.0007;
+  float m = noise3(vec3(c.x, 0.37, c.y)) * 0.6 + noise3(vec3(c.x * 2.6, 1.63, c.y * 2.6)) * 0.4;
+  // Glesare på kvällen, så att solnedgången syns
+  return smoothstep(0.42 + 0.3 * uDusk, 0.8 + 0.1 * uDusk, m) * uClouds;
+}
+
+// Stackmolnens täthet: platt bas och bulliga toppar, högre där molnet är kraftigt
 float cloudMap(vec3 p, int oct, float sharp) {
   float y = p.y - CLOUD_BASE;
   if (y <= 0.0 || y >= CLOUD_TOP - CLOUD_BASE) return 0.0;
-  vec2 drift = vec2(uTime * 5.0, uTime * 1.5);
-  vec2 c = (p.xz + drift) * 0.0007;
-  float m = noise3(vec3(c.x, 0.37, c.y)) * 0.6 + noise3(vec3(c.x * 2.6, 1.63, c.y * 2.6)) * 0.4;
-  // Glesare på kvällen, så att solnedgången syns
-  m = smoothstep(0.42 + 0.3 * uDusk, 0.8 + 0.1 * uDusk, m) * smoothstep(CLOUD_NEAR, CLOUD_NEAR + 2500.0, p.z) * uClouds;
+  float m = cloudCover(p.xz) * smoothstep(CLOUD_NEAR, CLOUD_NEAR + 2500.0, p.z);
   float hn = y / (CLOUD_TOP - CLOUD_BASE);
-  vec3 q = (p + vec3(drift.x, 0.0, drift.y)) * 0.0026;
+  // Bruset nedan ger högst +0,5: där räcker det inte till något moln
+  float base = m * 1.35 - 0.2 - 1.15 * hn - 0.95 * 0.47;
+  if (base + 0.95 * 0.93 * 1.08 <= 0.0) return 0.0;
+  vec3 q = (p + vec3(uTime * 5.0, 0.0, uTime * 1.5)) * 0.0026;
   float f = 0.5 * noise3(q);
   q = q * 2.03 + 0.31;
   f += 0.28 * noise3(q);
@@ -329,15 +384,14 @@ float cloudMap(vec3 p, int oct, float sharp) {
   }
   f *= 0.93;
   // Molnets topp där bruset tar slut: bulligt uppåt och åt sidorna, plant nedtill
-  float d = m * 1.35 - 0.2 - 1.15 * hn + 0.95 * (f - 0.47);
+  float d = base + 0.95 * f;
   d *= smoothstep(0.0, 0.12, hn - 0.06 * (1.0 - m));
   return clamp(d * sharp, 0.0, 1.0);
 }
 
 // Molnens skugga på marken: tätheten där solens stråle går genom molnlagret
 float cloudShadow(vec3 pos) {
-  vec3 sun = sunDir();
-  vec3 c = pos + sun * ((CLOUD_BASE + 450.0 - pos.y) / max(sun.y, 0.05));
+  vec3 c = pos + uLight * ((CLOUD_BASE + 450.0 - pos.y) / max(uLight.y, 0.05));
   return 1.0 - 0.7 * smoothstep(0.0, 0.25, cloudMap(c, 3, 4.0));
 }
 
@@ -361,6 +415,7 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
   vec3 sunCol = sunColor();
   vec3 amb = mix(vec3(0.5, 0.6, 0.78), vec3(0.34, 0.34, 0.48), uDusk) * (1.0 - 0.3 * uThin);
   vec4 sum = vec4(0.0);
+  float tFog = 0.0; // avståndet till molnen, vägt efter hur mycket de syns
   float t = t0;
   float dt = max(30.0, 0.013 * t0);
   t += dt * dither;
@@ -383,78 +438,183 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
       float y = clamp((p.y - CLOUD_BASE) / 900.0, 0.0, 1.0);
       vec3 lin = amb * (0.3 + 0.8 * y) + sunCol * dif * 0.8;
       vec3 c = mix(vec3(1.0), vec3(0.82, 0.84, 0.88), den) * lin;
-      // Molnen långt bort försvinner i diset
-      c = applyFog(c, ro, rd, t);
       float alpha = 1.0 - exp(-den * dt * 0.045);
-      sum += vec4(c * alpha, alpha) * (1.0 - sum.a);
+      float w = alpha * (1.0 - sum.a);
+      sum += vec4(c, 1.0) * w;
+      tFog += t * w;
     }
     t += dt;
   }
+  // Molnen långt bort försvinner i diset: en gång, på molnens vägda avstånd
+  if (sum.a > 0.0) sum.rgb = applyFog(sum.rgb / sum.a, ro, rd, tFog / sum.a) * sum.a;
   return sum;
 }
+`;
 
-// --- Strålföljning ----------------------------------------------------------------------
+// 1a. Höjdrutnätet: höjd och lutning för rutor som är nya sedan förra bilden.
+const CACHE_FS = `#version 300 es
+${COMMON}
+uniform int uValid;     // 0 = räkna om allt
+uniform vec4 uDirty[${MAX_DIRTY}];  // rutor (x0, z0, x1, z1) där en topp har flyttat sig
+uniform int uDirtyCount;
+out vec4 outColor;
 
-int octFor(float t) {
-  return t < 1500.0 ? 10 : t < 5000.0 ? 8 : t < 14000.0 ? 7 : 6;
-}
-
-float surface(vec2 p, float t) {
-  return max(heightAt(p, octFor(t)), WATER);
-}
-
-// Avståndet till marken (eller sjöytan) längs strålen, -1 om den inte träffar
-float march(vec3 ro, vec3 rd, float tmax, int steps, float minStep) {
-  float t = 0.5;
-  if (ro.y > uTop) {
-    if (rd.y >= 0.0) return -1.0;
-    t = (ro.y - uTop) / -rd.y;
+bool dirty(vec2 p) {
+  for (int i = 0; i < uDirtyCount; i++) {
+    vec4 b = uDirty[i];
+    if (p.x > b.x && p.x < b.z && p.y > b.y && p.y < b.w) return true;
   }
-  float tPrev = t;
-  for (int i = 0; i < steps; i++) {
-    vec3 p = ro + rd * t;
-    float dh = p.y - surface(p.xz, t);
-    if (dh < 0.0) {
-      // Gick igenom: halvera tillbaka till ytan
-      float ta = tPrev, tb = t;
-      for (int j = 0; j < 6; j++) {
-        float tm = 0.5 * (ta + tb);
-        vec3 q = ro + rd * tm;
-        if (q.y - surface(q.xz, tm) < 0.0) tb = tm;
-        else ta = tm;
-      }
-      return 0.5 * (ta + tb);
-    }
-    if (dh < 0.0007 * t) return t;
-    if (t > tmax || (rd.y > 0.0 && p.y > uTop)) break;
-    tPrev = t;
-    t += max(0.45 * dh, minStep * t + 0.3);
-  }
-  return -1.0;
+  return false;
 }
 
-float softShadow(vec3 ro, vec3 rd) {
+void main() {
+  int c = int(gl_FragCoord.x);
+  int j = int(gl_FragCoord.y);
+  float z = rowZ(float(j));
+  float n = colAt(c, rowStart(z, uCam.x, uA));
+  vec2 p = vec2(n * uColK * z, z);
+  if (uValid == 1 && n == colAt(c, rowStart(z, uPrevCamX, uPrevA)) && !dirty(p)) discard;
+  int oct = octFor(z);
+  float h = heightAt(p, oct);
+  // Lutningen med finare detaljer än höjden, som ljuset sedan visar
+  float e = max(0.6, 0.0015 * z);
+  float h0 = heightAt(p, oct + 2);
+  float hx = heightAt(p + vec2(e, 0.0), oct + 2);
+  float hz = heightAt(p + vec2(0.0, e), oct + 2);
+  outColor = vec4(h, (hx - h0) / e, (hz - h0) / e, 0.0);
+}`;
+
+// 1b. Skuggorna i rutnätet: strålen mot solen följs genom höjderna i rutnätet.
+const SHADOW_FS = `#version 300 es
+${COMMON}
+uniform int uValid;
+uniform vec4 uDirty[${MAX_DIRTY}];
+uniform int uDirtyCount;
+uniform sampler2D uCache;
+out vec4 outColor;
+
+bool dirty(vec2 p) {
+  for (int i = 0; i < uDirtyCount; i++) {
+    vec4 b = uDirty[i];
+    if (p.x > b.x && p.x < b.z && p.y > b.y && p.y < b.w) return true;
+  }
+  return false;
+}
+
+// Höjden ur rutnätet, eller uträknad där rutnätet inte når
+float gridHeight(vec2 q) {
+  float jf = floor(log(max(q.y, 1.0) / uRowZ0) / uRowLog + 0.5);
+  if (q.y < uRowZ0 || jf >= float(uNR)) return heightAt(q, 4);
+  float z = rowZ(jf);
+  float n = floor(q.x / (uColK * z) + 0.5);
+  float n0 = rowStart(z, uCam.x, uA);
+  if (n < n0 || n >= n0 + float(uNC)) return heightAt(q, 4);
+  return texelFetch(uCache, ivec2(texCol(n), int(jf)), 0).x;
+}
+
+void main() {
+  int c = int(gl_FragCoord.x);
+  int j = int(gl_FragCoord.y);
+  float z = rowZ(float(j));
+  float n = colAt(c, rowStart(z, uCam.x, uA));
+  vec2 p = vec2(n * uColK * z, z);
+  if (uValid == 1 && n == colAt(c, rowStart(z, uPrevCamX, uPrevA)) && !dirty(p)) discard;
+  vec4 g = texelFetch(uCache, ivec2(c, j), 0);
+  vec3 nor = normalize(vec3(-g.y, 1.0, -g.z));
   float res = 1.0;
-  float t = 6.0;
-  for (int i = 0; i < uShadowSteps; i++) {
-    vec3 p = ro + rd * t;
-    float h = p.y - heightAt(p.xz, 5);
-    res = min(res, 10.0 * h / t);
-    t += clamp(h, 8.0 + 0.03 * t, 800.0);
-    if (res < 0.004 || p.y > uTop) break;
+  if (dot(nor, uLight) > 0.001) {
+    vec3 ro = vec3(p.x, max(g.x, WATER), z) + nor * 2.0;
+    float t = 6.0;
+    for (int i = 0; i < 40; i++) {
+      vec3 q = ro + uLight * t;
+      if (q.y > uTop) break;
+      float h = q.y - gridHeight(q.xz);
+      res = min(res, 10.0 * h / t);
+      if (res < 0.004) break;
+      t += clamp(h, 8.0 + 0.03 * t, 800.0);
+    }
   }
-  return smoothstep(0.0, 1.0, clamp(res, 0.0, 1.0));
-}
+  outColor = vec4(smoothstep(0.0, 1.0, clamp(res, 0.0, 1.0)), 0.0, 0.0, 1.0);
+}`;
 
-vec3 normalAt(vec2 p, float t) {
-  float e = max(0.6, 0.0015 * t);
-  int oct = octFor(t) + 2;
-  float hx = heightAt(p - vec2(e, 0.0), oct) - heightAt(p + vec2(e, 0.0), oct);
-  float hz = heightAt(p - vec2(0.0, e), oct) - heightAt(p + vec2(0.0, e), oct);
-  return normalize(vec3(hx, 2.0 * e, hz));
-}
+// 2. Rutnätet som trianglar: en remsa per rad, kolumnerna i fönstret.
+const MESH_VS = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+${GRID_GLSL}
+uniform sampler2D uCache;
+uniform sampler2D uShadow;
+uniform vec2 uSize;     // målets storlek i CSS-pixlar
+uniform vec2 uCenter;
+uniform float uFocal;
+uniform int uRow0;      // första raden som ritas
+uniform int uStride;    // varannan rad och kolumn för spegelbilden
+uniform float uMirror;  // 1 = upp och ned i vattenytan
+out float vZ;
+out vec2 vGrad;
+out float vShadow;
+out float vWater;
 
-// --- Material ----------------------------------------------------------------------------
+void main() {
+  int i = (gl_VertexID >> 1) * uStride;
+  int j = min(uRow0 + (gl_InstanceID + (gl_VertexID & 1)) * uStride, uNR - 1);
+  float z = rowZ(float(j));
+  float n = rowStart(z, uCam.x, uA) + float(i);
+  ivec2 tc = ivec2(texCol(n), j);
+  vec4 g = texelFetch(uCache, tc, 0);
+  float h = max(g.x, WATER);
+  float y = mix(h, 2.0 * WATER - h, uMirror);
+  float x = n * uColK * z;
+  vec2 s = vec2(uCenter.x + (x - uCam.x) * uFocal / z, uCenter.y - (y - uCam.y) * uFocal / z);
+  vec2 ndc = vec2(s.x / uSize.x * 2.0 - 1.0, 1.0 - s.y / uSize.y * 2.0);
+  const float NEAR = 100.0;
+  const float FAR = 100000.0;
+  gl_Position = vec4(ndc * z, (z * (FAR + NEAR) - 2.0 * FAR * NEAR) / (FAR - NEAR), z);
+  vZ = z;
+  vGrad = g.yz;
+  vShadow = texelFetch(uShadow, tc, 0).x;
+  vWater = g.x < WATER ? 1.0 : 0.0;
+}`;
+
+const MESH_FS = `#version 300 es
+precision highp float;
+in float vZ;
+in vec2 vGrad;
+in float vShadow;
+in float vWater;
+uniform float uMirror;
+out vec4 outColor;
+void main() {
+  // I spegelbilden ligger vattenytan kvar där den är och skulle dölja det som speglas
+  if (uMirror > 0.5 && vWater > 0.5) discard;
+  outColor = vec4(vZ, vGrad, vShadow + 2.0 * step(0.5, vWater));
+}`;
+
+// 3. Stackmolnen i halv upplösning, fram till terrängen i G-bufferten.
+const CLOUDS_FS = `#version 300 es
+${COMMON}
+uniform sampler2D uG;
+uniform float uGRatio;  // G-buffertens pixlar per pixel här
+out vec4 outColor;
+void main() {
+  vec3 rd = rayDir(cssFrag());
+  float gz = texelFetch(uG, ivec2(gl_FragCoord.xy * uGRatio), 0).x;
+  float tmax = gz > 0.0 ? gz / rd.z : 1e5;
+  // Gitter mot bandning i molnen (interleaved gradient noise, jämnare än vitt brus)
+  float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  outColor = clouds(uCam, rd, tmax, uCloudSteps, ign);
+}`;
+
+// 4. Färgerna: terrängen, vattnet och himlen, dis, moln och toning.
+const FINAL_FS = `#version 300 es
+${COMMON}
+uniform sampler2D uG;
+uniform sampler2D uReflG;   // spegelbilden, eller ingen (uReflScale 0)
+uniform float uReflScale;   // spegelbildens pixlar per CSS-pixel
+uniform sampler2D uCloudTex;
+uniform float uHasClouds;
+out vec4 outColor;
 
 // Helikopterplattan: asfalt, gul streckad ring och ett H
 vec3 padColor(vec2 p, vec3 base) {
@@ -475,8 +635,8 @@ vec3 padColor(vec2 p, vec3 base) {
   return mix(col, base, smoothstep(uPad.z, uPad.z + 4.0, r));
 }
 
-vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float t, bool shadows) {
-  vec3 sun = sunDir();
+vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
+  vec3 sun = uLight;
   vec2 p = pos.xz;
   float h = pos.y;
   float n1 = fbm(p * 0.0016, 3);
@@ -521,8 +681,6 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float t, bool shadows) {
 
   // Ljus: sol med mjuka skuggor och molnskuggor, himmel, studs från marken
   float dif = clamp(dot(nor, sun), 0.0, 1.0);
-  float sha = 1.0;
-  if (shadows && dif > 0.001) sha = softShadow(pos + nor * 2.0, sun);
   sha *= cloudShadow(pos);
   float sky = clamp(0.5 + 0.5 * nor.y, 0.0, 1.0);
   float bou = clamp(0.3 - 0.7 * nor.y, 0.0, 1.0);
@@ -537,8 +695,12 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float t, bool shadows) {
   return col;
 }
 
-// Sjön: speglar fjällen och himlen, mörkt vatten rakt ned, små vågor
-vec3 waterShade(vec3 pos, vec3 rd, float t) {
+vec3 gridNormal(vec4 g) {
+  return normalize(vec3(-g.y, 1.0, -g.z));
+}
+
+// Sjön: speglar fjällen, himlen och molnen, mörkt vatten rakt ned, små vågor
+vec3 waterShade(vec3 pos, vec3 rd, float t, vec2 frag) {
   vec3 sun = sunDir();
   vec2 w = pos.xz * vec2(0.012, 0.035) + vec2(uTime * 0.04, uTime * 0.015);
   float amp = 0.004 * (1.0 - smoothstep(300.0, 2000.0, t));
@@ -546,18 +708,33 @@ vec3 waterShade(vec3 pos, vec3 rd, float t) {
   vec3 ref = reflect(rd, nor);
   ref.y = max(ref.y, 0.002);
   float fre = 0.02 + 0.98 * pow(1.0 - clamp(dot(-rd, nor), 0.0, 1.0), 5.0);
-  vec3 ro = pos + vec3(0.0, 0.5, 0.0);
-  float tr = march(ro, ref, 40000.0, uSteps / 2, 0.012);
-  vec3 refl;
-  if (tr > 0.0) {
-    vec3 rp = ro + ref * tr;
-    refl = terrainShade(rp, normalAt(rp.xz, tr + t), ref, tr, true);
-    refl = applyFog(refl, ro, ref, tr);
-  } else {
-    refl = skyColor(ref);
+  vec3 refl = skyColor(ref);
+  // Vågorna flyttar spegelbilden lite i bild
+  vec2 q = frag + vec2(nor.x, -nor.z) * uFocal;
+  vec2 size = uRes / uScale;
+  if (uReflScale > 0.0) {
+    vec4 g = texelFetch(uReflG, ivec2(clamp(vec2(q.x, size.y - q.y) * uReflScale, vec2(0.0), size * uReflScale - 1.0)), 0);
+    if (g.x > 0.0) {
+      // Punkten i den speglade bilden, och den riktiga punkten ovanför vattnet
+      vec3 rdm = rayDir(q);
+      float tm = g.x / rdm.z;
+      vec3 pm = uCam + rdm * tm;
+      vec3 pr = vec3(pm.x, 2.0 * WATER - pm.y, pm.z);
+      vec3 dir = vec3(rdm.x, -rdm.y, rdm.z);
+      vec3 c = terrainShade(pr, gridNormal(g), dir, min(g.w, 1.0));
+      refl = applyFog(c, pos, dir, max(tm - t, 0.0));
+    }
   }
-  vec4 cl = uClouds > 0.0 ? clouds(ro, ref, tr > 0.0 ? tr : 45000.0, uCloudSteps / 4, 0.5) : vec4(0.0);
-  refl = refl * (1.0 - cl.a) + cl.rgb;
+  // Molnen i spegeln: samma moln som ovanför horisonten, längre från den
+  if (uHasClouds > 0.0 && uCam.y < CLOUD_BASE) {
+    const float HC = 1700.0;
+    float d = (q.y - uCenter.y) * (HC - uCam.y) / (HC + uCam.y - 2.0 * WATER);
+    vec2 uv = vec2(q.x, size.y - (uCenter.y - d)) / size;
+    if (uv.y > 0.0 && uv.y < 1.0) {
+      vec4 cl = texture(uCloudTex, uv);
+      refl = refl * (1.0 - cl.a) + cl.rgb;
+    }
+  }
   vec3 deep = mix(vec3(0.012, 0.03, 0.035), vec3(0.03, 0.025, 0.04), uDusk);
   vec3 col = mix(deep, refl, fre);
   col += sunColor() * pow(max(dot(ref, sun), 0.0), 300.0) * 3.0 * fre;
@@ -569,28 +746,29 @@ vec3 aces(vec3 x) {
 }
 
 void main() {
-  vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uScale;
-  vec3 rd = normalize(vec3((frag.x - uCenter.x) / uFocal, (uCenter.y - frag.y) / uFocal, 1.0));
+  vec2 frag = cssFrag();
+  vec3 rd = rayDir(frag);
   vec3 ro = uCam;
-  const float tmax = 80000.0;
-
-  float t = march(ro, rd, tmax, uSteps, 0.0012);
+  vec4 g = texelFetch(uG, ivec2(gl_FragCoord.xy), 0);
   vec3 col;
-  float tHit = 1e5;
-  if (t > 0.0) {
-    tHit = t;
+  bool hit = g.x > 0.0;
+  if (hit) {
+    float t = g.x / rd.z;
     vec3 pos = ro + rd * t;
-    if (heightAt(pos.xz, 6) < WATER) col = waterShade(pos, rd, t);
-    else col = terrainShade(pos, normalAt(pos.xz, t), rd, t, true);
+    if (g.w > 1.5) col = waterShade(pos, rd, t, frag);
+    else col = terrainShade(pos, gridNormal(g), rd, min(g.w, 1.0));
     col = applyFog(col, ro, rd, t);
+  } else if (rd.y < 0.0 && -ro.y / rd.y * rd.z < uRowZ0) {
+    // Närmare än rutnätets första rad: platt dalbotten
+    float t = -ro.y / rd.y;
+    col = applyFog(terrainShade(ro + rd * t, vec3(0.0, 1.0, 0.0), rd, 1.0), ro, rd, t);
+    hit = true;
   } else {
     col = skyColor(rd);
   }
-  // Gitter mot bandning i molnen (interleaved gradient noise, jämnare än vitt brus)
-  float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  vec4 cl = uClouds > 0.0 ? clouds(ro, rd, tHit, uCloudSteps, ign) : vec4(0.0);
+  vec4 cl = uHasClouds > 0.0 ? texture(uCloudTex, gl_FragCoord.xy / uRes) : vec4(0.0);
   col = col * (1.0 - cl.a) + cl.rgb;
-  float disc = t > 0.0 ? 0.0 : clamp(sunDisc(rd), 0.0, 1.0) * (1.0 - cl.a);
+  float disc = hit ? 0.0 : clamp(sunDisc(rd), 0.0, 1.0) * (1.0 - cl.a);
 
   col = aces(col * mix(0.9, 1.05, uDusk));
   col = pow(col, vec3(1.0 / 2.2));
@@ -614,10 +792,32 @@ function mulberry32(seed) {
   };
 }
 
+const DAY_LIGHT = norm([0.72, 0.6, 0.34]);
+const DUSK_LIGHT = norm([0.75, 0.15, 1]); // ungefär där kvällssolen står i bild
+
+function norm(v) {
+  const l = Math.hypot(...v);
+  return v.map((x) => x / l);
+}
+
+/** Solen på himlen: dagsolen högt till höger, kvällssolen på samma ställe i bild (v.sun) på varje skärm. */
+function sunDir(v) {
+  const sun = v.sun ?? { x: 0.86, y: 0.2 };
+  const dusk = norm([(sun.x * v.width - v.cx) / v.focal, (v.cy - sun.y * v.height) / v.focal, 1]);
+  const k = Math.min(1, Math.max(0, v.dusk));
+  return norm([0.72, 0.6, 0.34].map((d, i) => d + (dusk[i] - d) * k));
+}
+
+/** Solljusets riktning över terrängen, i steg så att skuggorna inte räknas om varje bild. */
+function lightDir(dusk) {
+  const k = Math.round(Math.min(1, Math.max(0, dusk)) * 20) / 20;
+  return { key: k, dir: norm(DAY_LIGHT.map((d, i) => d + (DUSK_LIGHT[i] - d) * k)) };
+}
+
 export class TerrainRenderer {
   /**
-   * Skapar landskapet på en egen canvas. Shadern byggs i bakgrunden där webbläsaren
-   * kan (KHR_parallel_shader_compile); tills den är klar är `ready` false och spelet
+   * Skapar landskapet på en egen canvas. Shaderna byggs i bakgrunden där webbläsaren
+   * kan (KHR_parallel_shader_compile); tills de är klara är `ready` false och spelet
    * ritar det enklare landskapet i 2D.
    * @returns {TerrainRenderer|null} null om WebGL2 saknas
    */
@@ -645,49 +845,68 @@ export class TerrainRenderer {
       this.failed = true;
       return;
     }
+    // Höjdrutnätet och G-bufferten är flyttal som shaderna ritar till.
+    if (!gl.getExtension('EXT_color_buffer_float')) {
+      console.info('[Ergcopter] Grafikkortet kan inte rita till flyttalstexturer – landskapet ritas i 2D.');
+      this.failed = true;
+      return;
+    }
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
-    const program = gl.createProgram();
-    this.shaders = [[gl.VERTEX_SHADER, VERTEX], [gl.FRAGMENT_SHADER, FRAGMENT]].map(([type, src]) => {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      gl.attachShader(program, shader);
-      return shader;
-    });
-    gl.linkProgram(program);
-    this.program = program;
+    this.programs = {
+      cache: this.#program(VERTEX, CACHE_FS),
+      shadow: this.#program(VERTEX, SHADOW_FS),
+      mesh: this.#program(MESH_VS, MESH_FS),
+      clouds: this.#program(VERTEX, CLOUDS_FS),
+      final: this.#program(VERTEX, FINAL_FS),
+    };
+    // Varje bildstorlek får sina egna buffertar: huvudbilden och de små bilderna (snapshots).
+    this.main = {};
+    this.snap = {};
     canvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.lost = true;
     });
   }
 
-  /** Shadern är byggd och landskapet kan ritas. */
+  #program(vs, fs) {
+    const { gl } = this;
+    const prog = gl.createProgram();
+    const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      gl.attachShader(prog, shader);
+      return shader;
+    });
+    gl.linkProgram(prog);
+    return { prog, shaders, loc: new Map() };
+  }
+
+  /** Shaderna är byggda och landskapet kan ritas. */
   get ready() {
     if (this.failed || this.lost) return false;
     if (!this.pending) return true;
-    const { gl, program } = this;
-    if (this.parallel && !gl.getProgramParameter(program, this.parallel.COMPLETION_STATUS_KHR)) return false;
+    const { gl } = this;
+    const all = Object.values(this.programs);
+    if (this.parallel && all.some((p) => !gl.getProgramParameter(p.prog, this.parallel.COMPLETION_STATUS_KHR))) return false;
     this.pending = false;
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      const log = this.shaders.map((s) => gl.getShaderInfoLog(s)).join(' ') || gl.getProgramInfoLog(program);
+    for (const p of all) {
+      if (gl.getProgramParameter(p.prog, gl.LINK_STATUS)) continue;
+      const log = p.shaders.map((s) => gl.getShaderInfoLog(s)).join(' ') || gl.getProgramInfoLog(p.prog);
       console.warn('[Ergcopter] 3D-landskapet går inte att bygga:', log);
       this.failed = true;
       return false;
     }
-    gl.useProgram(program);
+    // En triangel som täcker bilden, för passen som räknar per bildpunkt
+    this.quad = gl.createVertexArray();
+    gl.bindVertexArray(this.quad);
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(program, 'aPos');
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    this.u = Object.fromEntries(
-      ['uRes', 'uScale', 'uCenter', 'uFocal', 'uCam', 'uTime', 'uDusk', 'uThin', 'uTop', 'uPeaks', 'uPeakBox', 'uPad', 'uSun', 'uClouds', 'uPeakCount', 'uSteps', 'uCloudSteps', 'uShadowSteps', 'uNoise'].map((n) => [
-        n,
-        gl.getUniformLocation(program, n),
-      ])
-    );
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    // Rutnätet behöver inga hörndata: allt räknas fram ur gl_VertexID och gl_InstanceID.
+    this.empty = gl.createVertexArray();
     this.#noiseTexture();
     return true;
   }
@@ -707,7 +926,91 @@ export class TerrainRenderer {
     for (const wrap of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, wrap, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.uniform1i(this.u.uNoise, 0);
+  }
+
+  /** En textur att rita till (med djupbuffert om depth), återanvänd så länge storleken är densamma. */
+  #target(old, w, h, format, { depth = false, linear = false } = {}) {
+    if (old && old.w === w && old.h === h) return old;
+    const { gl } = this;
+    if (old) {
+      gl.deleteTexture(old.tex);
+      gl.deleteFramebuffer(old.fbo);
+      if (old.depth) gl.deleteRenderbuffer(old.depth);
+    }
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, format, w, h);
+    const filter = linear ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    let rb = null;
+    if (depth) {
+      rb = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+    }
+    return { tex, fbo, depth: rb, w, h };
+  }
+
+  #uniform(p, name, kind, ...values) {
+    let loc = p.loc.get(name);
+    if (loc === undefined) {
+      loc = this.gl.getUniformLocation(p.prog, name);
+      p.loc.set(name, loc);
+    }
+    if (loc) this.gl[kind](loc, ...values);
+  }
+
+  /** Gemensamma uniforms för ett pass, med målets storlek w × h pixlar. */
+  #begin(p, f, target, w, h) {
+    const { gl } = this;
+    gl.useProgram(p.prog);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+    gl.viewport(0, 0, w, h);
+    const u = (name, kind, ...vals) => this.#uniform(p, name, kind, ...vals);
+    u('uRes', 'uniform2f', w, h);
+    u('uScale', 'uniform1f', w / f.v.width);
+    u('uSize', 'uniform2f', f.v.width, f.v.height);
+    u('uCenter', 'uniform2f', f.v.cx, f.v.cy);
+    u('uFocal', 'uniform1f', f.v.focal);
+    u('uCam', 'uniform3f', f.v.camX, f.v.camY, 0);
+    u('uTime', 'uniform1f', f.v.time);
+    u('uDusk', 'uniform1f', f.v.dusk);
+    u('uThin', 'uniform1f', f.v.thin);
+    u('uTop', 'uniform1f', f.top);
+    u('uPeaks', 'uniform4fv', f.peaks);
+    u('uPeakBox', 'uniform4f', ...f.box);
+    u('uPeakCount', 'uniform1i', f.peakCount);
+    u('uPad', 'uniform3f', f.v.pad?.x ?? 0, f.v.pad?.z ?? 0, f.v.pad?.r ?? 0);
+    u('uLight', 'uniform3f', ...f.light);
+    u('uSunDir', 'uniform3f', ...f.sunDir);
+    u('uClouds', 'uniform1f', f.clouds);
+    u('uCloudSteps', 'uniform1i', f.q.cloudSteps);
+    u('uRowZ0', 'uniform1f', GRID.z0);
+    u('uRowLog', 'uniform1f', Math.log(GRID.rowStep));
+    u('uColK', 'uniform1f', f.colK);
+    u('uA', 'uniform1f', f.A);
+    u('uPrevCamX', 'uniform1f', f.prevCamX);
+    u('uPrevA', 'uniform1f', f.prevA);
+    u('uNC', 'uniform1i', f.NC);
+    u('uNR', 'uniform1i', f.NR);
+    u('uNoise', 'uniform1i', 0);
+    return u;
+  }
+
+  /** Binder texturen till enheten unit och samplern name. */
+  #bind(u, name, unit, target) {
+    const { gl } = this;
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, target ? target.tex : null);
+    u(name, 'uniform1i', unit);
   }
 
   /**
@@ -716,37 +1019,55 @@ export class TerrainRenderer {
    * @param {number} v.width, v.height  canvasens storlek i CSS-pixlar
    * @param {number} v.scale            upplösningen, målets pixlar per CSS-pixel
    * @param {number} v.cx, v.cy, v.focal  optiska mitten och brännvidden (CSS-pixlar)
+   * @param {number} [v.gridFocal]      brännvidden utan utzoomning: rutnätets kolumner följer den,
+   *                                    så att rutnätet inte behöver räknas om när kameran zoomar
    * @param {number} v.camX, v.camY     kamerans läge (m)
    * @param {number} v.dusk, v.thin, v.time
    * @param {{x:number, y:number}} [v.sun]  kvällssolens plats i bild, andel av bredd och höjd
    * @param {number} [v.clouds]         stackmolnen, 0 = klart, 1 = vanligt
-   * @param {'high'|'low'} [v.quality]  antal steg i strålföljningen
+   * @param {'high'|'low'} [v.quality]  rutnätets täthet och antal steg genom molnen
    * @param {{x:number, z:number, h:number, r:number}[]} v.peaks
    * @param {{x:number, z:number, r:number}|null} v.pad
    */
   render(v, remember = true) {
     if (!this.ready) return;
     if (remember) this.lastView = v;
-    const { gl, canvas, u } = this;
+    const { canvas } = this;
     const w = Math.max(1, Math.round(v.width * v.scale));
     const h = Math.max(1, Math.round(v.height * v.scale));
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
-    gl.viewport(0, 0, w, h);
-    gl.uniform2f(u.uRes, w, h);
-    gl.uniform1f(u.uScale, w / v.width);
-    gl.uniform2f(u.uCenter, v.cx, v.cy);
-    gl.uniform1f(u.uFocal, v.focal);
-    gl.uniform3f(u.uCam, v.camX, v.camY, 0);
-    gl.uniform1f(u.uTime, v.time);
-    gl.uniform1f(u.uDusk, v.dusk);
-    gl.uniform1f(u.uThin, v.thin);
+    this.#draw(remember ? this.main : this.snap, v, w, h, remember);
+  }
+
+  #draw(s, v, w, h, roomToZoom) {
+    const { gl } = this;
+    const q = QUALITY[v.quality ?? 'high'];
+    const gridFocal = v.gridFocal ?? v.focal;
+    const span = v.width + 2 * GRID.margin;
+    const colK = q.px / gridFocal; // kolumnens bredd i världen per meter avstånd
+    const cols = Math.ceil((span * gridFocal) / (v.focal * q.px)) + 2; // kolumner i bild
+    const NR = Math.ceil(Math.log(GRID.zFar / GRID.z0) / Math.log(GRID.rowStep)) + 1;
+    let NC = roomToZoom ? Math.ceil((span * GRID.zoomRoom) / q.px) + 4 : cols;
+    if (s.grid && s.grid.colK === colK && s.grid.NC >= cols) NC = s.grid.NC; // behåll rutnätet
+    NC = Math.max(NC, cols);
+    const gridKey = `${NC}|${NR}|${colK}`;
+    const fresh = s.gridKey !== gridKey;
+    if (fresh) {
+      s.cache = this.#target(s.cache, NC, NR, gl.RGBA32F);
+      s.shadow = this.#target(s.shadow, NC, NR, gl.R8);
+      s.gridKey = gridKey;
+      s.grid = { colK, NC };
+    }
+
+    // Topparna, och rutorna där de har flyttat sig sedan förra bilden
     const peaks = new Float32Array(MAX_PEAKS * 4);
     let top = 3800; // fjällen når som högst ~3 750 m långt bort
     const box = [Infinity, Infinity, -Infinity, -Infinity];
-    (v.peaks ?? []).slice(0, MAX_PEAKS).forEach((p, i) => {
+    const list = (v.peaks ?? []).slice(0, MAX_PEAKS);
+    list.forEach((p, i) => {
       peaks.set([p.x, p.z, p.h, p.r], i * 4);
       top = Math.max(top, p.h + 80);
       box[0] = Math.min(box[0], p.x - p.r);
@@ -754,17 +1075,114 @@ export class TerrainRenderer {
       box[2] = Math.max(box[2], p.x + p.r);
       box[3] = Math.max(box[3], p.z + p.r);
     });
-    gl.uniform1f(u.uTop, top);
-    gl.uniform4fv(u.uPeaks, peaks);
-    gl.uniform4f(u.uPeakBox, ...(box[0] < Infinity ? box : [0, 0, 0, 0]));
-    gl.uniform3f(u.uPad, v.pad?.x ?? 0, v.pad?.z ?? 0, v.pad?.r ?? 0);
-    gl.uniform2f(u.uSun, v.sun?.x ?? 0.86, v.sun?.y ?? 0.2);
-    gl.uniform1f(u.uClouds, v.clouds ?? 1);
-    gl.uniform1i(u.uPeakCount, Math.min(MAX_PEAKS, v.peaks?.length ?? 0));
-    const q = QUALITY[v.quality ?? 'high'];
-    gl.uniform1i(u.uSteps, q.steps);
-    gl.uniform1i(u.uCloudSteps, q.cloudSteps);
-    gl.uniform1i(u.uShadowSteps, q.shadowSteps);
+    const light = lightDir(v.dusk);
+    const smooth = norm(DAY_LIGHT.map((d, i) => d + (DUSK_LIGHT[i] - d) * Math.min(1, Math.max(0, v.dusk))));
+    const dirty = [];
+    const shadowDirty = [];
+    const prev = s.peaks ?? new Float32Array(MAX_PEAKS * 4);
+    for (let i = 0; i < MAX_PEAKS; i++) {
+      const a = prev.subarray(i * 4, i * 4 + 4);
+      const b = peaks.subarray(i * 4, i * 4 + 4);
+      if (a.every((x, k) => x === b[k])) continue;
+      for (const [x, z, ph, r] of [a, b]) {
+        if (ph <= 0) continue;
+        dirty.push([x - r, z - r, x + r, z + r]);
+        // Toppens skugga faller en bit bort, åt andra hållet från solen
+        const reach = Math.min(8000, (ph * Math.hypot(light.dir[0], light.dir[2])) / Math.max(0.1, light.dir[1]));
+        const sx = x - light.dir[0] * reach;
+        const sz = z - light.dir[2] * reach;
+        shadowDirty.push([Math.min(x, sx) - r, Math.min(z, sz) - r, Math.max(x, sx) + r, Math.max(z, sz) + r]);
+      }
+    }
+    // För många ändringar: räkna om allt
+    const tooMany = shadowDirty.length > MAX_DIRTY;
+    s.peaks = peaks;
+
+    const A = ((v.cx + GRID.margin) * gridFocal) / (v.focal * q.px);
+    const f = {
+      v,
+      q,
+      top,
+      peaks,
+      box: box[0] < Infinity ? box : [0, 0, 0, 0],
+      peakCount: list.length,
+      light: smooth,
+      sunDir: sunDir(v),
+      clouds: v.clouds ?? 1,
+      colK,
+      A,
+      prevCamX: s.camX ?? v.camX,
+      prevA: s.A ?? A,
+      NC,
+      NR,
+    };
+    const valid = !fresh && !tooMany && s.camX !== undefined;
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(this.quad);
+    gl.activeTexture(gl.TEXTURE0);
+
+    // 1a. Höjder och lutningar
+    let u = this.#begin(this.programs.cache, f, s.cache, NC, NR);
+    u('uValid', 'uniform1i', valid ? 1 : 0);
+    u('uDirtyCount', 'uniform1i', dirty.length);
+    if (dirty.length) u('uDirty', 'uniform4fv', new Float32Array(dirty.flat()));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // 1b. Skuggor
+    u = this.#begin(this.programs.shadow, f, s.shadow, NC, NR);
+    this.#bind(u, 'uCache', 1, s.cache);
+    u('uLight', 'uniform3f', ...light.dir); // skuggorna följer solen i steg
+    u('uValid', 'uniform1i', valid && s.lightKey === light.key ? 1 : 0);
+    u('uDirtyCount', 'uniform1i', shadowDirty.length);
+    if (shadowDirty.length) u('uDirty', 'uniform4fv', new Float32Array(shadowDirty.flat()));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    s.lightKey = light.key;
+    s.camX = v.camX;
+    s.A = A;
+
+    // 2. G-bufferten: rutnätet som trianglar, och spegelbilden om sjön kan synas
+    s.g = this.#target(s.g, w, h, gl.RGBA32F, { depth: true });
+    const reflW = Math.max(1, Math.round(w / 2));
+    const reflH = Math.max(1, Math.round(h / 2));
+    const water = v.cy + ((v.camY - WATER_M) * v.focal) / 3500 < v.height;
+    if (water) s.refl = this.#target(s.refl, reflW, reflH, gl.RGBA32F, { depth: true });
+    gl.bindVertexArray(this.empty);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    for (const [target, tw, th, stride, mirror] of [[s.g, w, h, 1, 0], ...(water ? [[s.refl, reflW, reflH, 2, 1]] : [])]) {
+      u = this.#begin(this.programs.mesh, f, target, tw, th);
+      this.#bind(u, 'uCache', 1, s.cache);
+      this.#bind(u, 'uShadow', 2, s.shadow);
+      u('uRow0', 'uniform1i', 0);
+      u('uStride', 'uniform1i', stride);
+      u('uMirror', 'uniform1f', mirror);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clearDepth(1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      const n = Math.ceil(cols / stride);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 2 * n, Math.floor((NR - 1) / stride));
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(this.quad);
+
+    // 3. Molnen i halv upplösning
+    const hasClouds = f.clouds > 0;
+    if (hasClouds) {
+      s.clouds = this.#target(s.clouds, reflW, reflH, gl.RGBA16F, { linear: true });
+      u = this.#begin(this.programs.clouds, f, s.clouds, reflW, reflH);
+      this.#bind(u, 'uG', 3, s.g);
+      u('uGRatio', 'uniform1f', w / reflW);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    // 4. Färgerna till canvasen
+    u = this.#begin(this.programs.final, f, null, w, h);
+    this.#bind(u, 'uG', 3, s.g);
+    this.#bind(u, 'uReflG', 4, water ? s.refl : null);
+    this.#bind(u, 'uCloudTex', 5, hasClouds ? s.clouds : null);
+    u('uReflScale', 'uniform1f', water ? reflW / v.width : 0);
+    u('uHasClouds', 'uniform1f', hasClouds ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -777,6 +1195,7 @@ export class TerrainRenderer {
   snapshots(views) {
     if (!this.ready) return null;
     const shots = views.map((v) => {
+      this.snap.camX = undefined; // varje bild har sin egen kamera: räkna om rutnätet
       this.render(v, false);
       // Kopian i CSS-pixlar: ritad i högre upplösning och nedskalad blir kanterna mjuka
       const copy = document.createElement('canvas');

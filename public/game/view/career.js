@@ -4,10 +4,13 @@
 
 import { drawThumb } from './thumbs.js';
 import { drawHelicopter } from './heli-draw.js';
+import { HeroHeli } from './hero-heli.js';
 import { starSpan } from './hud.js';
 import { programOf } from '../core/exercise.js';
 
 const $ = (id) => document.getElementById(id);
+// Där rubrikens helikopter ryms i sin canvas (andelar): stjärten till vänster, medarna nere
+const HERO_RECT = [0.07, 0.16, 0.9, 0.9];
 
 const STEPS = [
   {
@@ -56,6 +59,7 @@ export class CareerMenu {
   photos = null;
   #thumbs = []; // korten som visas: { canvas, thumb, livery }
   #photoCache = new Map(); // landskapsbilden per kort, tas en gång
+  #hero; // rubrikens helikopter i 3D
 
   constructor() {
     this.el = {
@@ -72,6 +76,7 @@ export class CareerMenu {
       free: $('menu-free'),
       heli: $('career-heli'),
     };
+    this.#hero = new HeroHeli(this.el.heli, (canvas, livery) => drawHeader(canvas, this.m?.colors, livery), HERO_RECT);
     this.tab = 'school';
     this.m = null;
     this.onChoose = null;
@@ -102,7 +107,7 @@ export class CareerMenu {
     e.alarm.textContent = m.alarm ?? '';
     e.free.hidden = !m.junior;
     e.pull.replaceChildren('Dra för att starta', Object.assign(document.createElement('strong'), { textContent: m.suggested?.name ?? 'Fri flygning' }));
-    drawHeader(e.heli, m.colors, m.rescue);
+    this.#hero.show(m.rescue);
     // Fliken där förslaget finns
     const s = m.suggested;
     this.tab = !s ? (m.junior ? 'missions' : 'school') : s.kind === 'exam' ? 'exam' : s.steps ? 'exercises' : 'school';
@@ -248,14 +253,16 @@ export class CareerMenu {
   }
 }
 
-/** Helikoptern i rubriken: räddningshelikoptern som man siktar mot. */
+/** Reservbild utan WebGL: den platta helikoptern, skalad till canvasen. */
 function drawHeader(canvas, c, livery) {
+  if (!c) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  ctx.translate(canvas.width / 2 + 10, 78);
+  const k = Math.min(canvas.width / 320, canvas.height / 130);
+  ctx.translate(canvas.width * 0.45, canvas.height * 0.6);
   ctx.rotate(-0.06);
-  ctx.scale(1.15, 1.15);
+  ctx.scale(1.15 * k, 1.15 * k);
   drawHelicopter(ctx, { blur: 0.6, angle: 0.5, tailAngle: 0.2 }, c, livery);
   ctx.restore();
 }
