@@ -306,6 +306,106 @@ float peakAt(vec2 p, vec4 k, int oct) {
   return k.z * (cone + (lift - carve) * w - 0.07 * gully * smoothstep(0.98, 0.7, cone) * w);
 }
 
+// Startskärmens massiv (uVista): en huvudtopp med långa åsar åt olika håll, som en alptopp sedd från luften,
+// i stället för en kon. Två långa armar bildar en ryggrad och två kortare sporrar sticker ut åt sidorna.
+// Krönen sjunker i förtoppar, axlar och sadlar. Sedan skär ett erosionsfilter raviner och klippribbor
+// längs fallinjen, där snön ligger i rännor. Toppen ligger exakt på k.z.
+float sGully = 0.0; // massifAt: hur djupt i en ränna punkten ligger (0–1)
+float sMask = 0.0;  // heightAt: rännan i det massiv som bestämmer höjden, där snön samlas (0–1)
+
+// Massivets grundform (i toppens höjd) ur armarna, utan raviner. u är förvrängd, i radier från toppen.
+float massifShape(vec2 u, float seed, float base, float ratio) {
+  float f = -1e4;
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    float j = fract(seed * 0.37 + fi * 0.71) - 0.5;
+    float ang = base + (i == 0 ? 0.0 : i == 1 ? 3.1416 + 0.7 * j : i == 2 ? 1.5708 + 0.9 * j : -1.5708 + 0.9 * j);
+    vec2 dir = vec2(cos(ang), sin(ang));
+    float L = (i == 0 ? 0.95 : i == 1 ? 0.7 : i == 2 ? 0.5 : 0.38) * (0.85 + 0.3 * fract(seed * 0.53 + fi * 0.29));
+    float t = dot(u, dir);
+    float tc = clamp(t, 0.0, L);
+    float perp = length(u - dir * tc);
+    float s = tc / L;
+    // Krönet: brant just under toppen, sedan en flackare axel. Ryggraden är på en del massiv en lång egg.
+    float drop = i < 2 ? mix(0.36, 0.1, fract(seed * 0.83)) : 0.36;
+    float crest = 1.0 - drop * smoothstep(0.0, 0.3, s) - (0.88 - drop) * s * s;
+    // Förtoppar och hack i krönet: en åsprofil som en riktig egg, inte en rak linjal från toppen
+    crest += (0.3 * (vnoise(vec2(s * 5.0 + seed, fi * 3.7)) - 0.5) + 0.1 * (vnoise(vec2(s * 13.0 - seed, fi * 1.3)) - 0.5)) * smoothstep(0.05, 0.3, s) * (1.0 - 0.6 * s);
+    // Sidorna i meter per meter (ratio = radie / höjd), olika branta på var sida: brant under krönet och
+    // flackare nedåt (konkavt, som en eroderad fjällsida), så att toppen inte blir en pyramid med raka sidor
+    float side = dot(u - dir * tc, vec2(-dir.y, dir.x));
+    float steep = (mix(0.85, 0.6, smoothstep(-0.08, 0.08, side)) + 0.2 * fract(seed * 0.41 + fi * 0.17)) * ratio;
+    float prof = 0.18 * (1.0 - exp(-perp / 0.1)) + 0.62 * perp;
+    float arm = crest - steep * prof - 2.0 * max(t - L, 0.0) - 0.8 * max(-t, 0.0);
+    f = smax(f, arm, 0.05);
+  }
+  return f;
+}
+
+// Erosionsfilter (som clayjohns "eroded terrain noise"): i varje cell ränder längs fallinjen (dir är
+// vinkelrät mot lutningen), mjukt blandade med grannarna, så att rännorna grenar sig nedför sluttningen.
+// Ger höjden (-1..1) och dess lutning.
+vec3 erosionCells(vec2 p, vec2 dir) {
+  vec2 ip = floor(p);
+  vec2 fp = fract(p);
+  vec3 va = vec3(0.0);
+  float wt = 0.0;
+  for (int i = -2; i <= 1; i++) {
+    for (int j = -2; j <= 1; j++) {
+      vec2 o = vec2(float(i), float(j));
+      vec2 pp = fp + o - hash22(ip - o) * 0.5;
+      float w = exp(-2.0 * dot(pp, pp));
+      float mag = dot(pp, dir) * 6.2832;
+      va += vec3(cos(mag), -sin(mag) * dir) * w;
+      wt += w;
+    }
+  }
+  return va / wt;
+}
+
+float massifAt(vec2 p, vec4 k, int oct) {
+  sGully = 0.0;
+  vec2 d = p - k.xy;
+  float r = length(d) / k.w;
+  if (r >= 1.0) return -1e4;
+  float seed = fract(k.z * 0.01373) * 40.0;
+  vec2 u = d / k.w;
+  // Krokiga åsar, inte linjaler; ingen förvrängning just vid toppen så att den står kvar
+  vec2 wu = u + smoothstep(0.0, 0.25, r) * (0.2 * (vec2(vnoise(u * 2.2 + seed), vnoise(u * 2.2 - seed + 5.0)) - 0.5)
+    + 0.06 * (vec2(vnoise(u * 7.0 + seed), vnoise(u * 7.0 - seed + 3.0)) - 0.5));
+  // Ryggradens riktning: bråkdelen av radien är ett varv (0–1) när den är satt, annars slumpad
+  float turn = fract(k.w);
+  float base = turn > 0.0 ? turn * 6.2832 : seed * 2.3;
+  float ratio = k.w / k.z;
+  float f = massifShape(wu, seed, base, ratio);
+  // Lutningen (i toppens höjd per radie) styr rännornas riktning. Den räknas över ~100 m, så att den blir
+  // liten på krönen, där rännorna från båda sidor annars möttes i en kam av taggar.
+  const float E = 0.025;
+  vec2 grad = vec2(massifShape(wu + vec2(E, 0.0), seed, base, ratio) - massifShape(wu - vec2(E, 0.0), seed, base, ratio),
+    massifShape(wu + vec2(0.0, E), seed, base, ratio) - massifShape(wu - vec2(0.0, E), seed, base, ratio)) / (2.0 * E);
+  // Rännorna följer fallinjen, och varje finare oktav böjs av de grövre så att de grenar sig
+  vec2 dir = vec2(grad.y, -grad.x) * 0.9;
+  vec3 e = vec3(0.0);
+  float a = 0.5, fq = 1.0;
+  int n = oct >= 7 ? 3 : 2;
+  for (int i = 0; i < 4; i++) {
+    if (i >= n) break;
+    e += erosionCells(wu * 4.5 * fq + seed, dir + e.zy * vec2(1.0, -1.0)) * a * vec3(1.0, fq, fq);
+    a *= 0.45;
+    fq *= 2.0;
+  }
+  // Djupast i de branta sidorna, inget vid toppen och inget på flacka partier
+  float slope = length(grad) / ratio; // meter per meter
+  float amt = smoothstep(0.02, 0.15, r) * smoothstep(0.25, 0.6, slope);
+  f += 0.085 * e.x * amt;
+  sGully = smoothstep(-0.05, -0.5, e.x) * amt * (1.0 - smoothstep(0.75, 0.95, r));
+  // Grövre eroderat brus: block och små kammar, inget vid toppen
+  f += 0.08 * eroded(u * 4.0 + seed, min(oct, 6)) * smoothstep(0.0, 0.12, r);
+  // Tonas ned mot kanten, så att massivet går över i fjällen omkring
+  f -= 1.2 * smoothstep(0.7, 1.0, r);
+  return k.z * min(f, 1.0);
+}
+
 // Höjden (m) i punkten p = (x, z): platt dalbotten i helikopterns plan, sjön bakom,
 // skogsklädda kullar och sedan fjällen. oct = detaljnivå.
 float heightAt(vec2 p, int oct) {
@@ -394,9 +494,16 @@ float heightAt(vec2 p, int oct) {
   float wet = max(lake, tarn);
   // Trädkronorna ger skogen struktur på nära håll
   if (oct > 9) h += forestAt(p, h) * (11.0 + 9.0 * vnoise(p * 0.15)) * (1.0 - wet) * smoothstep(9.5, 11.5, float(oct));
+  sMask = 0.0;
   if (p.x > uPeakBox.x && p.x < uPeakBox.z && p.y > uPeakBox.y && p.y < uPeakBox.w) {
     for (int i = 0; i < uPeakCount; i++) {
-      h = smax(h, peakAt(p, uPeaks[i], oct - 1), 60.0);
+      if (uVista > 0.5) {
+        float hm = massifAt(p, uPeaks[i], oct - 1);
+        if (hm > h) sMask = sGully;
+        h = smax(h, hm, 60.0);
+      } else {
+        h = smax(h, peakAt(p, uPeaks[i], oct - 1), 60.0);
+      }
     }
   }
   return h;
@@ -429,7 +536,7 @@ vec3 sunDir() {
 
 vec3 sunColor() {
   vec3 c = mix(vec3(1.0, 0.94, 0.85) * 3.6, vec3(1.0, 0.64, 0.34) * 5.2, uDusk);
-  return mix(c, vec3(1.0, 0.58, 0.3) * 5.4, 0.6 * uVista); // utsikten: varmt släpljus som i en solnedgång
+  return mix(c, vec3(1.0, 0.6, 0.36) * 4.6, uVista); // utsikten: varmt, gyllene släpljus som i en solnedgång
 }
 
 // Himlen utan moln: djupblå zenit och ljus horisont på dagen, på kvällen glöd mot solen
@@ -547,7 +654,7 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
   float low = 1.0 - exp(-a2 * exp(-ro.y * b2) * k2 * smoothstep(400.0, 1600.0, ro.y));
   // Dalens dis är djupare blått än luften högre upp, och ligger närmast marken: läggs på först
   col = mix(col, mix(vec3(0.1, 0.19, 0.32), vec3(0.16, 0.14, 0.2), uDusk), low * 0.75);
-  tau *= 1.0 - 0.5 * uVista; // utsikten: klarare luft, de bortre kedjorna behåller kontrasten
+  tau *= 1.0 - 0.62 * uVista; // utsikten: klarare luft, de bortre kedjorna behåller kontrasten
   float amount = 1.0 - exp(-tau);
   vec3 sun = sunDir();
   vec3 hor = skyBase(vec3(rd.x, 0.015, rd.z));
@@ -616,8 +723,11 @@ float cloudMap(vec3 p, int oct, float sharp) {
 
 // Molnens skugga på marken: tätheten där solens stråle går genom molnlagret
 float cloudShadow(vec3 pos) {
+  // Över molnen faller ingen molnskugga: annars skuggade molnen under topparna dem bakifrån
+  float over = smoothstep(CLOUD_BASE + 450.0, CLOUD_TOP, pos.y);
+  if (over >= 1.0) return 1.0;
   vec3 c = pos + uLight * ((CLOUD_BASE + 450.0 - pos.y) / max(uLight.y, 0.05));
-  return 1.0 - 0.7 * smoothstep(0.0, 0.25, cloudMap(c, 3, 4.0));
+  return 1.0 - 0.7 * (1.0 - over) * smoothstep(0.0, 0.25, cloudMap(c, 3, 4.0));
 }
 
 // Stackmolnen längs strålen fram till tmax, förmultiplicerad färg
@@ -651,7 +761,7 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
     vec3 p = ro + rd * t;
     dt = max(30.0, 0.013 * t) * (fine ? 0.3 : 1.0);
     // Mjuka kanter: tätheten växer långsamt inåt, så att molnen tonar ut i diset i stället för att bli utklippta
-    float sharp = mix(2.4, 1.7, smoothstep(2000.0, 20000.0, t));
+    float sharp = mix(2.4, 1.7, smoothstep(2000.0, 20000.0, t)) * (1.0 + 0.7 * uVista); // utsikten: bulligare, tydligare moln
     float den = cloudMap(p, t < 12000.0 ? 5 : 4, sharp);
     if (den > 0.005) {
       // Första träffen: ett steg tillbaka och sedan kortare steg, så att kanten blir skarp
@@ -666,8 +776,9 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
       // vita, belysta toppar och gråblå sidor och bottnar, så att molnen får volym
       float y = clamp((p.y - CLOUD_BASE) / 900.0, 0.0, 1.0);
       // Solen står bakom kameran: utan den här självskuggningen blev sidan mot oss en platt vit yta
-      float dif = exp(-4.5 * cloudMap(p + sun * 220.0, 3, sharp)) * (0.22 + 0.78 * smoothstep(0.05, 0.8, y));
-      vec3 lin = amb * (0.25 + 0.7 * y) + sunCol * dif * 0.66;
+      float dif = exp(-(4.5 + 3.5 * uVista) * cloudMap(p + sun * 220.0, 3, sharp)) * (0.22 + 0.78 * smoothstep(0.05, 0.8, y));
+      // Utsikten: mörkare skuggsidor mellan bulorna, så att molnhavet får form i det låga ljuset
+      vec3 lin = amb * (0.25 + 0.7 * y) * (1.0 - 0.3 * uVista) + sunCol * dif * 0.66;
       vec3 c = mix(vec3(1.0), vec3(0.72, 0.78, 0.88), den) * lin;
       // Tunna kanter släpper igenom mycket: molnet tonar ut i stället för att sluta i en skarp, vit kontur
       float alpha = 1.0 - exp(-den * den * dt * 0.05);
@@ -708,6 +819,7 @@ void main() {
   if (uValid == 1 && n == colAt(c, rowStart(z, uPrevCamX, uPrevA)) && !dirty(p)) discard;
   int oct = octFor(z);
   float h = heightAt(p, oct);
+  float mask = sMask;
   // Lutningen med finare detaljer än höjden, som ljuset sedan visar
   // Steget följer radavståndet (0,4 % av z): finare detaljer än raderna hann inte med i bild och blev
   // trappsteg av snö och sten på de branta väggarna. De finaste detaljerna lägger bildpunktsshadern på.
@@ -715,7 +827,7 @@ void main() {
   float h0 = heightAt(p, oct + 1);
   float hx = heightAt(p + vec2(e, 0.0), oct + 1);
   float hz = heightAt(p + vec2(0.0, e), oct + 1);
-  outColor = vec4(h, (hx - h0) / e, (hz - h0) / e, 0.0);
+  outColor = vec4(h, (hx - h0) / e, (hz - h0) / e, mask);
 }`;
 
 // 1b. Skuggorna i rutnätet: strålen mot solen följs genom höjderna i rutnätet.
@@ -792,6 +904,7 @@ out float vZ;
 out vec2 vGrad;
 out float vShadow;
 out float vWater;
+out float vMask;
 
 void main() {
   int i = (gl_VertexID >> 1) * uStride;
@@ -811,6 +924,7 @@ void main() {
   vZ = z;
   vGrad = g.yz;
   vShadow = texelFetch(uShadow, tc, 0).x;
+  vMask = g.w;
   vWater = g.x < WATER ? 1.0 : 0.0;
 }`;
 
@@ -822,10 +936,12 @@ in float vZ;
 in vec2 vGrad;
 in float vShadow;
 in float vWater;
+in float vMask;
 out vec4 outColor;
 void main() {
   ${mirror ? '// I spegelbilden ligger vattenytan kvar där den är och skulle dölja det som speglas\n  if (vWater > 0.5) discard;' : ''}
-  outColor = vec4(vZ, vGrad, vShadow + 2.0 * step(0.5, vWater));
+  // Fjärde kanalen: skuggan (0–1) + 2 för vatten + 4 × snörännan i 64 steg, se gShadow, gWater och gMask
+  outColor = vec4(vZ, vGrad, vShadow + 2.0 * step(0.5, vWater) + 4.0 * floor(clamp(vMask, 0.0, 1.0) * 63.0 + 0.5));
 }`;
 
 // 3. Stackmolnen i halv upplösning, fram till terrängen i G-bufferten.
@@ -890,7 +1006,7 @@ vec2 peakSnowLine(vec2 p) {
   return vec2(line, near);
 }
 
-vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
+vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha, float gully) {
   vec3 sun = uLight;
   vec2 p = pos.xz;
   float h = pos.y;
@@ -962,6 +1078,12 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   float sw = 0.1 * farS; // bredare övergång långt bort, så att snöfälten inte blir prickiga
   // Bara de flackare partierna håller snön: snöfält och fåror med mycket mörk sten emellan, som i ett flygfoto
   float snow = above * smoothstep(0.63 - sw + 0.13 * farS, 0.8 + sw + 0.13 * farS, hold + 0.3 * (streak - 0.5) * (1.0 - 0.5 * farS));
+  // Startskärmens massiv: snön ligger i rännorna och på flacka avsatser, med mörk sten på ribborna emellan
+  if (uVista > 0.5 && pk.y > 0.0) {
+    float ledge = smoothstep(0.91, 0.97, slopeBig + 0.12 * (n2 - 0.5) + 0.14 * (streak - 0.5));
+    float chute = smoothstep(0.25, 0.65, gully + 0.3 * (streak - 0.5)) * smoothstep(0.3, 0.5, slopeBig + 0.1 * (n2 - 0.5));
+    snow = mix(snow, above * max(ledge, chute), pk.y);
+  }
   col = mix(col, vec3(0.78, 0.81, 0.86), snow);
   col = padColor(p, col);
 
@@ -978,7 +1100,7 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   // har en ljus och en skuggad sida även långt bort
   // Klart blått himmelsljus i skuggan: snön i skugga blir ljust blågrå och stenen mörk skiffer, som i ett flygfoto
   vec3 skyAmb = mix(vec3(0.25, 0.4, 0.8), vec3(0.28, 0.33, 0.52), uDusk) * (1.0 - 0.3 * uThin);
-  skyAmb = mix(skyAmb, vec3(0.14, 0.3, 0.78), 0.7 * uVista);
+  skyAmb = mix(skyAmb, vec3(0.33, 0.35, 0.62), 0.8 * uVista); // utsikten: blåvioletta skuggsidor
   vec3 lin = dif * sha * sunColor() + sky * occ * skyAmb * mix(0.6, 0.5, uDusk) + bou * mix(vec3(0.25, 0.22, 0.16), vec3(0.3, 0.18, 0.1), uDusk) * 0.4;
   col *= lin;
   // Snön blänker i solen
@@ -986,6 +1108,11 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   col += snow * spe * sha * sunColor() * 0.25;
   return col;
 }
+
+// G-buffertens fjärde kanal (se meshFS): skuggan, vatten och snörännan
+float gShadow(vec4 g) { return min(g.w - 4.0 * floor(g.w / 4.0), 1.0); }
+bool gWater(vec4 g) { return g.w - 4.0 * floor(g.w / 4.0) > 1.5; }
+float gMask(vec4 g) { return floor(g.w / 4.0) / 63.0; }
 
 vec3 gridNormal(vec4 g) {
   return normalize(vec3(-g.y, 1.0, -g.z));
@@ -1013,7 +1140,7 @@ vec3 waterShade(vec3 pos, vec3 rd, float t, vec2 frag) {
       vec3 pm = uCam + rdm * tm;
       vec3 pr = vec3(pm.x, 2.0 * WATER - pm.y, pm.z);
       vec3 dir = vec3(rdm.x, -rdm.y, rdm.z);
-      vec3 c = terrainShade(pr, gridNormal(g), dir, min(g.w, 1.0));
+      vec3 c = terrainShade(pr, gridNormal(g), dir, gShadow(g), gMask(g));
       refl = applyFog(c, pos, dir, max(tm - t, 0.0));
     }
   }
@@ -1065,14 +1192,14 @@ void main() {
   if (hit) {
     float t = g.x / rd.z;
     vec3 pos = ro + rd * t;
-    if (g.w > 1.5) col = waterShade(pos, rd, t, frag);
-    else col = terrainShade(pos, gridNormal(g), rd, min(g.w, 1.0));
+    if (gWater(g)) col = waterShade(pos, rd, t, frag);
+    else col = terrainShade(pos, gridNormal(g), rd, gShadow(g), gMask(g));
     col = valleyMist(col, pos, t);
     col = applyFog(col, ro, rd, t);
   } else if (rd.y < 0.0 && -ro.y / rd.y * rd.z < uRowZ0) {
     // Närmare än rutnätets första rad: platt dalbotten
     float t = -ro.y / rd.y;
-    col = applyFog(terrainShade(ro + rd * t, vec3(0.0, 1.0, 0.0), rd, 1.0), ro, rd, t);
+    col = applyFog(terrainShade(ro + rd * t, vec3(0.0, 1.0, 0.0), rd, 1.0, 0.0), ro, rd, t);
     hit = true;
   } else {
     col = skyColor(rd);
@@ -1091,7 +1218,7 @@ void main() {
   col = clamp(mix(vec3(luma), col, 1.08), 0.0, 1.0);
   // Utsikten: blå skuggor och varma högdagrar (split toning), som ett kvällsfoto i fjällen
   if (uVista > 0.0) {
-    vec3 tone = mix(vec3(0.74, 0.92, 1.28), vec3(1.06, 0.98, 0.9), smoothstep(0.15, 0.75, luma));
+    vec3 tone = mix(vec3(0.76, 0.95, 1.2), vec3(1.06, 0.98, 0.9), smoothstep(0.15, 0.75, luma));
     col = clamp(mix(col, col * tone, uVista), 0.0, 1.0);
   }
   // Lite mer kontrast på dagen: mörkare skuggsidor och klarare snö
@@ -1357,6 +1484,13 @@ export class TerrainRenderer {
    * @param {'high'|'low'} [v.quality]  rutnätets täthet och antal steg genom molnen
    * @param {{x:number, z:number, h:number, r:number}[]} v.peaks
    * @param {{x:number, z:number, r:number}|null} v.pad
+   * @param {number} [v.vista]          0–1, startskärmens utsikt: mindre snö nära, blå skuggor, kvällston
+   * @param {{x:number, z:number, rx:number, rz:number}} [v.lake]  en extra sjö i dalen
+   * @param {number[]} [v.light]        egen riktning för solljuset över terrängen
+   * @param {boolean} [v.mirror]        rita spegelbilden i sjön även när heuristiken säger nej
+   * @param {number} [v.cloudNear]      inga moln närmare än så här (m, standard 4 500)
+   * @param {number} [v.cloudMore]      tätare stackmoln på nära håll (0 = vanligt)
+   * @param {number} [v.cloudLift]      molnlagret så här mycket högre (m)
    */
   render(v) {
     if (!this.ready) return;

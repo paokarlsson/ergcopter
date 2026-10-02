@@ -18,19 +18,40 @@ const INTAKE_X = 0.5; // motorernas luftintag på var sida om masten // punkten 
 const SIZE_STEP = 64; // canvasens storlek avrundas uppåt, så att den inte byts varje bild
 const MAX_DIM = 2400; // canvasens största sida i bildpunkter
 
+// Dekalerna (den vita lackeringen): var på kroppen de sitter ([z0, y0, z1, y1] i meter, sett från sidan),
+// var i texturen de ritas ([x, y, b, h] i bildpunkter, samma proportioner) och hur nära mitten (|x|) de
+// slutar, så att de bara hamnar på sidorna. Texten ritas med spelets typsnitt.
+const DECAL_SIZE = [1024, 512];
+const DECALS = [
+  { at: [-2.02, 1.03, -0.85, 1.29], px: [0, 0, 1024, 230], minAx: 0.3, text: 'RÄDDNING', color: '#ffffff', weight: 800 },
+  { at: [-4.55, 1.765, -3.05, 1.99], px: [0, 250, 640, 96], minAx: 0.06, text: 'SE-JRF', color: '#ffffff', weight: 800 },
+  { at: [0.87, 0.99, 1.17, 1.29], px: [660, 250, 160, 160], minAx: 0.3, emblem: true },
+  { at: [-0.6, 1.305, 0.25, 1.355], px: [0, 430, 1024, 60], minAx: 0.3, text: 'NÖDUTGÅNG  ▸  DRA', color: '#4a4e55', weight: 600 },
+  { at: [-7.75, 2.58, -7.2, 2.88], px: [840, 250, 180, 98], minAx: 0.03, text: '112', color: '#ffffff', weight: 800 },
+];
+const DECAL_GLSL = DECALS.map((d) => {
+  const [z0, y0, z1, y1] = d.at;
+  const [x, y, w, h] = d.px;
+  const [W, H] = DECAL_SIZE;
+  const f = (v) => v.toFixed(4);
+  return `  c = decalAt(p, vec4(${f(z0)}, ${f(y0)}, ${f(z1)}, ${f(y1)}), vec4(${f(x / W)}, ${f(y / H)}, ${f((x + w) / W)}, ${f((y + h) / H)}), ${f(d.minAx)});
+  d = vec4(mix(d.rgb, c.rgb, c.a), max(d.a, c.a));`;
+}).join('\n');
+
 const VERTEX = `#version 300 es
 in vec3 aPos;
 in vec3 aNor;
 uniform mat4 uProj;
 uniform mat4 uView;
 uniform mat4 uModel;
+uniform vec3 uNScale;   // 1/skalan² per axel: normalerna blir rätt när modellen sträcks olika mycket på ledderna
 out vec3 vW;
 out vec3 vN;
 out vec3 vObj;
 void main() {
   vec4 w = uModel * vec4(aPos, 1.0);
   vW = w.xyz;
-  vN = mat3(uModel) * aNor;
+  vN = mat3(uModel) * (aNor * uNScale);
   vObj = aPos;
   gl_Position = uProj * uView * w;
 }`;
@@ -60,6 +81,8 @@ uniform vec3 uRimDir;   // motljuset: riktning mot en andra, låg sol bakom heli
 uniform vec3 uRimCol;   // och dess färg; svart = inget motljus
 uniform float uWhite;   // 1 = vit kabin med röd bakdel, nos och stjärt (livery.scheme 'white', startskärmen)
 uniform float uShine;   // 0–1: blank lack och glas som speglar kvällshimlen (startskärmens närbild)
+uniform sampler2D uDecals; // dekalerna: texter och emblem som ritas med canvas (buildDecals)
+uniform float uDecal;   // 1 = dekalerna syns (den vita lackeringen)
 uniform highp sampler2DShadow uShadowMap; // djupet sett från solen (skuggkartan)
 uniform mat4 uLightVP;
 out vec4 outColor;
@@ -141,6 +164,22 @@ vec3 skyEnv(vec3 r, float detail) {
   return c;
 }
 
+// Dekalerna på kroppens sidor, projicerade från sidan: rect är [z0, y0, z1, y1] på kroppen, uv rutan i
+// texturen. På höger sida (−x) läses texten med nosen till höger, på vänster sida spegelvänt tillbaka.
+vec4 decalAt(vec3 p, vec4 rect, vec4 uv, float minAx) {
+  vec2 f = (p.zy - rect.xy) / (rect.zw - rect.xy);
+  f.x = mix(1.0 - f.x, f.x, step(p.x, 0.0));
+  float on = step(0.0, f.x) * step(f.x, 1.0) * step(0.0, f.y) * step(f.y, 1.0) * smoothstep(minAx, minAx + 0.08, abs(p.x));
+  vec4 c = texture(uDecals, mix(uv.xy, uv.zw, vec2(f.x, 1.0 - f.y))); // förmultiplicerad med alfa
+  return vec4(pow(c.rgb / max(c.a, 1e-3), vec3(2.2)), c.a * on);
+}
+vec4 decals(vec3 p) {
+  vec4 d = vec4(0.0);
+  vec4 c;
+${DECAL_GLSL}
+  return d * uDecal;
+}
+
 // Lackering, rutor och skarvar på kroppen. Returnerar färg och glans (a = 1 är glas).
 vec4 livery(vec3 p, out float lines) {
   float z = p.z;
@@ -179,9 +218,11 @@ vec4 livery(vec3 p, out float lines) {
   col = mix(col, uAccent, inside(rearCowl) * step(1.9, y));
   col = mix(col, uTrim, inside(abs(rearCowl - 0.12) - 0.04) * step(1.95, y) * inside(z - 0.2));
   // Nosen i dekorfärgen
-  col = mix(col, uAccent, inside(2.38 - z) * inside(y - 1.02) * (1.0 - uLower));
-  // Den vita lackeringens nos: hela noskonen under vindrutan i dekorfärgen
-  col = mix(col, uAccent, inside(2.3 - z) * inside(y - 1.3) * uWhite);
+  col = mix(col, uAccent, inside(2.38 - z) * inside(y - 1.02) * (1.0 - uLower) * (1.0 - uWhite));
+  // Den vita lackeringens nos: vit noskon under vindrutan, med dekorfärgen som en bred rand längs
+  // nosens underkant, som fortsätter den smala randen längs kabinen (H135 i räddningsfärger)
+  // (framkanten lutar bakåt nedåt, så att randen växer ur den smala randen längs kabinen)
+  col = mix(col, uAccent, inside(2.0 - 1.6 * (0.9 - y) - z) * inside(y - 0.88 + 0.1 * smoothstep(2.0, 2.8, z)) * uWhite);
   // Radomen mitt på nosen: en mörk, blank kåpa mellan strålkastarna, som går upp i vindrutans mitt
   float radome = roundRect(vec2(p.x, y), vec2(0.0, 0.98), vec2(0.14, 0.36), 0.11);
   // (den vita lackeringen har nosen i dekorfärgen, utan mörk radom)
@@ -189,8 +230,9 @@ vec4 livery(vec3 p, out float lines) {
   lines += line(radome, 0.006) * step(2.4, z);
   // Strålkastarna sitter i mörka fördjupningar på var sida om radomen
   float pocket = roundRect(vec2(ax, y), vec2(0.3, 0.79), vec2(0.13, 0.1), 0.08);
-  col = mix(col, vec3(0.05, 0.055, 0.06), inside(pocket) * step(2.35, z));
-  lines += line(pocket, 0.006) * step(2.35, z);
+  // (den vita lackeringen har strålkastarna under nosen, så där är noskonen hel)
+  col = mix(col, vec3(0.05, 0.055, 0.06), inside(pocket) * step(2.35, z) * (1.0 - uWhite));
+  lines += line(pocket, 0.006) * step(2.35, z) * (1.0 - uWhite);
   lines += line(y - belt, 0.01) * step(-2.15, z) * (1.0 - uLower);
   // Bred vit sida på kabinen som stiger lite bakåt; mitt bak är röd, som på räddningshelikoptrarna
   float swoosh = abs(y - 1.12 + 0.05 * z) - mix(0.27, 0.05, uDark);
@@ -214,8 +256,8 @@ vec4 livery(vec3 p, out float lines) {
   float rear = roundRect(vec2(z, y), vec2(-1.12, 1.62), vec2(0.28, 0.22), 0.1);
   // Den vita lackeringen (startskärmen): som på H135 två rader rutor i skjutdörren, stora upptill och
   // små nedtill, med breda vita stolpar emellan, och en mindre ruta i framdörren
-  float wFront = roundRect(vec2(z, y), vec2(1.08, 1.6), vec2(0.38, 0.3), 0.12);
-  float wUp = min(roundRect(vec2(z, y), vec2(0.36, 1.64), vec2(0.25, 0.27), 0.1), roundRect(vec2(z, y), vec2(-0.26, 1.64), vec2(0.25, 0.27), 0.1));
+  float wFront = roundRect(vec2(z, y), vec2(1.1, 1.63), vec2(0.4, 0.33), 0.12);
+  float wUp = min(roundRect(vec2(z, y), vec2(0.37, 1.67), vec2(0.27, 0.31), 0.1), roundRect(vec2(z, y), vec2(-0.27, 1.67), vec2(0.27, 0.31), 0.1));
   float wLow = min(roundRect(vec2(z, y), vec2(0.36, 1.13), vec2(0.23, 0.14), 0.07), roundRect(vec2(z, y), vec2(-0.26, 1.13), vec2(0.23, 0.14), 0.07));
   float wRear = roundRect(vec2(z, y), vec2(-1.0, 1.64), vec2(0.22, 0.2), 0.08);
   float sideWin = mix(min(min(front, slide), rear), min(min(wFront, wUp), min(wLow, wRear)), uWhite);
@@ -225,9 +267,11 @@ vec4 livery(vec3 p, out float lines) {
   // Vindrutan, delad i mitten, och de små rutorna i nosen
   // Vindrutan går upp i taket längst fram, som på H135. Nedtill slutar den i en båge över nosen,
   // som är lackerad med strålkastarna; runt rutorna en mörk ram och en bred mittstolpe.
-  float wsLow = 1.3 + 0.16 * smoothstep(0.05, 0.6, ax);
-  float wsTopD = y - 2.06 + (z - 1.62) * 0.55 * (1.0 - smoothstep(1.9, 2.3, z));
-  float wsD = max(max(1.62 - z, wsLow - y), wsTopD);
+  // (den vita lackeringen har H135:s stora vindruta, som går långt ned mot nosen)
+  float wsLow = mix(1.3, 1.14, uWhite) + 0.16 * smoothstep(0.05, 0.6, ax);
+  // (den vita lackeringen: bredare vit ram upptill och en kraftigare stolpe mot framdörren)
+  float wsTopD = y - mix(2.06, 2.01, uWhite) + (z - 1.62) * 0.55 * (1.0 - smoothstep(1.9, 2.3, z));
+  float wsD = max(max(mix(1.62, 1.68, uWhite) - z, wsLow - y), wsTopD);
   float ws = inside(wsD);
   float frame = inside(wsD - 0.035) * (1.0 - ws); // ramen runt rutorna
   float post = (line(p.x, 0.04) * ws + frame) * cabin; // mittstolpen och ramen, mörka
@@ -238,7 +282,10 @@ vec4 livery(vec3 p, out float lines) {
   ws *= 1.0 - wiper;
   lines += line(wsD - 0.035, 0.006) * cabin;
   glass = max(glass, ws * cabin);
-  float chin = inside(roundRect(vec2(z, y), vec2(2.35, 0.78), vec2(0.28, 0.15), 0.08)) * step(0.12, ax);
+  // Den vita lackeringen: H135:s stora rutor nertill i nosen, under vindrutan, med en vit stolpe i mitten
+  float chinD = mix(roundRect(vec2(z, y), vec2(2.35, 0.78), vec2(0.28, 0.15), 0.08), max(max(y - wsLow + 0.07, 0.8 - y), ax - 0.52), uWhite);
+  float chin = inside(chinD) * step(mix(0.12, 0.035, uWhite), ax) * mix(1.0, step(2.12, z), uWhite);
+  lines += line(chinD - 0.025, 0.006) * step(2.12, z) * uWhite * cabin;
   glass = max(glass, chin * cabin * (1.0 - uLower));
   // Dörrarnas skarvar
   float door = roundRect(vec2(z, y), vec2(0.05, 1.22), vec2(0.62, 0.78), 0.08);
@@ -265,13 +312,31 @@ vec4 livery(vec3 p, out float lines) {
   // Fenestron: det runda hålet i fenan med fläkten innanför
   float fin = step(z, -6.3) * step(0.06, ax);
   float fd = length(vec2(z + 7.0, y - 2.02));
-  col = mix(col, vec3(0.03), inside(fd - 0.44) * fin);
+  // Inuti kåpan: den mörka fläkten med blad och nav, som syns som ett mönster i hålet
+  float fanA = atan(y - 2.02, z + 7.0);
+  float fanBlades = smoothstep(0.35, 0.65, abs(fract(fanA * 10.0 / (2.0 * PI)) - 0.5) * 2.0) * smoothstep(0.12, 0.18, fd);
+  vec3 fan = mix(vec3(0.02), vec3(0.075, 0.078, 0.085), fanBlades);
+  fan = mix(fan, vec3(0.16, 0.16, 0.17), inside(fd - 0.11));
+  col = mix(col, fan, inside(fd - 0.44) * fin);
   lines += line(fd - 0.47, 0.015) * fin;
   // Lite smuts: sot från avgaserna längs bommens ovansida och ojämn lack nertill
   float soot = smoothstep(1.9, 2.1, y) * inside(-2.4 - z) * inside(z + 4.5) * smoothstep(0.25, 0.7, noise(p * vec3(4.0, 4.0, 1.5)));
   col *= 1.0 - 0.35 * soot;
   col *= 0.94 + 0.06 * noise(p * 9.0);
   col *= 1.0 - 0.18 * smoothstep(0.75, 0.45, y) * noise(p * 3.0 + 7.0);
+  // Dekalerna: texterna och emblemet ovanpå lacken, under klarlacken
+  vec4 dc = decals(p);
+  col = mix(col, dc.rgb, dc.a * (1.0 - glass));
+  // Detaljer i närbilden: dörrhandtag, gångjärn, nitrader längs skarvarna och regnränder under rutorna
+  float handle = inside(roundRect(vec2(z, y), vec2(0.5, 1.33), vec2(0.09, 0.022), 0.02)) + inside(roundRect(vec2(z, y), vec2(0.8, 1.24), vec2(0.07, 0.022), 0.02));
+  col = mix(col, vec3(0.05, 0.05, 0.055), clamp(handle, 0.0, 1.0) * side * uDecal);
+  float hinge = inside(roundRect(vec2(z, y), vec2(1.63, 1.05), vec2(0.025, 0.06), 0.01)) + inside(roundRect(vec2(z, y), vec2(1.63, 1.75), vec2(0.025, 0.06), 0.01));
+  col = mix(col, vec3(0.12), clamp(hinge, 0.0, 1.0) * side * uDecal);
+  float rivets = step(0.62, 1.0 - abs(fract(z * 9.0) - 0.5) * 2.0);
+  float rivetRows = line(y - 0.985, 0.01) * side + line(z + 2.62, 0.012) * inside(-2.3 - z) * inside(z + 6.4);
+  lines += 0.45 * rivetRows * rivets * uDecal;
+  float streak = smoothstep(0.55, 0.9, noise(vec3(z * 24.0, y * 1.2, 3.0))) * smoothstep(1.4, 1.0, y) * smoothstep(0.6, 0.9, y) * side;
+  col *= 1.0 - 0.1 * streak * uDecal * (1.0 - glass);
   col = mix(col, vec3(0.035, 0.038, 0.042), max(post, seal));
   // Bakom rutorna: mörk instrumentpanel nedtill, ljusare tak och bakre rutor högre upp
   // Instrumentbrädans skärm nedtill (mörk), ovanför den kabinens ljusare tak och de bakre rutorna
@@ -290,7 +355,7 @@ vec4 livery(vec3 p, out float lines) {
   // mörka siluetter framför dem
   vec3 dir = normalize(vW - uEye);
   float seats = inside(abs(fract((z - 0.25) / 0.85) - 0.5) * 0.85 - 0.1) * inside(y - 1.72);
-  vec3 through = skyEnv(dir, 1.0) * 0.13 * smoothstep(1.35, 1.7, y) * (1.0 - 0.8 * seats);
+  vec3 through = skyEnv(dir, 1.0) * 0.2 * smoothstep(1.35, 1.7, y) * (1.0 - 0.85 * seats);
   interior = mix(interior, interior * 0.6 + through, uShine * side * (1.0 - ws));
   col = mix(col, interior, glass);
   return vec4(col, glass);
@@ -435,6 +500,9 @@ void main() {
     specK = 0.8;
   }
   float ao = occlusion(vObj, N);
+  // Fenestronens hål: fläkten sitter djupt inne i kåpan och speglar varken himlen eller solen
+  float hole = uMat == 0 ? inside(length(vec2(vObj.z + 7.0, vObj.y - 2.02)) - 0.44) * step(vObj.z, -6.3) * step(0.06, abs(vObj.x)) : 0.0;
+  ao *= 1.0 - 0.6 * hole;
   float F = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
   float sh = sunlit(vW, N) * step(0.0, ndl);
   // Skuggsidan får himlens kalla blå ljus ovanifrån och lite grönt från dalen underifrån
@@ -445,9 +513,15 @@ void main() {
   fill *= mix(1.0, 0.55 + 1.25 * smoothstep(-0.7, 0.9, N.y), uShine);
   // och magen får ett varmt återsken från de solbelysta molnen under, i stället för att bli smutsgrå
   fill += uShine * vec3(0.55, 0.3, 0.17) * smoothstep(0.1, -0.9, N.y);
+  // Närbilden: röd lack i skugga blir annars nästan svart under den blå himlen och sedan rosa av speglingen.
+  // Mer fyllnadsljus på den, så att stjärten och bakdelen lyser mättat röda som på förlagans foton.
+  float redPaint = clamp((base.r - base.g) * 3.0, 0.0, 1.0) * (1.0 - glassAmt) * uShine;
+  fill *= 1.0 + 1.6 * redPaint;
   // Bakom tonat glas når solen knappt in: kabinens insida ska inte lysa grå genom rutorna
   vec3 diffuse = base * (fill * uFill * ao + uSunCol * ndl * sh * mix(0.6, 1.0, ao)) * (1.0 - 0.8 * glassAmt);
   vec3 spec = uSunCol * pow(max(dot(N, Hh), 0.0), shin) * specK * (0.3 + 0.7 * ndl) * sh;
+  // Den breda glansen på röd lack är röd (färgen under klarlacken), annars blir lacken rosa som plast
+  spec *= mix(vec3(1.0), base / max(base.r, 1e-3), 0.7 * redPaint);
   // Klarlacken: en liten, skarp glansdager ovanpå
   spec += uSunCol * pow(max(dot(N, Hh), 0.0), 900.0) * (uMat == 0 ? 3.0 : 0.6) * step(0.0, ndl) * sh;
   // Klarlacken och glaset speglar omgivningen; glaset mycket mer, och mest i flack vinkel
@@ -469,10 +543,11 @@ void main() {
   // Närbilden: lacken och glaset speglar kvällshimlen, glaset kraftigt i flack vinkel
   env = mix(env, skyEnv(R, glassAmt), uShine);
   coat += uShine * (uMat == 0 ? mix(0.04 + F * 0.35, 0.05 + 0.55 * pow(1.0 - nv, 3.0), glassAmt) : 0.05);
-  vec3 refl = env * coat * gloss * mix(0.35, 1.0, ao);
+  vec3 refl = env * coat * gloss * mix(0.35, 1.0, ao) * (1.0 - 0.9 * hole);
+  spec *= 1.0 - hole;
   // Närbilden: medarna och masten är svartlackerade, inte grå av speglad himmel
   refl *= 1.0 - 0.6 * uShine * float(uMat != 0);
-  refl *= 1.0 - 0.5 * uShine * clamp((base.r - base.g) * 3.0, 0.0, 1.0) * (1.0 - glassAmt);
+  refl *= 1.0 - 0.7 * uShine * clamp((base.r - base.g) * 3.0, 0.0, 1.0) * (1.0 - glassAmt);
   // Kantljus: solen strålar över rundningarna där ytan vänder sig bort från kameran, varmt på
   // solsidan, så att konturen lyfter från bakgrunden i stället för att se urklippt ut
   float rimK = pow(1.0 - nv, 3.0) * smoothstep(-0.25, 0.5, dot(N, L)) * (1.0 - glassAmt) * (uMat == 0 ? 1.0 : 0.15);
@@ -485,8 +560,12 @@ void main() {
   // speglar de kvällshimlen helt (Fresnel), med solens skarpa glans ovanpå.
   if (uMat == 0) {
     vec3 sky = skyEnv(R, glassAmt);
-    float Fg = 0.04 + 0.45 * pow(1.0 - nv, 4.0);
-    vec3 cg = c * 0.12 * (1.0 - Fg) + sky * Fg * 0.8 + uSunCol * pow(max(dot(N, Hh), 0.0), 600.0) * 4.0 * sh;
+    // (glaset har en tunn reflexbeläggning: även rakt framifrån syns himlen svagt, som på ett riktigt fönster)
+    float Fg = 0.035 + 0.55 * pow(1.0 - nv, 3.5);
+    // Vindrutan lutar bakåt och speglar mer av himlen än sidorutorna, som mest visar den mörka kabinen
+    float wsGlass = step(1.6, vObj.z) * step(1.05, vObj.y);
+    Fg += 0.06 * wsGlass;
+    vec3 cg = c * mix(0.12, 0.3, wsGlass) * (1.0 - Fg) + sky * Fg * mix(0.32, 0.8, wsGlass) + uSunCol * pow(max(dot(N, Hh), 0.0), 600.0) * 4.0 * sh;
     c = mix(c, cg, uShine * glassAmt);
     // Klarlacken: kvällshimlen speglas i lacken, tydligast i flack vinkel och på rundningarna
     // (dämpat på den röda lacken, så att den förblir djupt röd och inte blir rosa av himlen)
@@ -494,7 +573,9 @@ void main() {
     // horisontlinje tvärs över rundningarna. Det är den som gör att lacken läses som blank.
     float red = clamp((base.r - base.g) * 3.0, 0.0, 1.0);
     vec3 paintSky = skyEnv(R, 0.7) * 1.15;
-    float Fp = (0.07 + 0.55 * pow(1.0 - nv, 4.0)) * ao * uShine * (1.0 - glassAmt) * (1.0 - 0.5 * red);
+    // Längre ned speglas det solbelysta molnhavet under fjällen: ljus undersida i stället för smutsgrå
+    paintSky += vec3(0.32, 0.28, 0.27) * smoothstep(-0.12, -0.45, R.y);
+    float Fp = (0.07 + 0.55 * pow(1.0 - nv, 4.0)) * ao * uShine * (1.0 - glassAmt) * (1.0 - 0.75 * red) * (1.0 - hole);
     c = mix(c, paintSky, Fp);
     // och kvällssolen bakom ger en varm glansdager på nosen och kanterna som vetter mot den
     c += uRimCol * pow(max(dot(N, normalize(uRimDir + V)), 0.0), 40.0) * 0.35 * ao * uShine * (1.0 - glassAmt);
@@ -1068,6 +1149,31 @@ function luma(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/** Fjällräddningens emblem: en röd skiva med vit kant, ett vitt kors och ett litet fjäll nedtill. */
+function drawEmblem(ctx, cx, cy, r) {
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#c8261f';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.84, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  const a = r * 0.17;
+  const b = r * 0.52;
+  ctx.fillRect(cx - a, cy - b - r * 0.1, 2 * a, 2 * b);
+  ctx.fillRect(cx - b, cy - a - r * 0.1, 2 * b, 2 * a);
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.62, cy + r * 0.62);
+  ctx.lineTo(cx - r * 0.18, cy + r * 0.38);
+  ctx.lineTo(cx + r * 0.05, cy + r * 0.5);
+  ctx.lineTo(cx + r * 0.3, cy + r * 0.3);
+  ctx.lineTo(cx + r * 0.62, cy + r * 0.62);
+  ctx.closePath();
+  ctx.fill();
+}
+
 const DEFAULT_LIVERY = { body: '#f4f5f7', accent: '#d3302a', trim: '#ffffff' };
 
 export class Heli3D {
@@ -1117,6 +1223,10 @@ export class Heli3D {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.shadowTex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Dekalernas textur: ritas genast med reservtypsnitt och igen när spelets typsnitt har laddats
+    this.decalTex = gl.createTexture();
+    this.#drawDecals();
+    document.fonts?.load('800 100px "Barlow Condensed"').then(() => this.#drawDecals(), () => {});
     this.parts = {
       body: this.#upload(buildBody()),
       frame: this.#upload(buildFrame()),
@@ -1128,6 +1238,48 @@ export class Heli3D {
       lamps: LAMPS.map((l) => ({ ...l, mesh: this.#upload(buildLamp(l.r)), glow: linear(l.color) })),
     };
     this.box = { x0: 0, y0: 0, w: 0, h: 0 };
+  }
+
+  /** Ritar dekalerna (texter och emblem) på en canvas och lägger dem i texturen, med mipmaps. */
+  #drawDecals() {
+    if (this.lost) return;
+    const { gl } = this;
+    const c = document.createElement('canvas');
+    [c.width, c.height] = DECAL_SIZE;
+    const ctx = c.getContext('2d');
+    for (const d of DECALS) {
+      const [x, y, w, h] = d.px;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      if (d.emblem) drawEmblem(ctx, x + w / 2, y + h / 2, w * 0.46);
+      else {
+        // Texten fyller rutan på höjden och trycks ihop på bredden om den inte får plats
+        const size = h * 0.92;
+        ctx.font = `${d.weight} ${size}px 'Barlow Condensed', 'Arial Narrow', sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = d.color;
+        const tw = ctx.measureText(d.text).width;
+        const sx = Math.min(1, (w * 0.96) / tw);
+        ctx.translate(x + w / 2, y + h * 0.54);
+        ctx.scale(sx, 1);
+        ctx.fillText(d.text, 0, 0);
+      }
+      ctx.restore();
+    }
+    gl.bindTexture(gl.TEXTURE_2D, this.decalTex);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const aniso = gl.getExtension('EXT_texture_filter_anisotropic');
+    if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, 4);
   }
 
   #upload(mesh) {
@@ -1169,6 +1321,9 @@ export class Heli3D {
    * @param {number} [o.warm]    0–1: varmare, gyllene sol (hovringen över plattan, som landskapet där)
    * @param {number} [o.shine]  0–1: blank lack och glas som speglar kvällshimlen (startskärmens närbild)
    * @param {number} [o.sunK]   solens styrka (1 = som i landskapet)
+   * @param {string} [o.sunColor]  solens färg (#rrggbb) i stället för dagens eller kvällens
+   * @param {number} [o.fill]   skuggsidans ljus från himlen, i stället för standardvärdet
+   * @param {number[]} [o.stretch]  kroppens skala per axel [x, y, z] (rotorn sträcks inte)
    * @param {{dir:number[], color:string, k:number}} [o.rim]  motljus från en låg sol bakom helikoptern
    *   (riktning sett från kameran som o.sun, färg #rrggbb och styrka)
    * @returns {{canvas:HTMLCanvasElement, x0:number, y0:number, w:number, h:number, lights:object[]}|null}
@@ -1189,14 +1344,18 @@ export class Heli3D {
     ];
     const view = lookAt(eye, C, [0, 1, 0]);
     // Helikopterns hållning kring mittpunkten: kurs, nos och sidlutning
-    const model = mul(
+    const rigid = mul(
       translate(C[0], C[1], C[2]),
       mul(rotY(o.heading ?? 0), mul(rotX(o.nose ?? 0), mul(rotZ(o.roll ?? 0), translate(-C[0], -C[1], -C[2]))))
     );
+    // Startskärmens närbild sträcker kroppen lite (o.stretch): högre kabin och kortare längd, som H135.
+    // Rotorn sträcks inte, den sitter bara på det sträckta navets plats.
+    const st = o.stretch ?? [1, 1, 1];
+    const model = mul(rigid, new Float32Array([st[0], 0, 0, 0, 0, st[1], 0, 0, 0, 0, st[2], 0, 0, 0, 0, 1]));
     const focal = o.pxPerM * dist;
     // Rotorskivan lutar framåt i fart, mer än kroppen; bakifrån ses den då nästan från kanten
     const tilt = o.discTilt ?? 0.05;
-    const hubModel = mul(model, mul(translate(HUB[0], HUB[1], HUB[2]), rotX(tilt)));
+    const hubModel = mul(rigid, mul(translate(HUB[0] * st[0], HUB[1] * st[1], HUB[2] * st[2]), rotX(tilt)));
     const discModel = mul(hubModel, translate(0, 0.08, 0));
 
     // Bildens utsträckning: rotorskivan och kroppens ytterpunkter
@@ -1275,7 +1434,9 @@ export class Heli3D {
     const warm = o.warm ?? 0;
     const day = [0, 1, 2].map((i) => [1.0, 0.9, 0.76][i] * 2.8 * (1 - warm) + [1.0, 0.82, 0.6][i] * 3.0 * warm);
     const sunK = o.sunK ?? 1;
-    gl.uniform3fv(u.uSunCol, [0, 1, 2].map((i) => (day[i] * (1 - dusk) + [1.0, 0.62, 0.34][i] * 3.0 * dusk) * sunK));
+    // (o.sunColor: en egen färg på solen, t.ex. startskärmens låga kvällssol, med samma styrka som dagens sol)
+    const sunCol = o.sunColor ? linear(o.sunColor).map((v) => v * 2.8) : [0, 1, 2].map((i) => day[i] * (1 - dusk) + [1.0, 0.62, 0.34][i] * 3.0 * dusk);
+    gl.uniform3fv(u.uSunCol, sunCol.map((v) => v * sunK));
     gl.uniform3fv(u.uSky, [0, 1, 2].map((i) => [0.3, 0.46, 0.8][i] * (1 - dusk) + [0.5, 0.38, 0.5][i] * dusk));
     // Marken under: grön dal, eller i hovringen (warm) den solbelysta, beige plattan som lyser upp magen varmt
     const ground = [0, 1, 2].map((i) => [0.16, 0.18, 0.14][i] * (1 - warm) + [0.34, 0.27, 0.19][i] * warm);
@@ -1290,16 +1451,23 @@ export class Heli3D {
     gl.uniform1f(u.uLower, lv.scheme === 'lower' ? 1 : 0);
     gl.uniform1f(u.uAngle, o.rotor?.angle ?? 0);
     gl.uniform1f(u.uBlur, o.rotor?.blur ?? 0);
-    gl.uniform1f(u.uFill, 0.34 - 0.16 * warm);
+    gl.uniform1f(u.uFill, o.fill ?? 0.34 - 0.16 * warm);
     gl.uniform1f(u.uWarm, warm);
     const rim = o.rim ?? null;
     gl.uniform3fv(u.uRimDir, rim ? apply(rotY(yaw), normalize(rim.dir)) : [0, 1, 0]);
     gl.uniform3fv(u.uRimCol, rim ? linear(rim.color).map((v) => v * rim.k) : [0, 0, 0]);
     gl.uniform1f(u.uWhite, lv.scheme === 'white' ? 1 : 0);
     gl.uniform1f(u.uShine, o.shine ?? 0);
+    gl.uniform1f(u.uDecal, lv.scheme === 'white' ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.decalTex);
+    gl.uniform1i(u.uDecals, 1);
+    gl.activeTexture(gl.TEXTURE0);
 
-    const draw = (part, mat, m) => {
+    const nScale = st.map((v) => 1 / (v * v));
+    const draw = (part, mat, m, stretched = true) => {
       gl.uniform1i(u.uMat, mat);
+      gl.uniform3fv(u.uNScale, stretched ? nScale : [1, 1, 1]);
       gl.uniformMatrix4fv(u.uModel, false, m);
       gl.bindVertexArray(part.vao);
       gl.drawElements(gl.TRIANGLES, part.count, gl.UNSIGNED_INT, 0);
@@ -1326,15 +1494,15 @@ export class Heli3D {
       const facing = lamp.dir ? Math.max(0, dot(normalize(sub(apply(model, add(lamp.at, lamp.dir)), wp)), normalize(sub(eye, wp)))) ** 2 : 1;
       // Skenet ritas i 2D utan djup: en lampa som kroppen skymmer (blinkljuset bakom kabinen sett
       // framifrån) får inget sken, annars lyser det rött genom vindrutan
-      const seen = hiddenByCabin(apply(invertRigid(model), eye), lamp.at) ? 0 : 1;
+      const seen = hiddenByCabin(apply(invertRigid(rigid), eye), lamp.at) ? 0 : 1;
       lights.push({ x: (focal * q[0]) / zz, y: (-focal * q[1]) / zz, color: lamp.color, a: seen * on * facing * (lamp.flash ? 1 : lamp.dir ? 0.12 : 0.55) });
     }
-    draw(this.parts.hub, 1, mul(hubModel, rotY(-(o.rotor?.angle ?? 0))));
+    draw(this.parts.hub, 1, mul(hubModel, rotY(-(o.rotor?.angle ?? 0))), false);
     // Rotorskivan sist, genomskinlig och utan att skriva djup
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
-    draw(this.parts.disc, 2, discModel);
+    draw(this.parts.disc, 2, discModel, false);
     gl.depthMask(true);
     gl.bindVertexArray(null);
 

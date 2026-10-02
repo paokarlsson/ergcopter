@@ -999,17 +999,24 @@ let shadowCanvas = null;
  * kastad längs solens riktning ned på hällen. Den hamnar längre bort och blir mjukare ju högre
  * helikoptern hovrar, och krymper och skärps när den sjunker mot plattan.
  * @param {number} hh  helikopterns mitt över plattan (m)
+ * @param {number} [heading]  helikopterns kurs kring mittpunkten (rad), 0 = nosen mot kameran
  */
-export function drawHeliShadow(ctx, f, hh, sun, alpha) {
+export function drawHeliShadow(ctx, f, hh, sun, alpha, heading = 0) {
   if (typeof document === 'undefined' || alpha <= 0) return;
   // Modellens punkt till skuggans punkt på plattan (bildpunkter): nosen mot kameran, så x och z vänds.
   // Skuggan kastas brantare än solen lyser på kroppen: den ska ligga under helikoptern, innanför
   // ringen, och bara glida en bit åt solens motsatta håll. Annars hamnar den metrar bort på plattan
   // och ser inte ut att höra till helikoptern.
   const ly = Math.max(sun[1], 0.15) + 3.2;
+  // heading: helikoptern vriden kring mittpunkten (heli3d.js o.heading), t.ex. snett framifrån vid inmatningen
+  const hc = Math.cos(heading);
+  const hs = Math.sin(heading);
   const at = (mx, my, mz) => {
     const y = Math.max(0, my - MODEL_CENTER[1] + hh);
-    return padProject(f, -mx - (sun[0] / ly) * y, 0, -(mz - MODEL_CENTER[2]) - (sun[2] / ly) * y);
+    const dz = mz - MODEL_CENTER[2];
+    const rx = mx * hc + dz * hs;
+    const rz = -mx * hs + dz * hc;
+    return padProject(f, -rx - (sun[0] / ly) * y, 0, -rz - (sun[2] / ly) * y);
   };
   const shapes = [];
   // Kroppen i tre skivor (buken, mitten och motorkåpan): tillsammans blir det kroppens hela skugga
