@@ -13,7 +13,7 @@ const VS = 'attribute vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }';
 // kort och hög som på en H135, och stjärtbommen sträcks ut (BK) så att den blir lång och smal.
 // Samma funktioner finns i shadern (warpX); här behövs de för inramningen och rotorns nav.
 const BK = 1.4;
-const CK = 1.25;
+const CK = 1.4;
 const WK = 0.6; // hur mjukt kabinens hoptryckning tonar in, så att ingen veck syns i lacken
 const boomX = (x) => (x > -2 ? x : x > -2 - 4.2 * BK ? -2 + (x + 2) / BK : x + 4.2 * (BK - 1));
 const ramp = (u) => 0.5 * (u + Math.sqrt(u * u + WK * WK));
@@ -34,7 +34,7 @@ const TAIL_X = imageX(-6.85); // stjärtrotorns nav
 const f4 = (x) => x.toFixed(4);
 
 // Helikopterns koordinater: x framåt (nosen), y uppåt, z mot betraktaren. Nosen
-// ligger vid x ≈ 2.6, stjärtfenan vid x ≈ −9 (bommen förlängs i map, se boomX) och medarna vid y ≈ −1.44.
+// ligger vid x ≈ 2.6, stjärtfenan vid x ≈ −7.5 och medarna vid y ≈ −1.32, i modellens x (se warpX).
 const FS = `
 precision highp float;
 uniform vec2 uOrigin;
@@ -418,7 +418,7 @@ void main() {
 const PITCH = -0.1; // nosen lite nedåt, i fart framåt
 const YAW = 0.85; // snett framifrån: nosen och den stora vindrutan mot betraktaren, kabinen förkortad
 const ELEV = -0.17; // kameran något under rotorplanet
-const DIST = 13;
+const DIST = 30; // långt bort, som med teleobjektiv: ingen leksaksperspektiv där nosen blir stor och stjärten liten
 const TARGET = [-2.9, 0.2, 0];
 const SUN = [0.58, 0.72, 0.38]; // låg sol snett framifrån: nosen glänser, sidan får en gradient och buken ligger i skugga
 // Punkter som ska rymmas: fenan, nosen, medarna, navet och vinschen (rotorbladen får gå utanför).

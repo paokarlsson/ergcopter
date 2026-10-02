@@ -120,3 +120,48 @@ test('flygloggens bild: topparna står i 3D precis där linjen nådde dem', asyn
   const ground = v.cy + (v.camY * v.focal) / v.peaks[0].z;
   assert.ok(Math.abs(ground - y0) < 1e-6);
 });
+
+test('stiger man för fort för en topp kommer den in som landmärke med bock när vi är över den', async () => {
+  const { PeakField } = await import('../public/game/view/peaks3d.js');
+  const field = new PeakField();
+  const base = { milestones: DEFAULT_MILESTONES, flying: true, speed: 300, cx: W * 0.49, W, focal: FOCAL };
+  let h = 0;
+  let camX = 0;
+  const landmarks = new Set();
+  for (let i = 0; i < 60 * 60; i++) {
+    h += 90 / 60; // mycket fort: många toppar hinner inte in i bild före passagen
+    camX += 300 / 60;
+    for (const p of field.update({ ...base, h, vy: 90, camX })) {
+      if (p.landmark) {
+        landmarks.add(p.m.name);
+        assert.ok(field.passed.has(p.m.name) && p.m.h < h, `${p.m.name} är ett landmärke men inte passerad`);
+      }
+    }
+    assert.ok(field.items.length <= 12);
+  }
+  assert.ok(landmarks.size >= 3, `bara ${landmarks.size} landmärken`);
+});
+
+test('topparna står kvar när fönstret byter storlek mitt i flygningen', () => {
+  const views = [];
+  const terrain = { ready: true, canvas: { style: {} }, render: (v) => views.push(v) };
+  const canvas = { clientWidth: W, clientHeight: H, width: 0, height: 0, getContext: () => ctx };
+  const r = new GameRenderer(canvas, { terrain });
+  const rotor = { omega: 12, blur: 0.5, angle: 0, tailAngle: 0 };
+  let h = 0;
+  performance.now = () => clock * 1000;
+  try {
+    for (let i = 0; i < 60 * 80; i++) {
+      clock = i / 60;
+      if (i === 60 * 79) Object.assign(canvas, { clientWidth: W / 2, clientHeight: H / 2 });
+      h += 12 / 60;
+      r.advance(1 / 60, rotor, h);
+      r.draw({ h, vy: 12, rotor, hMax: h, todayBest: null, milestones: DEFAULT_MILESTONES, avoid: [], flying: true });
+    }
+  } finally {
+    performance.now = realNow;
+  }
+  const before = views[60 * 79 - 1];
+  const after = views[60 * 79];
+  assert.ok(Math.abs(after.camX - before.camX) < 5, `kameran hoppade ${Math.round(after.camX - before.camX)} m`);
+});

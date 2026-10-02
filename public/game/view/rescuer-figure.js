@@ -1,18 +1,18 @@
 // Fjällräddaren som 3D-figur: räddaren byggs av mjuka former (avståndsfält) och strålföljs en gång per storlek,
-// så att ljuset blir som i scenen. Solen står lågt bakom till höger: ryggen mot betraktaren ligger i kall skugga
-// och kanterna mot solen får ett tunt, hett motljus. Ren beräkning utan DOM, så att den kan köras i
-// rescuer-worker.js. Ritas in på klippan av view/rescuer.js.
+// så att ljuset blir som i scenen. Solen står lågt till höger, nästan från sidan: sidorna mot solen lyser varmt,
+// ryggen mot betraktaren ligger i dov, kall skugga och kanterna mot solen får ett tunt, hett motljus.
+// Ren beräkning utan DOM, så att den kan köras i rescuer-worker.js. Ritas in på klippan av view/rescuer.js.
 
 // Figurens egna enheter: fötterna i y = 0, hjälmens topp i y ≈ 1, x åt höger, z mot betraktaren.
 // Figuren tittar bort från kameran (mot −z), lite vriden åt höger mot solen.
-const BODY_YAW = -0.22; // kroppen vriden lite åt vänster, så att säcken hamnar till höger och jackans vänstra sida syns
-const HEAD_YAW = 1.0; // utöver kroppen: huvudet vridet mot solen så att glasögonen syns i profil
+const BODY_YAW = -0.5; // kroppen vriden lite åt vänster, så att säcken hamnar till höger och jackans vänstra sida syns
+const HEAD_YAW = 1.15; // utöver kroppen: huvudet vridet mot solen så att glasögonen syns i profil
 
-const SUN = norm(0.7, 0.34, -0.52); // mot solen
+const SUN = norm(0.94, 0.28, -0.12); // mot solen: lågt till höger, nästan rakt från sidan och en aning bakom
 const SUN_FLAT = norm(0.7, 0.42, 0); // solens riktning i bildplanet, för motljuset längs konturen
-const SUN_COL = [3.4, 1.6, 0.62];
+const SUN_COL = [4.2, 1.95, 0.75];
 const SKY_COL = [0.13, 0.075, 0.07]; // kvällshimlen ovanifrån
-const FILL_COL = [0.026, 0.032, 0.07]; // den kalla östhimlen bakom betraktaren
+const FILL_COL = [0.042, 0.036, 0.072]; // den kalla östhimlen bakom betraktaren
 const BOUNCE_COL = [0.1, 0.055, 0.035]; // klippan under
 
 // Material
@@ -29,7 +29,7 @@ const ALBEDO = {
   [SUIT]: [0.38, 0.014, 0.03],
   [DARK]: [0.028, 0.028, 0.032],
   [PACK]: [0.014, 0.022, 0.05],
-  [HELMET]: [0.16, 0.02, 0.026], // röd lackad hjälm
+  [HELMET]: [0.035, 0.034, 0.04], // mörk lackad klätterhjälm
   [LENS]: [0.03, 0.02, 0.012],
   [SKIN]: [0.32, 0.16, 0.11],
   [STRAP]: [0.012, 0.014, 0.022],
@@ -39,7 +39,7 @@ const ALBEDO = {
 const SHEEN = [1, 0.72, 0.42];
 const GLOSS = { [HELMET]: 1.6, [LENS]: 2.6, [PACK]: 0.25, [DARK]: 0.2 };
 // Hur mycket ytan speglar himlen (skaljackans nylon, hjälmens lack), och himlens färg i speglingen
-const SHINE = { [SUIT]: 0.6, [HELMET]: 1.5, [LENS]: 1.2, [PACK]: 0.2, [DARK]: 0.15, [STRAP]: 0.1 };
+const SHINE = { [SUIT]: 0.45, [HELMET]: 0.6, [LENS]: 1.2, [PACK]: 0.1, [DARK]: 0.12, [STRAP]: 0.06 };
 const ENV_COL = [0.4, 0.24, 0.24];
 const COOL_COL = [0.16, 0.17, 0.3];
 
@@ -107,24 +107,24 @@ const ANKLE_L = [-0.136, 0.07, -0.004];
 const HIP_R = [0.052, 0.522, 0.0];
 const KNEE_R = [0.046, 0.292, 0.006];
 const ANKLE_R = [0.04, 0.07, 0.016];
-const SH_L = [-0.12, 0.818, 0.006];
-const ELB_L = [-0.16, 0.652, -0.004];
-const WRI_L = [-0.166, 0.505, -0.03];
-const SH_R = [0.118, 0.798, 0.006];
-const ELB_R = [0.162, 0.662, 0.012];
-const WRI_R = [0.17, 0.522, -0.034];
+const SH_L = [-0.106, 0.818, 0.006];
+const ELB_L = [-0.142, 0.652, -0.004];
+const WRI_L = [-0.15, 0.508, -0.03];
+const SH_R = [0.104, 0.8, 0.006];
+const ELB_R = [0.142, 0.662, 0.012];
+const WRI_R = [0.152, 0.522, -0.034];
 
 // Vadernas mitt, lite bakom skenbenet
 const CALF_L = [KNEE_L[0] * 0.6 + ANKLE_L[0] * 0.4, KNEE_L[1] * 0.6 + ANKLE_L[1] * 0.4, KNEE_L[2] * 0.6 + ANKLE_L[2] * 0.4 + 0.014];
 const CALF_R = [KNEE_R[0] * 0.6 + ANKLE_R[0] * 0.4, KNEE_R[1] * 0.6 + ANKLE_R[1] * 0.4, KNEE_R[2] * 0.6 + ANKLE_R[2] * 0.4 + 0.014];
 
 const LEGS = [
-  cone(HIP_L, KNEE_L, 0.057, 0.044), cone(KNEE_L, ANKLE_L, 0.044, 0.032),
-  cone(HIP_R, KNEE_R, 0.057, 0.044), cone(KNEE_R, ANKLE_R, 0.044, 0.032),
+  cone(HIP_L, KNEE_L, 0.052, 0.04), cone(KNEE_L, ANKLE_L, 0.04, 0.03),
+  cone(HIP_R, KNEE_R, 0.052, 0.04), cone(KNEE_R, ANKLE_R, 0.04, 0.03),
 ];
 const ARMS = [
-  cone(SH_L, ELB_L, 0.045, 0.038), cone(ELB_L, WRI_L, 0.038, 0.03),
-  cone(SH_R, ELB_R, 0.045, 0.038), cone(ELB_R, WRI_R, 0.038, 0.03),
+  cone(SH_L, ELB_L, 0.038, 0.032), cone(ELB_L, WRI_L, 0.032, 0.026),
+  cone(SH_R, ELB_R, 0.038, 0.032), cone(ELB_R, WRI_R, 0.032, 0.026),
 ];
 const NECK = cone([0, 0.84, 0.004], [0, 0.905, -0.006], 0.04, 0.034);
 const STRAPS = [
@@ -201,7 +201,7 @@ function map(wx, wy, wz) {
         }
       }
       // Byxornas säte
-      const seat = sdEllipsoid(x, y, z, 0.008, 0.51 + 0.1 * x, 0.004, 0.106, 0.08, 0.084);
+      const seat = sdEllipsoid(x, y, z, 0.006, 0.51 + 0.1 * x, 0.004, 0.094, 0.078, 0.078);
       if (seat < d) pt = 3;
       d = smin(d, seat, 0.035);
     } else d = bound;
@@ -211,11 +211,11 @@ function map(wx, wy, wz) {
   {
     const bound = sdBox(x, y, z, 0.01, 0.72, 0, 0.26, 0.2, 0.13, 0);
     if (bound < d + 0.03) {
-      let t = sdEllipsoid(x, y, z, 0, 0.68, 0, 0.108, 0.17, 0.08);
-      t = smin(t, sdEllipsoid(x, y, z, 0, 0.775, -0.004, 0.128, 0.088, 0.086), 0.05);
-      t = smin(t, sdEllipsoid(x, y, z, 0.004, 0.575, 0.002, 0.112, 0.058, 0.086), 0.04);
-      t = smin(t, sdEllipsoid(x, y, z, SH_L[0] + 0.006, SH_L[1] - 0.008, 0.004, 0.05, 0.046, 0.05), 0.04);
-      t = smin(t, sdEllipsoid(x, y, z, SH_R[0] - 0.004, SH_R[1] - 0.008, 0.004, 0.05, 0.046, 0.05), 0.04);
+      let t = sdEllipsoid(x, y, z, 0, 0.68, 0, 0.096, 0.17, 0.074);
+      t = smin(t, sdEllipsoid(x, y, z, 0, 0.775, -0.004, 0.112, 0.084, 0.078), 0.05);
+      t = smin(t, sdEllipsoid(x, y, z, 0.004, 0.575, 0.002, 0.1, 0.058, 0.08), 0.04);
+      t = smin(t, sdEllipsoid(x, y, z, SH_L[0] + 0.006, SH_L[1] - 0.008, 0.004, 0.044, 0.042, 0.046), 0.04);
+      t = smin(t, sdEllipsoid(x, y, z, SH_R[0] - 0.004, SH_R[1] - 0.008, 0.004, 0.044, 0.042, 0.046), 0.04);
       t = smin(t, sdCone(NECK, x, y, z), 0.03);
       t = smin(t, torus(x, y - 0.866, z - 0.012, 0.046, 0.02, 0), 0.02); // den hoprullade huvan
       // Vågiga veck i midjan ovanför höftbältet
@@ -241,7 +241,7 @@ function map(wx, wy, wz) {
       if (a < 0.02) {
         for (const e of [ELB_L, ELB_R]) {
           const r = Math.hypot(x - e[0], y - e[1], z - e[2]);
-          a += 0.006 * Math.sin(r * 140) * Math.exp(-((r / 0.085) ** 2));
+          a += 0.0028 * Math.sin(r * 140) * Math.exp(-((r / 0.085) ** 2));
         }
       }
       d = smin(d, a, 0.022);
@@ -263,14 +263,14 @@ function map(wx, wy, wz) {
     const bound = sdBox(x, y, z, 0.0, 0.76, 0.11, 0.18, 0.22, 0.12, 0);
     if (bound < d + 0.01) {
       // Säcken smalnar av uppåt och buktar bakåt nedtill, som en packad säck och inte som en låda
-      const taper = 0.09 + 0.026 * Math.min(1, Math.max(0, (0.86 - y) / 0.3));
+      const taper = 0.072 + 0.02 * Math.min(1, Math.max(0, (0.86 - y) / 0.3));
       const bulge = 0.012 * Math.max(0, Math.sin((y - 0.56) * 10));
-      let p = sdBox(x, y, z, 0.012, 0.708, 0.122 + bulge * 0.5, taper, 0.156, 0.056 + bulge * 0.5, 0.038);
-      p = smin(p, sdEllipsoid(x, y, z, 0.012, 0.866, 0.118, 0.094, 0.044, 0.066), 0.035); // det pösiga locket
-      p = smin(p, sdEllipsoid(x, y, z, 0.014, 0.648, 0.176, 0.074, 0.074, 0.028), 0.016); // framfickan
+      let p = sdBox(x, y, z, 0.012, 0.712, 0.114 + bulge * 0.5, taper, 0.14, 0.05 + bulge * 0.5, 0.04);
+      p = smin(p, sdEllipsoid(x, y, z, 0.012, 0.852, 0.11, 0.078, 0.04, 0.058), 0.035); // det pösiga locket
+      p = smin(p, sdEllipsoid(x, y, z, 0.014, 0.66, 0.16, 0.06, 0.066, 0.026), 0.016); // framfickan
       // sidofickor med flaska och kompressionsremmar, som bryter konturen
-      p = Math.min(p, sdEllipsoid(x, y, z, 0.124, 0.66, 0.118, 0.026, 0.064, 0.032));
-      p = Math.min(p, sdEllipsoid(x, y, z, -0.104, 0.65, 0.116, 0.022, 0.052, 0.03));
+      p = Math.min(p, sdEllipsoid(x, y, z, 0.104, 0.67, 0.11, 0.024, 0.06, 0.03));
+      p = Math.min(p, sdEllipsoid(x, y, z, -0.086, 0.66, 0.108, 0.02, 0.05, 0.028));
       if (p < d) {
         d = p;
         m = PACK;
@@ -294,10 +294,10 @@ function map(wx, wy, wz) {
     const hz = -hx0 * SH + hz0 * CH;
     const bound = sdBox(hx, y, hz, 0, 0.94, 0, 0.09, 0.09, 0.1, 0);
     if (bound < d + 0.01) {
-      const shell = sdEllipsoid(hx, y, hz, 0, 0.955, 0.006, 0.058, 0.062, 0.068);
+      const shell = sdEllipsoid(hx, y, hz, 0, 0.952, 0.006, 0.053, 0.056, 0.062);
       // Hjälmens kant: skalet skärs av nedtill och får en tunn läpp
       const cut = Math.max(shell, 0.918 - y);
-      const lip = torus(hx, y - 0.922, hz - 0.006, 0.058, 0.006, 0);
+      const lip = torus(hx, y - 0.922, hz - 0.006, 0.047, 0.005, 0);
       let hm = Math.min(cut, lip);
       if (hm < d) {
         d = hm;
@@ -309,10 +309,10 @@ function map(wx, wy, wz) {
         m = SKIN;
       }
       // Glasögonbandet runt hjälmen och glaset fram
-      const band = torus(hx, y - 0.936, hz - 0.006, 0.06, 0.009, 0);
-      const lens = sdEllipsoid(hx, y, hz, 0, 0.935, -0.06, 0.05, 0.021, 0.016);
+      const band = torus(hx, y - 0.936, hz - 0.006, 0.054, 0.008, 0);
+      const lens = sdEllipsoid(hx, y, hz, 0, 0.935, -0.054, 0.045, 0.02, 0.016);
       // En kort skärm fram på hjälmen, som syns i profil när han vrider huvudet
-      const visor = sdEllipsoid(hx, y, hz, 0, 0.956, -0.066, 0.05, 0.007, 0.024);
+      const visor = sdEllipsoid(hx, y, hz, 0, 0.954, -0.06, 0.045, 0.006, 0.022);
       if (visor < d) {
         d = visor;
         m = HELMET;
@@ -349,8 +349,8 @@ function torus(x, y, z, R, r, tilt) {
 
 // --- Strålföljningen --------------------------------------------------------------------------------------
 
-const RIM_WIDTH = 0.02; // den heta kantens bredd i figurens höjd
-const GLOW_WIDTH = 0.04; // det svaga skenet innanför kanten
+const RIM_WIDTH = 0.03; // den heta kantens bredd i figurens höjd
+const GLOW_WIDTH = 0.06; // det svaga skenet innanför kanten
 const X0 = -0.34;
 const X1 = 0.34;
 const Y0 = -0.015;
@@ -406,6 +406,7 @@ export function renderRescuerFigure(size, ss = 2) {
       if (!cover[i]) continue;
       const depth = surf[i * 5 + 3];
       let edge = 0;
+      let core = 0;
       for (let k = 1; k <= reach; k++) {
         const qx = Math.round(px + dx * k);
         const qy = Math.round(py + dy * k);
@@ -413,14 +414,19 @@ export function renderRescuerFigure(size, ss = 2) {
         const out = qx < 0 || qy < 0 || qx >= width || qy >= height || cover[j] < 0.5;
         if (out || surf[j * 5 + 3] < depth - 0.025) {
           const line = Math.max(0, 1 - (k - 1) / thin);
-          edge = (line * Math.sqrt(line) + 0.035 * (1 - (k - 1) / reach) ** 2) * (0.35 + 0.65 * surf[i * 5 + 4]);
+          const face = 0.35 + 0.65 * surf[i * 5 + 4];
+          edge = (line * Math.sqrt(line) + 0.025 * (1 - (k - 1) / reach) ** 2) * face;
+          // Längst ut en hårfin, nästan vit linje där tyget fångar solen rakt från sidan
+          core = Math.max(0, 1 - (k - 1) / Math.max(1, thin * 0.3)) * face * face;
           break;
         }
       }
       const o = i * 4;
       for (let c = 0; c < 3; c++) {
         const a = surf[i * 5 + c];
-        const rim = edge * SUN_COL[c] * (a * 0.6 + SHEEN[c] * 0.5);
+        // Kanten tar materialets färg mättad (rött tyg glöder orangerött), så att den syns mot den ljusa
+        // persikofärgade himlen i stället för att smälta in i den
+        const rim = edge * SUN_COL[c] * (a * 1.3 + SHEEN[c] * 0.22) + core * SUN_COL[c] * 0.3;
         data[o + c] = tone(light[i * 3 + c] + rim * lowAt(py / size));
       }
       data[o + 3] = Math.round(cover[i] * 255);
@@ -471,7 +477,8 @@ function shade(wx, wy, col) {
   const ao = occlusion(wx, wy, z, nx, ny, nz);
   const ndl = nx * SUN[0] + ny * SUN[1] + nz * SUN[2];
   // Tyget sprider ljuset en bit runt skuggkanten (wrap), så att motljuset får bredd i stället för en hårfin linje
-  const wrap = (ndl + 0.42) / 1.42;
+  const soft = m === SUIT ? 0.55 : 0.2; // tyget sprider ljuset runt kanten, säcken och hjälmen mycket mindre
+  const wrap = (ndl + soft) / (1 + soft);
   const sun = wrap > 0 ? wrap * wrap * softShadow(wx + nx * 0.003, wy + ny * 0.003, z + nz * 0.003) : 0;
   // Motljuset: tyget fångar solen i strykande vinkel längs konturen mot solen
   const ndv = Math.max(0, nz);
@@ -518,6 +525,14 @@ function shade(wx, wy, col) {
     col[c] = alb[c] * (SUN_COL[c] * (sun + rim * 0.7) + SKY_COL[c] * sky + FILL_COL[c] * fill + BOUNCE_COL[c] * bounce)
       + spec * SUN_COL[c] * 0.35 + rim * SHEEN[c] * 0.3 + env * ENV_COL[c] + envCool * COOL_COL[c] + envSun * SUN_COL[c] * 0.3;
   }
+  // I skuggan lyser bara den kalla himlen: färgen blir dovare och drar mot lila, så att den solbelysta sidan
+  // och motljuset står ut mot en mörk, nästan grå skuggsida i stället för ett jämnt mättat rött
+  const lit = Math.min(1, sun * 2.2 + rim * 1.5);
+  const grey = (col[0] * 0.3 + col[1] * 0.59 + col[2] * 0.11) * 1.15;
+  const dull = 0.28 * (1 - lit);
+  col[0] += (grey * 0.95 - col[0]) * dull;
+  col[1] += (grey * 0.92 - col[1]) * dull;
+  col[2] += (grey * 1.25 - col[2]) * dull;
   const low = lowAt(Y1 - wy);
   col[0] *= low;
   col[1] *= low;
@@ -536,11 +551,9 @@ function albedo(m, p, x, y, z) {
   let a = ALBEDO[m];
   if (m === SUIT) {
     if (p === 1 && Math.abs(y - (x < 0 ? KNEE_L[1] : KNEE_R[1]) + 0.005) < 0.042) a = ALBEDO[DARK]; // knäskydd
-    else if (p === 1 && y > 0.135 && y < 0.152) return reflex(); // reflexband på smalbenen
     else if (p === 2 && y > 0.6 && y < 0.62 && x > 0) return reflex(); // reflexband över armbågen
     else if (p === 2 && x < 0 && y > 0.6 && y < 0.62 && z > 0) return reflex();
     else if (y > 0.805 && p !== 1) a = [0.06, 0.05, 0.055]; // mörkt axelok
-    else if (p === 3 && y > 0.548 && y < 0.565) return reflex(); // reflexband runt jackans nederkant
     else if (p === 1 || (p === 3 && y < 0.55)) a = [0.26, 0.01, 0.024]; // byxorna mörkare
     // Sömmar: längs ryggen bredvid säcken, runt axeloket och längs benens utsidor
     const seam = (p === 3 && y > 0.6 && Math.abs(Math.abs(x) - 0.088) < 0.003)
@@ -548,15 +561,16 @@ function albedo(m, p, x, y, z) {
       || (p === 1 && Math.abs(Math.abs(x - (x < 0 ? -0.07 : 0.07)) - 0.04) < 0.0025 && y > 0.17);
     if (seam) a = [a[0] * 0.68, a[1] * 0.68, a[2] * 0.68];
   }
-  // Ett reflexband runt hjälmen, som på räddningstjänstens hjälmar
-  if (m === HELMET && Math.abs(y - 0.972) < 0.007) return reflex();
-  if (m === PACK && z > 0.14) {
-    // Kompressionsremmar med spännen, dragkedjan runt framfickan och en reflexlapp på locket
+  if (m === PACK) {
+    // Ett grått kantband där locket möter säcken
+    if (z > 0.13 && Math.abs(y - 0.835) < 0.005 && Math.abs(x - 0.012) < 0.07) a = [0.11, 0.11, 0.12];
+  }
+  if (m === PACK && z > 0.13) {
+    // Kompressionsremmar med spännen och dragkedjan runt framfickan
     for (const sy of [0.75, 0.686]) {
-      if (Math.abs(y - sy) < 0.007) a = Math.abs(x - 0.06) < 0.012 ? [0.2, 0.2, 0.21] : ALBEDO[STRAP];
+      if (Math.abs(y - sy) < 0.006) a = Math.abs(x - 0.05) < 0.01 ? [0.2, 0.2, 0.21] : [0.07, 0.07, 0.075];
     }
-    if (z > 0.185 && Math.abs(y - 0.722) < 0.003 && Math.abs(x - 0.014) < 0.06) a = [0.14, 0.14, 0.15];
-    if (Math.abs(y - 0.834) < 0.006 && Math.abs(x + 0.004) < 0.018) return reflex();
+    if (z > 0.17 && Math.abs(y - 0.726) < 0.003 && Math.abs(x - 0.014) < 0.05) a = [0.1, 0.1, 0.11];
   }
   // Tygets struktur, så att ytan inte blir plastslät
   const n = 0.88 + 0.24 * hash3(Math.floor(x * 260), Math.floor(y * 260), Math.floor(z * 260));

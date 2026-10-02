@@ -346,17 +346,13 @@
 
     <!-- MENU: Fjällräddaren – flygskolan, övningar, uppflygning och uppdrag (plan.md §2–3) -->
     <section id="screen-menu" class="screen career-screen" hidden>
+      <canvas class="career-figure" id="career-figure" aria-hidden="true"></canvas>
       <div class="career">
         <header class="career-head">
           <canvas class="career-heli" id="career-heli" width="320" height="130" aria-hidden="true"></canvas>
           <div class="career-title">
             <h2>Fjällräddaren</h2>
             <p>Från aspirant till fjällräddare</p>
-          </div>
-          <div class="career-who">
-            <p class="who" id="menu-name"></p>
-            <p class="grade" id="menu-title"></p>
-            <p class="logbook" id="menu-logbook"></p>
           </div>
         </header>
         <nav class="steps" id="menu-steps" role="tablist" aria-label="Karriären"></nav>
@@ -367,6 +363,12 @@
             <p class="side-text" id="side-text"></p>
             <p class="side-goal" id="side-goal" hidden></p>
             <div class="menu-alarm" id="menu-alarm" hidden></div>
+            <!-- Profilen ligger i sidopanelen, så att räddaren uppe till höger syns fritt -->
+            <div class="career-who">
+              <p class="who" id="menu-name"></p>
+              <p class="grade" id="menu-title"></p>
+              <p class="logbook" id="menu-logbook"></p>
+            </div>
             <p class="pull" id="menu-pull"></p>
             <div class="side-actions">
               <button type="button" class="btn menu-item" id="menu-free" hidden>Fri flygning</button>

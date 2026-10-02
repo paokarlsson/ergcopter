@@ -21,6 +21,7 @@ import { Hud } from './view/hud.js';
 import { CareerMenu } from './view/career.js';
 import { ResultScreen } from './view/results.js';
 import { mountRescuerScene } from './view/rescuer.js';
+import { mountRescuerBust } from './view/rescuer-bust.js';
 import { FlightLogView } from './view/logplayer.js';
 import { Replay, landingTrajectory } from './core/replay.js';
 import { FlightLogStore } from './core/flightlog.js';
@@ -62,8 +63,11 @@ const hud = new Hud();
 const careerMenu = new CareerMenu();
 // Korten i menyn och flygloggarna får bilder av 3D-landskapet när det är igång
 careerMenu.photos = (ids) => (renderer.landscape3d ? terrain.snapshots(ids.map(thumbView)) : null);
+careerMenu.heli3d = renderer.heli3d; // korten får den belysta 3D-helikoptern
+careerMenu.hoverPad = renderer.hoverPad; // och hyllan med plattan i plattscenerna
 const resultScreen = new ResultScreen();
 mountRescuerScene(document.getElementById('fin-figure'));
+mountRescuerBust(document.getElementById('career-figure'));
 const logView = new FlightLogView(() => renderer.colors);
 logView.photo = (view) => (renderer.landscape3d ? terrain.snapshots([view])[0] : null);
 const sound = new RotorSound();

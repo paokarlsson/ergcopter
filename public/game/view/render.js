@@ -14,7 +14,7 @@ import { Effects } from './effects.js';
 import { mix, alpha } from './color.js';
 import { PLANE_M } from './terrain.js';
 import { PeakField } from './peaks3d.js';
-import { HoverPad, hoverFrame, hoverHeight, padProject, padSun, drawHeliShadow, drawDownwash, drawTargetRing, drawPadLabel, PAD_CAM } from './hoverpad.js';
+import { HoverPad, hoverFrame, hoverHeight, padProject, padSun, heliSun, drawHeliShadow, drawDownwash, drawTargetRing, drawPadLabel, PAD_CAM } from './hoverpad.js';
 
 const VIEW_SPAN_M = 300; // höjd som syns i huvudvyn
 const GROUND_MARGIN_PX = 56; // marken så här högt upp när man står på den
@@ -51,13 +51,24 @@ const TERRAIN_SCALE = { start: 1, min: 0.7, max: 1 }; // 3D-landskapets upplösn
 // Fri flygning med 3D-helikoptern: kameran bakom och ovanför, helikoptern mitt i nedre delen av bilden
 // (andel av bredd och höjd för modellens mitt, skalan i px per meter vid 1080 px höjd, vinklar i rad).
 const CHASE = { x: 0.49, y: 0.75, pxPerM: 88, yaw: 0.05, pitch: 0.42, dist: 30 };
+// Landskapets horisont under fri flygning med 3D-helikoptern (andel av höjden): högt upp, så att fjällen
+// fyller mitten av bilden. Den glider dit när helikoptern lämnar plattan.
+const CHASE_HORIZON = 0.36;
 const DUSK_SUN = { x: 0.87, y: 0.15 }; // kvällssolen i 3D, andel av bredd och höjd: till höger, över fjällen
 // Övningarna med 3D-helikoptern: från sidan (px per meter vid skala 1, vinklar i rad). I en hovring svänger
 // kameran runt till framsidan, med plattan under (hoverpad.js): in när man är så här nära bandet (m),
 // ut igen när man är så här långt från det, och svängen tar SWING_S sekunder.
-const SCHOOL_SIDE = { pxPerM: 19, yaw: Math.PI / 2, pitch: 0.1, dist: 30 };
-// Plattan ligger på en fjälltopp: landskapets kamera står camUpM över målhöjden och ser ut över dalen.
-const HOVER_VIEW = { inM: 25, outM: 60, swingS: 1.3, yaw: Math.PI + 0.13, camUpM: 1000 };
+const SCHOOL_SIDE = { pxPerM: 19, yaw: Math.PI / 2, pitch: 0.1, dist: 30, sun: [-0.82, 0.5, 0.3] };
+// Plattan ligger på en klipphylla högt över dalen: landskapets kamera står landM över dalbottnen, så att
+// sjön, skogen och kullarna syns precis bortom hyllans kant och fjällen reser sig bakom dem.
+const HOVER_VIEW = { inM: 25, outM: 60, swingS: 1.3, yaw: Math.PI + 0.13, landM: 180, landZoom: 0.72, warm: 0.3 };
+// Topparna i utsikten (m): i sidled från kameran, avstånd och höjd. De sprids över bildens bredd bakom sjön.
+const OVERLOOK_PEAKS = [
+  { dx: -3800, z: 9500, h: 2050 },
+  { dx: 900, z: 10800, h: 2300 },
+  { dx: 4300, z: 8800, h: 1900 },
+  { dx: 8400, z: 10200, h: 2250 },
+];
 
 export class GameRenderer {
   /**
@@ -85,6 +96,8 @@ export class GameRenderer {
     this.terrainShown = null;
     this.peaks = new PeakField(); // milstolparnas toppar i 3D
     this.distance = 0; // px landskapet rullat
+    this.camDist = null; // distance när 3D-kamerans läge (camXM, m) senast räknades fram
+    this.camXM = 0;
     this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
     this.speed = 0; // px/s just nu
@@ -121,6 +134,7 @@ export class GameRenderer {
   /** Nytt pass: tillbaka till startplatsen, utan berg eller konfetti från förra passet eller demoturen. */
   clearMountains() {
     this.distance = 0;
+    this.camDist = null;
     this.mountains = [];
     this.sent.clear();
     this.peaks.clear();
@@ -251,17 +265,24 @@ export class GameRenderer {
     const td = this.#use3d(frameS);
     // Hovringen: kameran svänger runt till helikopterns framsida, med plattan under (hoverpad.js)
     const hov = this.#hoverState(v, dt, W, H);
+    // Över plattan står solen lite lägre och varmare (eftermiddagsljus), så att hällen, blocken och
+    // helikoptern får varma ljusa sidor och djupare skuggor
+    const hovDusk = hov ? dusk + (Math.max(dusk, HOVER_VIEW.warm) - dusk) * hov.e : dusk;
     if (td) {
       ctx.clearRect(0, 0, W, H);
-      // Under hovringen står landskapets kamera still på målhöjden, med horisonten högre upp
+      // Under hovringen står landskapets kamera still lågt över dalen, med horisonten högre upp och
+      // lite vidvinkel, så att sjön och dalen syns bortom hyllan och fjällen står en bit bort
       const land = hov
         ? {
             heliY0: heliY0 + (hov.f.horizon - heliY0) * hov.e,
-            cam: cam + (hov.at + HOVER_VIEW.camUpM - cam) * hov.e,
+            cam: cam + (HOVER_VIEW.landM - cam) * hov.e,
+            pxPerM: pxPerM * (1 + (HOVER_VIEW.landZoom - 1) * hov.e),
+            overlook: hov.e > 0.5, // utsikten från hyllan: fjäll bakom sjön och ingen startplatta i dalen
+            clouds: 1 - hov.e, // klart väder över dalen: stackmolnen speglades som vita fläckar i sjön
             hx: hx + (hov.f.cx - hx) * hov.e,
           }
-        : { heliY0, cam, hx };
-      this.#landscape3d(ctx, W, H, v, { pxPerM, ...land, t, dt, dusk, thin, scale, y });
+        : { heliY0: chase ? heliY0 + (H * CHASE_HORIZON - heliY0) * smooth01((v.h - 30) / 170) : heliY0, cam, hx };
+      this.#landscape3d(ctx, W, H, v, { pxPerM, ...land, t, dt, dusk: hovDusk, thin, scale, y });
     } else {
       this.#sendMountains(v, W, H, y, hx);
       drawSky(ctx, W, H, thin, dusk, c);
@@ -282,7 +303,7 @@ export class GameRenderer {
     this.#lines(ctx, W, H, v, y, c);
     // Plattan glider upp underifrån medan kameran svänger runt; bandet och sidovyns ring tonar ut
     const padF = hov ? { ...hov.f, horizon: hov.f.horizon + (1 - hov.e) * (H - hov.f.horizon + 30) } : null;
-    if (hov) this.#hoverBack(ctx, W, H, hov, padF, t, dusk);
+    if (hov) this.#hoverBack(ctx, W, H, hov, padF, t, hovDusk);
     ctx.globalAlpha = hov ? 1 - hov.e : 1;
     const front = this.#guides(ctx, W, H, v, y, c, dt, scale, hx, Boolean(hov));
     ctx.globalAlpha = 1;
@@ -311,7 +332,7 @@ export class GameRenderer {
     }
     if (v.workshop && this.heli3d && !this.heli3d.lost) {
       // Övningarna: 3D-helikoptern från sidan, eller framifrån över plattan i hovringen
-      this.#schoolHeli(ctx, v, hx, y(v.h), scale, t, airborne, dusk, shake, hov, padF);
+      this.#schoolHeli(ctx, v, hx, y(v.h), scale, t, airborne, hovDusk, shake, hov, padF);
       if (!hov) front?.();
       if (hov) this.#hoverFront(ctx, W, H, hov, padF, v, t);
       if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
@@ -468,11 +489,13 @@ export class GameRenderer {
       dist: o.dist,
       roll: airborne * (0.025 * Math.sin(t * 0.7) + 0.01 * Math.sin(t * 1.9)),
       nose: o.nose,
-      discTilt: 0.04,
+      discTilt: 0.04 + (hov ? 0.17 * hov.e : 0), // framifrån lutar skivan lite mot kameran, så att bladen syns
       rotor: v.rotor,
       livery: v.livery,
       dusk,
       time: t,
+      // Framifrån står solen snett framför helikoptern (hoverpad.js), annars dagens sol
+      sun: hov ? SCHOOL_SIDE.sun.map((s, i) => s + (heliSun(dusk)[i] - s) * hov.e) : undefined,
     });
     this.#blitHeli(ctx, out, o.x, o.y, o.px);
   }
@@ -628,7 +651,12 @@ export class GameRenderer {
    */
   #landscape3d(ctx, W, H, v, o) {
     const basePxPerM = (H * 0.8) / VIEW_SPAN_M; // utan utzoomning, så att sidledes läget inte hoppar
-    const camX = this.distance / basePxPerM;
+    // Kamerans läge i meter räknas i steg, så att landskapet och topparna inte hoppar när fönstret
+    // byter storlek (t.ex. helskärm mitt i flygningen): skalan per pixel ändras då.
+    const moved = this.distance - (this.camDist ?? 0);
+    this.camXM = this.camDist === null || moved < 0 ? this.distance / basePxPerM : this.camXM + moved / basePxPerM;
+    this.camDist = this.distance;
+    const camX = this.camXM;
     const focal = o.pxPerM * PLANE_M;
     const items = this.peaks.update({
       milestones: v.milestones,
@@ -653,14 +681,14 @@ export class GameRenderer {
       dusk: o.dusk,
       thin: o.thin,
       sun: DUSK_SUN,
-      peaks: items.map((p) => ({ x: p.x, z: p.z, h: p.m.h, r: p.r })),
+      peaks: items.map((p) => ({ x: p.x, z: p.z, h: p.m.h, r: p.r })).concat(this.#overlookPeaks(o.overlook, camX)),
       // Plattan vid startplatsen, ungefär lika stor som helikoptern
-      pad: { x: 0, z: PLANE_M, r: (110 * o.scale) / basePxPerM },
+      pad: o.overlook ? null : { x: 0, z: PLANE_M, r: (110 * o.scale) / basePxPerM },
     };
     // Varje bild, även när kameran står still: terrain.js återanvänder då rutnätet och bara molnen
     // och färgerna ritas om. Att rita bara ibland gav långa stopp (300–500 ms) i grafikdrivrutinen
     // när kortet fick vila mellan bilderna.
-    this.terrain.render({ ...view, scale: this.terrainScale, quality: this.terrainQuality, time: o.t });
+    this.terrain.render({ ...view, clouds: o.clouds ?? 1, scale: this.terrainScale, quality: this.terrainQuality, time: o.t });
 
     const visible = items
       .map((p) => ({
@@ -668,16 +696,32 @@ export class GameRenderer {
         sx: o.hx + ((p.x - camX) * focal) / p.z,
         sy: o.heliY0 - ((p.m.h - o.cam) * focal) / p.z,
         passed: this.peaks.passed.has(p.m.name),
+        landmark: p.landmark,
       }))
       .filter(({ sx, sy }) => sx > -200 && sx < W + 200 && sy > -40 && sy < H + 20);
     // Konfetti när helikoptern når upp till en topp i bild.
     const c = this.colors;
-    for (const { m, sx, passed } of visible) {
-      if (!passed || this.celebrated.has(m.name)) continue;
+    for (const { m, sx, sy, passed, landmark } of visible) {
+      if (!passed || landmark || this.celebrated.has(m.name)) continue;
       this.celebrated.add(m.name);
-      if (v.flying && sx > 0 && sx < W) this.effects.burst(sx, m.h, [c.accent, c.record, c.guide, c.cyan, '#ffffff']);
+      // Konfettin räknas i 2D-scenens höjd: den höjd som hamnar där toppen står i bild
+      const alt = m.h + (o.y(m.h) - sy) / o.pxPerM;
+      if (v.flying && sx > 0 && sx < W) this.effects.burst(sx, alt, [c.accent, c.record, c.guide, c.cyan, '#ffffff']);
     }
     this.#signs(ctx, W, v, visible, o.dt, o.hx, o.scale, o.y);
+  }
+
+  /**
+   * Fjällen bakom sjön i utsikten från hovringsplattan: några snöklädda toppar som står fast i
+   * världen där kameran var när utsikten började, så att rutnätet bara räknas om en gång.
+   */
+  #overlookPeaks(on, camX) {
+    if (!on) {
+      this.overlookX = null;
+      return [];
+    }
+    this.overlookX ??= camX;
+    return OVERLOOK_PEAKS.map((p) => ({ x: this.overlookX + p.dx, z: p.z, h: p.h, r: 0.85 * p.h + 300 }));
   }
 
   #clouds(ctx, W, H, cam, y, dusk) {
@@ -1277,4 +1321,5 @@ function drawParked(ctx, x, groundY, livery, c) {
 
 const mod = (a, n) => ((a % n) + n) % n;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth01 = (x) => clamp01(x) * clamp01(x) * (3 - 2 * clamp01(x));
 export const fmtM = (m) => Math.round(m).toLocaleString('sv-SE');
