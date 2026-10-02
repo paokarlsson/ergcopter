@@ -86,7 +86,7 @@
   --mountain-snow: #f4f7fb;
   --mountain-shade: rgb(20 30 60 / 0.38);
   /* Toppetiketterna: ljust frostat glas med mörk text, som skyltar i landskapet */
-  --label-bg: rgb(232 239 247 / 0.8);
+  --label-bg: rgb(232 239 247 / 0.7);
   --label-edge: rgb(255 255 255 / 0.75);
   --label-text: #152234;
   --label-check: #1fa463;

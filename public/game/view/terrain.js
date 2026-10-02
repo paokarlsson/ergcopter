@@ -88,15 +88,19 @@ uniform vec3 uPad;      // helikopterplattan: x, z, radie (0 = ingen)
 uniform vec3 uLight;    // solljusets riktning över terrängen
 uniform vec3 uSunDir;   // solen på himlen, se sunDir()
 uniform float uClouds;  // 0 = klart, 1 = vanligt med stackmoln
+uniform float uCloudNear; // inga moln närmare kameran än så här (z), så att man ser helikoptern
+uniform float uCloudMore; // 0 = vanligt, mer = tätare molnhav (startskärmens utsikt)
+uniform vec4 uLake;     // en extra sjö: x, z och radier i sidled och på djupet (0 = ingen)
+uniform float uCloudLift; // molnlagret så här mycket högre (m), t.ex. kring massivets fot i utsikten
+uniform float uVista;   // 0–1, startskärmens utsikt: mindre snö, blåare skuggor och mer kontrast, som ett foto
 uniform int uPeakCount; // antal toppar i uPeaks
 uniform int uCloudSteps;
 uniform sampler3D uNoise;
 ${GRID_GLSL}
 #define PLANE ${PLANE_M.toFixed(1)}
 #define NOISE_SIZE ${NOISE_SIZE.toFixed(1)}
-const float CLOUD_BASE = 850.0;    // stackmolnens bas
-const float CLOUD_TOP = 1550.0;    // och de högsta topparna
-const float CLOUD_NEAR = 1300.0;   // inga moln närmare kameran än så här (z), så att man ser
+#define CLOUD_BASE (850.0 + uCloudLift)   // stackmolnens bas
+#define CLOUD_TOP (1550.0 + uCloudLift)   // och de högsta topparna
 const mat2 M2 = mat2(0.8, -0.6, 0.6, 0.8);
 
 // --- Brus -----------------------------------------------------------------------------
@@ -186,6 +190,21 @@ float eroded(vec2 p, int oct) {
   return a;
 }
 
+// Åsbrus (ridged multifractal): skarpa krön där bruset byter tecken, och toppar där flera
+// oktavers krön möts. Ger kedjor av spetsiga toppar med branta flanker, 0..ungefär 1.
+float ridged(vec2 p, int oct) {
+  float a = 0.0, b = 0.6, w = 1.0;
+  for (int i = 0; i < oct; i++) {
+    float n = 1.0 - abs(gnoised(p).x) * 1.5;
+    n *= n;
+    a += b * n * w;
+    w = clamp(n * 1.4, 0.0, 1.0); // finare krön bara uppe på de grövre
+    b *= 0.48;
+    p = M2 * p * 2.07;
+  }
+  return a;
+}
+
 // Sjöns strand (z) och om dalen har sjö här (0–1). Alltid sjö vid startplatsen.
 float shoreZ(float x) {
   return PLANE + 980.0 + 420.0 * (vnoise(vec2(x * 0.0005, 1.7)) - 0.5) + 150.0 * (vnoise(vec2(x * 0.0031, 4.1)) - 0.5);
@@ -204,6 +223,51 @@ float forestAt(vec2 p, float h) {
 // Milstolparnas toppar: en spetsig topp med eroderade sluttningar, åsar, raviner och
 // förberg nedtill, som fjällen omkring. Detaljerna krymper mot toppen, så att den
 // ligger exakt på rätt höjd i mitten och etiketten hamnar rätt.
+// Avståndet ut från en tresidig pyramids mitt: plana sidor som möts i skarpa åsar (som ett horn),
+// i stället för en rund kon. Mellan 0,5 och 1 gånger det vanliga avståndet.
+float facets(vec2 u, float ang) {
+  float m = -1e4;
+  for (int i = 0; i < 3; i++) {
+    float a = ang + float(i) * 2.094 + 0.35 * sin(ang * 3.7 + float(i) * 1.9);
+    m = max(m, dot(u, vec2(cos(a), sin(a))));
+  }
+  return m;
+}
+
+// Ett fält av pyramidformade toppar, en per ruta (cell m) på ett slumpat ställe i rutan, med egen
+// höjd, bredd och vridning: tresidiga pyramider med plana sidor och skarpa åsar, 0..1. Ger kedjorna
+// långt bort tydliga, spetsiga toppar med djupa dalar emellan i stället för en kuperad platå.
+float pyramids(vec2 p, float cell, float soft) {
+  vec2 c = p / cell;
+  vec2 i = floor(c);
+  vec2 f = fract(c);
+  float h = 0.0;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 o = f - g - (0.15 + 0.7 * hash22(i + g));
+      float r = hash12(i + g + 17.3);
+      float ang = r * 6.2832;
+      vec2 cs = vec2(cos(ang), sin(ang));
+      vec2 u = vec2(cs.x * o.x - cs.y * o.y, cs.y * o.x + cs.x * o.y);
+      // Tre sidor (120° emellan) som möts i åsar, lite rundade (soft): skarpa åsar blev trappsteg i rutnätet
+      float fa = smax(smax(u.x, dot(u, vec2(-0.5, 0.866)), soft), dot(u, vec2(-0.5, -0.866)), soft);
+      float d = mix(length(u), fa * 1.5, 0.75) / (0.7 + 0.4 * fract(r * 7.13));
+      // Konkava sidor: branta mot toppen och flackare ut mot dalen, som ett horn
+      h = max(h, (0.5 + 0.5 * fract(r * 3.71)) * pow(max(1.0 - d, 0.0), 1.8));
+    }
+  }
+  return h;
+}
+
+// Djupet för kedjorna långt bort, där brusets skala växer 2,6 gånger mellan 10 och 40 km: integralen av
+// 1 / skalan, så att koordinaten alltid växer med avståndet
+float farZ(float z) {
+  float z1 = PLANE + 10000.0;
+  float u = clamp((z - z1) / 30000.0, 0.0, 1.0);
+  return min(z, z1) + 18750.0 * log(1.0 + 1.6 * u) + max(z - z1 - 30000.0, 0.0) / 2.6;
+}
+
 float peakAt(vec2 p, vec4 k, int oct) {
   vec2 d = p - k.xy;
   float r = length(d) / k.w;
@@ -213,22 +277,33 @@ float peakAt(vec2 p, vec4 k, int oct) {
   // Åsar åt några håll: radien varierar mjukt runt toppen
   vec2 dir = u / max(r, 1e-4);
   float lobes = vnoise(dir * 1.3 + seed) * 0.65 + vnoise(dir * 3.1 - seed) * 0.35;
-  float s = r * (0.72 + 0.62 * lobes);
-  float cone = pow(max(1.0 - s, 0.0), 1.45);
+  // Varje massiv är utdraget åt sitt eget håll och har sin egen profil, så att topparna inte blir kloner:
+  // några är långa åsar med en spets, andra breda pyramider eller smalare horn
+  vec2 ax = vec2(cos(seed * 2.3), sin(seed * 2.3));
+  float el = 0.55 + 0.4 * fract(seed * 0.53);
+  vec2 ue = vec2(dot(u, ax) * el, dot(u, vec2(-ax.y, ax.x)));
+  // Plana sidor som möts i skarpa åsar, och bitoppar som ger massivet breda axlar
+  float re = mix(length(ue), facets(ue, seed * 1.3) * 1.5, 0.7);
+  float s = re * (0.72 + 0.62 * lobes);
+  float cone = pow(max(1.0 - s, 0.0), 1.05 + 0.3 * fract(seed * 0.29)) * (1.0 - smoothstep(0.5, 1.0, r));
   // Bitoppar på åsarna, lägre än huvudtoppen: ett massiv med flera spetsar i stället för en ensam kon
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
     float ang = seed * 1.7 + fi * 2.25 + 0.7 * sin(seed * 3.1 + fi);
     vec2 c = vec2(cos(ang), sin(ang)) * (0.34 + 0.16 * fract(seed * 0.37 + fi * 0.61));
-    float hs = 0.58 + 0.2 * fract(seed * 0.71 + fi * 0.37);
-    cone = smax(cone, hs * pow(max(1.0 - length(u - c) / 0.42, 0.0), 1.35), 0.06);
+    float hs = 0.5 + 0.34 * fract(seed * 0.71 + fi * 0.37);
+    vec2 uc = u - c;
+    float sc = mix(length(uc), facets(uc, ang * 2.1 + fi) * 1.5, 0.6);
+    cone = smax(cone, hs * pow(max(1.0 - sc / 0.5, 0.0), 1.2), 0.06);
   }
-  float e = clamp(eroded(u * 3.2 + seed, oct) * 2.4, -1.0, 1.0);
-  float w = 1.0 - smoothstep(0.7, 1.0, r);
-  // Upphöjningar växer nedåt, raviner skärs ut ända upp mot toppen
-  float lift = (1.0 - cone) * max(e, 0.0) * 0.75;
-  float carve = pow(1.0 - cone, 0.6) * max(-e, 0.0) * 0.55;
-  return k.z * (cone + (lift - carve) * w);
+  float e = clamp(eroded(u * 4.2 + seed, oct) * 2.4, -1.0, 1.0);
+  // Raviner och klippribbor nedför sidorna, ända upp mot toppen: inga släta pyramidsidor
+  float gully = 1.0 - ridged(vec2(dot(u, ax), dot(u, vec2(-ax.y, ax.x))) * vec2(9.0, 5.0) + seed * 1.9, max(oct - 5, 2));
+  float w = 1.0 - smoothstep(0.45, 1.0, r);
+  // Upphöjningar växer nedåt, raviner skärs ut ända upp mot toppen. Måttliga, så att foten inte blir en lodrät mur.
+  float lift = (1.0 - cone) * max(e, 0.0) * 0.45;
+  float carve = pow(1.0 - cone, 0.6) * max(-e, 0.0) * 0.7;
+  return k.z * (cone + (lift - carve) * w - 0.07 * gully * smoothstep(0.98, 0.7, cone) * w);
 }
 
 // Höjden (m) i punkten p = (x, z): platt dalbotten i helikopterns plan, sjön bakom,
@@ -236,20 +311,70 @@ float peakAt(vec2 p, vec4 k, int oct) {
 float heightAt(vec2 p, int oct) {
   float z = p.y;
   float shore = shoreZ(p.x);
-  float e = eroded(p * (1.0 / 3000.0) + vec2(13.1, 7.7), oct);
+  // Förvrängda koordinater, så att topparna inte står i ett regelbundet mönster som kloner
+  vec2 warp = vec2(vnoise(p * (1.0 / 9000.0) + 2.3), vnoise(p * (1.0 / 9000.0) + 7.9)) - 0.5;
+  vec2 pw = p + warp * 3400.0;
+  // Längre bort tätare toppar (världen är fast, kameran flyttar sig bara i sidled och uppåt): från flyghöjd
+  // ser man då rad på rad med spetsiga toppar i stället för långa, låga kullar
+  float freq = mix(1.0 / 3000.0, 1.0 / 2200.0, smoothstep(6000.0, 20000.0, z));
+  float e = eroded(pw * freq + vec2(13.1, 7.7), oct);
+  // Ett andra lager toppar i bassängerna mellan det förstas, så att det inte blir stora platta slätter
+  // (tonas in och ut över några hundra meter: ett hugg i höjden syntes som en mörk linje tvärs över dalen)
+  float second = smoothstep(PLANE + 1700.0, PLANE + 2600.0, z) * (1.0 - smoothstep(PLANE + 8500.0, PLANE + 9400.0, z));
+  if (second > 0.0) e = mix(e, smax(e, 0.85 * eroded(pw * (freq * 1.37) + vec2(41.3, 27.9), oct - 1), 0.2), second);
   // Fjällen samlas i massiv med breda, skogiga dalar emellan. Massivens höjd varierar, så att
-  // topparna inte blir lika höga kloner: kärnan når 1 700–2 300 m, kanterna är låga kullar.
+  // topparna inte blir lika höga kloner. Som i den svenska fjällvärlden ligger de flesta
+  // topparna på 900–1 600 m: från flyghöjd ser man ned på kedja efter kedja.
   float mass = vnoise(p * (1.0 / 15000.0) + vec2(3.1, 8.2)) * 0.68 + vnoise(p * (1.0 / 5200.0) + vec2(1.7, 4.4)) * 0.32;
-  mass = 0.45 + 0.55 * smoothstep(0.2, 0.7, mass);
-  float a = clamp(0.48 + 1.15 * e, 0.0, 1.35);
+  mass = 0.7 + 0.3 * smoothstep(0.2, 0.7, mass);
+  // Kedjorna går i band på tvären, med lägre dalar emellan där molnen ligger: lager bakom lager
+  float band = vnoise(vec2(pw.x * (1.0 / 17000.0), pw.y * (1.0 / 4300.0)) + vec2(4.7, 1.3));
+  band = 0.74 + 0.26 * smoothstep(0.22, 0.72, band);
+  // Inget tak på a: ett tak gav platåer där alla toppar kapades på samma höjd
+  float a = max(0.5 + 1.1 * e, 0.0);
   // Längre bort lite högre, så att de bortre kedjorna når upp mot horisonten bakom de närmare
-  float ramp = smoothstep(PLANE + 2800.0, PLANE + 7000.0, z) * (1.0 + 0.2 * smoothstep(12000.0, 35000.0, z));
-  float mtn = ramp * (220.0 + mass * (560.0 + 1150.0 * a * a));
+  float ramp = smoothstep(PLANE + 2800.0, PLANE + 7000.0, z) * (1.0 + 0.1 * smoothstep(9000.0, 30000.0, z));
+  // Längre bort brantare relief, så att de bortre kedjorna syns som rader av toppar och inte som en slätt
+  float far = smoothstep(5000.0, 18000.0, z);
+  float relief = 950.0 * (1.0 + 0.8 * far);
+  float mtn = ramp * (260.0 + mass * band * (500.0 + relief * pow(a, 2.0 + 0.4 * far)));
+  // Bakom milstolparnas toppar (som står 3–7 km bort) reser sig kedja bakom kedja med skarpa krön
+  // på 1 500–2 500 m, ungefär i höjd med helikoptern: från flyghöjd syns de som lager av
+  // siluetter mot horisonten i stället för en karta man ser ned på. Kedjorna går mest på tvären.
+  float back = smoothstep(PLANE + 5500.0, PLANE + 9000.0, z);
+  if (back > 0.0) {
+    // Längre bort större kedjor och färre oktaver: lugna, tydliga toppar mot horisonten i stället för ett brusigt fält
+    float zs = 1.0 + 1.6 * clamp((z - PLANE - 10000.0) / 30000.0, 0.0, 1.0);
+    // På djupet räknas skalan som en integral (farZ): med z / zs vände bruset tillbaka runt 25 km och
+    // drogs ut på djupet, så att rader av pyramider blev långa, raka krön med tänder tvärs över bilden
+    vec2 q = vec2(pw.x / zs, farZ(pw.y));
+    // Få oktaver: åsbrusets fina krön blev långa, släta dyner med regelbundna tänder långt bort
+    float rg = ridged(q * vec2(1.0 / 5200.0, 1.0 / 3400.0) + vec2(7.3, 2.1), max(oct - 3 - int(zs > 1.5), 2));
+    float lift = 0.7 + 0.35 * smoothstep(0.25, 0.75, vnoise(p * (1.0 / 11000.0) + vec2(5.5, 9.1)));
+    // Kedjorna stiger mot horisonten: de närmaste lägre, så att de bortre syns över dem
+    // Längst bort höga toppar med djupa dalar: på 30 km avstånd syns bara stor relief som toppar mot horisonten
+    float amp = mix(1500.0, 2200.0, smoothstep(PLANE + 7000.0, PLANE + 22000.0, z)) + 700.0 * smoothstep(PLANE + 20000.0, PLANE + 40000.0, z);
+    // Spetsiga toppar med djupa dalar emellan, där diset och molnen ligger: med en lägre exponent blev
+    // kedjorna breda, snötäckta platåer
+    // Pyramidformade toppar med åsbruset som raviner och klippribbor på sidorna, och lägre åsar emellan
+    float py = pyramids(q + vec2(1730.0, 940.0), 2700.0, 0.015 + 0.035 * smoothstep(8000.0, 30000.0, z));
+    float rr = pow(clamp(rg, 0.0, 1.2), 1.75);
+    // Raviner skärs ned i pyramidernas sidor där åsbruset är lågt, så att snön ligger i stråk och inte som en kupol
+    // Finare raviner nedför sidorna (på tvären mot dem): mörka klippribbor mellan snöstråken
+    float gul = 1.0 - ridged(q * vec2(1.0 / 1300.0, 1.0 / 800.0) + vec2(3.7, 8.9), 3);
+    mtn = mix(mtn, 260.0 + amp * lift * (1.05 * py * (0.72 + 0.4 * rg) + 0.15 * rr - py * (0.1 * (1.0 - py) + 0.12 * gul)), back);
+  }
+  // Mjukt tak högt upp, så att de enstaka jättarna långt bort inte reser sig som en mur över horisonten
+  // Taket ligger högre långt bort: där sticker de spetsigaste topparna upp över horisonten
+  // I startskärmens utsikt ligger kameran nära taket: där blev de avplanade krönen långa vågräta linjer
+  float cap = 2500.0 + 400.0 * smoothstep(15000.0, 35000.0, z) + 1100.0 * uVista;
+  if (mtn > cap) mtn = cap + 450.0 * (1.0 - exp(-(mtn - cap) / 450.0));
   // Skogsklädda kullar bakom sjön
   float hills = smoothstep(shore - 160.0, shore + 2200.0, z) * (60.0 + 560.0 * clamp(0.5 + 1.1 * e, 0.0, 1.15));
   // Åsar och raviner i kullarna längre bort, så att de har relief när man ser dem från höjden
   float rid = eroded(p * (1.0 / 1100.0) + vec2(5.3, 2.9), min(oct, 7));
-  hills += smoothstep(shore + 300.0, shore + 2400.0, z) * 300.0 * clamp(rid + 0.35, 0.0, 1.0);
+  // Längre bort högre: dalbottnarna mellan kedjorna blir då förberg i stället för platta slätter
+  hills += smoothstep(shore + 300.0, shore + 2400.0, z) * (300.0 + 350.0 * smoothstep(6000.0, 14000.0, z)) * clamp(rid + 0.35, 0.0, 1.0);
   float h = max(hills, mtn);
   // Dalbotten: helt platt närmast planet, små ojämnheter längre bort, sjön bakom plattan
   float rough = (2.0 + 6.0 * vnoise(p * 0.005)) * smoothstep(40.0, 260.0, abs(z - PLANE));
@@ -258,6 +383,14 @@ float heightAt(vec2 p, int oct) {
   // Tjärnar på flacka partier i dalen
   float tarn = smoothstep(0.64, 0.72, vnoise(p * 0.0011 + 3.7)) * (1.0 - smoothstep(12.0, 40.0, h)) * smoothstep(PLANE + 300.0, PLANE + 800.0, z);
   h = mix(h, -6.0, tarn);
+  // Startskärmens sjö långt bort: dalen sänks mjukt ned mot en stor sjö mellan kedjorna
+  if (uLake.z > 0.0) {
+    vec2 ld = (p - uLake.xy) / uLake.zw;
+    float lr = length(ld) + 0.35 * (vnoise(p * (1.0 / 1800.0) + 6.1) - 0.5);
+    float basin = smoothstep(0.92, 2.1, lr);
+    h = mix(-7.0, h, basin * basin);
+    tarn = max(tarn, 1.0 - smoothstep(0.85, 1.0, lr));
+  }
   float wet = max(lake, tarn);
   // Trädkronorna ger skogen struktur på nära håll
   if (oct > 9) h += forestAt(p, h) * (11.0 + 9.0 * vnoise(p * 0.15)) * (1.0 - wet) * smoothstep(9.5, 11.5, float(oct));
@@ -271,7 +404,8 @@ float heightAt(vec2 p, int oct) {
 
 // Detaljnivån efter avståndet
 int octFor(float t) {
-  return t < 1500.0 ? 10 : t < 5000.0 ? 8 : t < 14000.0 ? 7 : 6;
+  // Långt bort är rutnätets rutor 50–150 m: finare brus än så vek sig till regelbundna mönster (vikning)
+  return t < 1500.0 ? 10 : t < 5000.0 ? 8 : t < 14000.0 ? 7 : t < 26000.0 ? 5 : 4;
 }
 
 // --- Ljus och himmel -------------------------------------------------------------------
@@ -285,7 +419,7 @@ vec2 cssFrag() {
   return vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uScale;
 }
 
-// Solen på himlen: dagsolen står till höger bakom kameran. Kvällssolen står lågt och syns på
+// Solen på himlen: dagsolen står till höger, snett bakom kameran. Kvällssolen står lågt och syns på
 // samma ställe i bild på varje skärm, oavsett var helikoptern är. Terrängen belyses
 // från uLight, en fast riktning nära solens, så att skuggorna kan sparas.
 // Räknas ut en gång per bild i JavaScript (sunDir i terrain.js).
@@ -294,7 +428,8 @@ vec3 sunDir() {
 }
 
 vec3 sunColor() {
-  return mix(vec3(1.0, 0.94, 0.85) * 3.6, vec3(1.0, 0.64, 0.34) * 5.2, uDusk);
+  vec3 c = mix(vec3(1.0, 0.94, 0.85) * 3.6, vec3(1.0, 0.64, 0.34) * 5.2, uDusk);
+  return mix(c, vec3(1.0, 0.58, 0.3) * 5.4, 0.6 * uVista); // utsikten: varmt släpljus som i en solnedgång
 }
 
 // Himlen utan moln: djupblå zenit och ljus horisont på dagen, på kvällen glöd mot solen
@@ -303,9 +438,15 @@ vec3 skyBase(vec3 rd) {
   vec3 sun = sunDir();
   float y = max(rd.y, 0.0);
   float s = max(dot(rd, sun), 0.0);
-  vec3 zen = mix(vec3(0.07, 0.22, 0.6), vec3(0.004, 0.012, 0.05), uThin);
-  vec3 hor = mix(vec3(0.5, 0.67, 0.9), vec3(0.32, 0.44, 0.7), uThin);
-  vec3 day = mix(hor, zen, pow(y, mix(0.27, 0.24, uThin)));
+  // Ett blekt, gråvitt dis just över horisonten som snabbt går över i mättat blått, djupare mot zenit
+  vec3 zen = mix(vec3(0.03, 0.13, 0.42), vec3(0.004, 0.012, 0.05), uThin);
+  vec3 mid = mix(vec3(0.14, 0.29, 0.5), vec3(0.03, 0.08, 0.25), uThin);
+  vec3 hor = mix(vec3(0.47, 0.51, 0.57), vec3(0.32, 0.44, 0.7), uThin);
+  vec3 day = mix(hor, mid, 1.0 - exp(-y / 0.042));
+  day = mix(day, zen, smoothstep(0.08, 0.6, y));
+  // Ljusare och blekare åt solens sida (till höger), som i ett foto med solen snett bakom
+  float side = smoothstep(-0.1, 0.7, rd.x * sign(sun.x));
+  day = mix(day, hor * 1.08, 0.32 * side * (1.0 - smoothstep(0.0, 0.45, y)) * (1.0 - uThin));
   day += vec3(1.0, 0.85, 0.6) * (0.18 * pow(s, 6.0) + 0.35 * pow(s, 64.0));
   float toward = 0.5 + 0.5 * dot(normalize(rd.xz + 1e-5), normalize(sun.xz));
   vec3 horK = mix(vec3(0.66, 0.46, 0.46), vec3(1.3, 0.62, 0.26), pow(toward, 2.0));
@@ -332,17 +473,19 @@ vec3 cloudBank(vec3 col, vec3 rd, float dist, float base, float seed, float w) {
   float X = uCam.x + rd.x / rd.z * dist;
   // Höjd över molnbasen, som varierar lite längs banken så att undersidan inte blir en linjal
   float H = uCam.y + rd.y / rd.z * dist - base - 450.0 * vnoise(vec2(X / 2600.0, seed + 2.0));
-  float hn = H / 1500.0;
+  // Flata bankar och stråk över horisonten, inte höga bulliga stackmoln som tar över himlen
+  float hn = H / 1000.0;
   if (hn < 0.0 || hn > 1.0) return col;
   float cov = smoothstep(0.3, 0.7, vnoise(vec2(X / 7000.0, seed)));
-  vec2 q = vec2(X, H * 1.5) / 1100.0 + seed * 3.7 + vec2(uTime * 0.01, 0.0);
+  vec2 q = vec2(X, H * 2.4) / 1100.0 + seed * 3.7 + vec2(uTime * 0.01, 0.0);
   float f = fbm(q, 5);
   float d = f + 0.5 * cov - 0.62 - 0.55 * hn;
-  float a = smoothstep(0.0, 0.07, d) * smoothstep(0.0, 0.2, hn);
+  // Mjuk kant, som molnen nere i dalarna: inga utklippta vita former mot himlen
+  float a = smoothstep(0.0, 0.16, d) * smoothstep(0.0, 0.25, hn);
   if (a <= 0.0) return col;
   // Belyst ovanpå och mot solen, grå undersida; långt bort tonar molnen mot horisontens dis
-  float lit = clamp(0.35 + 1.1 * hn + 1.6 * (f - 0.5), 0.0, 1.0);
-  vec3 cc = mix(vec3(0.6, 0.66, 0.77), vec3(1.1, 1.08, 1.04), lit);
+  float lit = clamp(0.25 + 1.1 * hn + 1.6 * (f - 0.5) + 2.0 * (d - 0.1), 0.0, 1.0);
+  vec3 cc = mix(vec3(0.56, 0.63, 0.75), vec3(1.08, 1.06, 1.03), lit);
   cc = mix(cc, skyBase(vec3(rd.x, 0.01, rd.z)), 0.15 + 0.3 * smoothstep(15000.0, 35000.0, dist));
   return mix(col, cc, a * w);
 }
@@ -357,8 +500,9 @@ vec3 skyColor(vec3 rd) {
     // Slöjmoln på 9 km: strimmiga, belysta underifrån på kvällen
     float t = (9500.0 - uCam.y) / rd.y;
     vec2 q = (uCam.xz + rd.xz * t) * 0.00011 + vec2(uTime * 0.0006, 0.0);
-    float c = fbm(q * vec2(1.0, 3.2), 5);
-    c = smoothstep(0.5 - 0.1 * uDusk, 0.8, c) * smoothstep(0.0, 0.15, rd.y);
+    float c = fbm(q * vec2(1.0, mix(2.0, 3.2, uDusk)), 5);
+    // Få, mjuka slöjor på dagen: mest klarblå himmel, inga tunna strimmor som ser ut som repor
+    c = smoothstep(0.64 - 0.24 * uDusk, 0.9 - 0.1 * uDusk, c) * smoothstep(0.0, 0.15, rd.y);
     vec3 lit = mix(vec3(1.0, 0.99, 0.97) * 1.1, mix(vec3(0.7, 0.45, 0.6), vec3(1.6, 0.75, 0.38), pow(s, 2.0)), uDusk);
     col = mix(col, lit * (1.0 - 0.6 * uThin), c * mix(0.4, 0.65, uDusk));
     // Vädermoln långt bort: två bankar stackmoln som skivor 16 och 30 km bort, så att de får
@@ -387,8 +531,14 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
   float tau = a * exp(-ro.y * b) * k;
   // Luftperspektiv på dagen även högt upp: kedja efter kedja tonar mot blått dis med avståndet
   // Nära klart, sedan allt tätare: de närmaste åsarna har full kontrast, de bortre bleknar bort
-  float ft = t * (1.0 / 24000.0);
-  tau += (t * (1.0 / 50000.0) + ft * ft) * (1.0 - 0.7 * uDusk);
+  // Längst bort syns kedjorna ändå som bleka, blå siluetter mot horisonten.
+  // Kedjorna bakom milstolparna (8–20 km) ska ha tydligt mindre kontrast än de närmaste topparna.
+  // Diset växer jämnt från en dryg kilometer: även milstolparnas toppar (3–7 km) får lite blå luft, så att de
+  // hör ihop med kedjorna bakom i stället för att se inklistrade ut, och de bortersta kedjorna behåller
+  // ändå lite kontrast mellan snö och sten i stället för att bli en vit målad fond.
+  // Tunnare längst bort än förut: även de bortersta kedjorna har kvar sina ljusa och skuggade sidor
+  float km = max(t - 1500.0, 0.0) * 0.001;
+  tau += (0.032 * km + 0.00018 * km * km) * (1.0 - 0.7 * uDusk);
   // Ett tätare dislager nere i dalen, som syns först när man ser ned på det från höjden:
   // dalen långt under helikoptern blir blåaktig och platt i färgen, som i ett flygfoto.
   const float a2 = 1.0 / 5000.0;
@@ -396,13 +546,21 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
   float k2 = abs(rd.y) > 1e-4 ? (1.0 - exp(-t * rd.y * b2)) / (rd.y * b2) : t;
   float low = 1.0 - exp(-a2 * exp(-ro.y * b2) * k2 * smoothstep(400.0, 1600.0, ro.y));
   // Dalens dis är djupare blått än luften högre upp, och ligger närmast marken: läggs på först
-  col = mix(col, mix(vec3(0.075, 0.13, 0.22), vec3(0.16, 0.14, 0.2), uDusk), low);
+  col = mix(col, mix(vec3(0.1, 0.19, 0.32), vec3(0.16, 0.14, 0.2), uDusk), low * 0.75);
+  tau *= 1.0 - 0.5 * uVista; // utsikten: klarare luft, de bortre kedjorna behåller kontrasten
   float amount = 1.0 - exp(-tau);
   vec3 sun = sunDir();
   vec3 hor = skyBase(vec3(rd.x, 0.015, rd.z));
-  vec3 near = mix(vec3(0.2, 0.3, 0.45), vec3(0.3, 0.32, 0.44), uDusk);
+  // Ljust gråblått även på mellanavstånd: skuggorna lyfts mot luftens färg i stället för att bli djupt mörkblå
+  vec3 near = mix(vec3(0.13, 0.22, 0.36), vec3(0.3, 0.32, 0.44), uDusk);
+  near = mix(near, vec3(0.17, 0.26, 0.46), uVista); // utsikten: blått luftperspektiv, inte lila
   // Långt bort ljust gråblått som fjärran fjäll, inte vitt: kedjorna bakom varandra tonar bort i diset
-  hor = mix(hor, mix(vec3(0.4, 0.5, 0.64), hor, uDusk), 0.55);
+  // Mörkare än himlen vid horisonten, så att de bortersta kedjorna ändå syns som siluetter mot den
+  // Allra längst bort närmare himlens ljusa horisont, så att den bortersta kedjan inte blir en mörk mur
+  // Kedjorna på mellanavstånd blir djupt gråblå (som i ett flygfoto i klart väder), inte mjölkvita
+  float wall = mix(0.92, 0.55, smoothstep(25000.0, 60000.0, t));
+  // I utsikten blir kedjorna blågrå mot den varma himlen, som i ett kvällsfoto
+  hor = mix(hor, mix(vec3(0.19, 0.275, 0.42), hor, uDusk * (1.0 - 0.75 * uVista)), mix(wall, 0.55, uDusk));
   vec3 fogCol = mix(near, hor, smoothstep(0.0, 0.7, amount));
   fogCol += mix(vec3(0.3, 0.25, 0.15), vec3(0.7, 0.3, 0.08), uDusk) * pow(max(dot(rd, sun), 0.0), 8.0) * amount;
   return mix(col, fogCol, amount);
@@ -412,22 +570,30 @@ vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t) {
 
 // Hur mycket stackmoln det finns här ovanifrån sett (0–1): enskilda moln med luckor emellan
 float cloudCover(vec2 xz) {
-  vec2 c = (xz + vec2(uTime * 5.0, uTime * 1.5)) * 0.00045;
+  vec2 c = (xz + vec2(uTime * 5.0, uTime * 1.5)) * vec2(0.00026, 0.0005); // långa molnbankar på tvären med luckor emellan
   float m = noise3(vec3(c.x, 0.37, c.y)) * 0.6 + noise3(vec3(c.x * 2.6, 1.63, c.y * 2.6)) * 0.4;
   // Glesare på kvällen, så att solnedgången syns
-  return smoothstep(0.5 + 0.22 * uDusk, 0.86 + 0.04 * uDusk, m) * uClouds;
+  // Tätare bara på nära håll: långt bort blev ett tätt lager prickigt när strålen gick snett genom det
+  float more = uCloudMore * (1.0 - smoothstep(4500.0, 7500.0, xz.y));
+  return smoothstep(0.49 + 0.23 * uDusk - more, 0.84 + 0.06 * uDusk - more, m) * uClouds;
 }
 
 // Stackmolnens täthet: platt bas och bulliga toppar, högre där molnet är kraftigt
 float cloudMap(vec3 p, int oct, float sharp) {
   float y = p.y - CLOUD_BASE;
   if (y <= 0.0 || y >= CLOUD_TOP - CLOUD_BASE) return 0.0;
-  float m = cloudCover(p.xz) * smoothstep(CLOUD_NEAR, CLOUD_NEAR + 2500.0, p.z);
+  // Glesare långt bort: snett genom molnlagret blev de annars ett vitt täcke över de bortre kedjorna
+  float m = cloudCover(p.xz) * smoothstep(uCloudNear, uCloudNear + 2500.0, p.z) * (1.0 - 0.75 * smoothstep(14000.0, 30000.0, p.z));
+  // I utsikten ovanifrån blev de bortre molnen rader av prickar när strålen gick snett genom det tunna lagret
+  m *= 1.0 - uVista * smoothstep(9000.0, 13000.0, p.z);
+  // Mellan kedjorna (6–16 km) ligger molnen tätare: vita molnbankar i dalarna mellan lagren av fjäll
+  m = min(1.0, m * (1.0 + 0.6 * smoothstep(5000.0, 8000.0, p.z) * (1.0 - smoothstep(14000.0, 20000.0, p.z))));
   float hn = y / (CLOUD_TOP - CLOUD_BASE);
   // Bruset nedan ger högst +0,5: där räcker det inte till något moln
   float base = m * 1.35 - 0.2 - 1.15 * hn - 0.95 * 0.47;
   if (base + 0.95 * 0.93 * 1.08 <= 0.0) return 0.0;
-  vec3 q = (p + vec3(uTime * 5.0, 0.0, uTime * 1.5)) * 0.0026;
+  // Bredare än höga: flata bankar med bulliga toppar i stället för runda bollar
+  vec3 q = (p + vec3(uTime * 5.0, 0.0, uTime * 1.5)) * vec3(0.0024, 0.0042, 0.0028);
   float f = 0.5 * noise3(q);
   q = q * 2.03 + 0.31;
   f += 0.28 * noise3(q);
@@ -467,12 +633,13 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
     t0 = max(min(tb, tt), 0.0);
     t1 = max(tb, tt);
   }
-  if (rd.z > 0.0) t0 = max(t0, (CLOUD_NEAR - ro.z) / rd.z);
+  if (rd.z > 0.0) t0 = max(t0, (uCloudNear - ro.z) / rd.z);
   t1 = min(min(t1, tmax), 45000.0);
   if (t1 <= t0) return vec4(0.0);
   vec3 sun = sunDir();
   vec3 sunCol = sunColor();
   vec3 amb = mix(vec3(0.5, 0.6, 0.78), vec3(0.34, 0.34, 0.48), uDusk) * (1.0 - 0.3 * uThin);
+  amb = mix(amb, vec3(0.58, 0.44, 0.5), 0.5 * uVista); // utsikten: molnhavet rosa i kvällsljuset
   vec4 sum = vec4(0.0);
   float tFog = 0.0; // avståndet till molnen, vägt efter hur mycket de syns
   float t = t0;
@@ -483,7 +650,8 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
     if (t > t1 || sum.a > 0.97) break;
     vec3 p = ro + rd * t;
     dt = max(30.0, 0.013 * t) * (fine ? 0.3 : 1.0);
-    float sharp = mix(9.0, 3.5, smoothstep(2000.0, 20000.0, t));
+    // Mjuka kanter: tätheten växer långsamt inåt, så att molnen tonar ut i diset i stället för att bli utklippta
+    float sharp = mix(2.4, 1.7, smoothstep(2000.0, 20000.0, t));
     float den = cloudMap(p, t < 12000.0 ? 5 : 4, sharp);
     if (den > 0.005) {
       // Första träffen: ett steg tillbaka och sedan kortare steg, så att kanten blir skarp
@@ -493,11 +661,16 @@ vec4 clouds(vec3 ro, vec3 rd, float tmax, int steps, float dither) {
         continue;
       }
       // Ljuset: hur mycket tunnare molnet är en bit mot solen (Quilez)
-      float dif = clamp((den - cloudMap(p + sun * 160.0, 3, sharp)) * 1.3 + 0.08, 0.0, 1.0);
+      // Starkare skillnad mellan sol- och skuggsidan och mörkare undersida: bulliga moln, inte vita fläckar
+      // Solljuset dämpas av molnet mellan punkten och solen (Beer), och undersidan får mindre ljus:
+      // vita, belysta toppar och gråblå sidor och bottnar, så att molnen får volym
       float y = clamp((p.y - CLOUD_BASE) / 900.0, 0.0, 1.0);
-      vec3 lin = amb * (0.3 + 0.8 * y) + sunCol * dif * 0.8;
-      vec3 c = mix(vec3(1.0), vec3(0.82, 0.84, 0.88), den) * lin;
-      float alpha = 1.0 - exp(-den * dt * 0.045);
+      // Solen står bakom kameran: utan den här självskuggningen blev sidan mot oss en platt vit yta
+      float dif = exp(-4.5 * cloudMap(p + sun * 220.0, 3, sharp)) * (0.22 + 0.78 * smoothstep(0.05, 0.8, y));
+      vec3 lin = amb * (0.25 + 0.7 * y) + sunCol * dif * 0.66;
+      vec3 c = mix(vec3(1.0), vec3(0.72, 0.78, 0.88), den) * lin;
+      // Tunna kanter släpper igenom mycket: molnet tonar ut i stället för att sluta i en skarp, vit kontur
+      float alpha = 1.0 - exp(-den * den * dt * 0.05);
       float w = alpha * (1.0 - sum.a);
       sum += vec4(c, 1.0) * w;
       tFog += t * w;
@@ -536,10 +709,12 @@ void main() {
   int oct = octFor(z);
   float h = heightAt(p, oct);
   // Lutningen med finare detaljer än höjden, som ljuset sedan visar
-  float e = max(0.6, 0.0015 * z);
-  float h0 = heightAt(p, oct + 2);
-  float hx = heightAt(p + vec2(e, 0.0), oct + 2);
-  float hz = heightAt(p + vec2(0.0, e), oct + 2);
+  // Steget följer radavståndet (0,4 % av z): finare detaljer än raderna hann inte med i bild och blev
+  // trappsteg av snö och sten på de branta väggarna. De finaste detaljerna lägger bildpunktsshadern på.
+  float e = max(0.6, 0.0035 * z);
+  float h0 = heightAt(p, oct + 1);
+  float hx = heightAt(p + vec2(e, 0.0), oct + 1);
+  float hz = heightAt(p + vec2(0.0, e), oct + 1);
   outColor = vec4(h, (hx - h0) / e, (hz - h0) / e, 0.0);
 }`;
 
@@ -582,8 +757,11 @@ void main() {
   vec3 nor = normalize(vec3(-g.y, 1.0, -g.z));
   float res = 1.0;
   if (dot(nor, uLight) > 0.001) {
-    vec3 ro = vec3(p.x, max(g.x, WATER), z) + nor * 2.0;
-    float t = 6.0;
+    // Börja en kolumnbredd bort: långt bort är kolumnerna breda, och ett krön som går mot solen
+    // skuggade sig självt i varannan kolumn (prickiga krön)
+    float cw = uColK * z;
+    vec3 ro = vec3(p.x, max(g.x, WATER), z) + nor * (2.0 + 0.5 * cw);
+    float t = 6.0 + 1.5 * cw;
     for (int i = 0; i < 40; i++) {
       vec3 q = ro + uLight * t;
       if (q.y > uTop) break;
@@ -694,6 +872,24 @@ vec3 padColor(vec2 p, vec3 base) {
   return mix(col, base, smoothstep(uPad.z, uPad.z + 4.0, r));
 }
 
+// Snögränsen på milstolparnas toppar: knappt halvvägs upp, så att även de lägre topparna
+// har snöfält och snöstråk med mörka klippor emellan, som fjällen i bakgrunden.
+// Ger snögränsen och hur nära en topp punkten är (0–1).
+vec2 peakSnowLine(vec2 p) {
+  float line = 1e4, near = 0.0;
+  if (p.x > uPeakBox.x && p.x < uPeakBox.z && p.y > uPeakBox.y && p.y < uPeakBox.w) {
+    for (int i = 0; i < uPeakCount; i++) {
+      vec4 k = uPeaks[i];
+      float r = length(p - k.xy) / k.w;
+      if (r < 1.0) {
+        line = min(line, mix(0.6 * k.z + 150.0, 3000.0, smoothstep(0.5, 1.0, r)));
+        near = max(near, 1.0 - smoothstep(0.4, 0.9, r));
+      }
+    }
+  }
+  return vec2(line, near);
+}
+
 vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   vec3 sun = uLight;
   vec2 p = pos.xz;
@@ -704,29 +900,40 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   float n2 = vnoise(pn * 0.021);
   float n3 = vnoise(pn * 0.19);
   // Fina sprickor och revben i berget, bara på nära håll (längre bort skulle de flimra)
-  float near = 1.0 - smoothstep(2500.0, 9000.0, length(pos - uCam));
+  float dist = length(pos - uCam);
+  float near = 1.0 - smoothstep(2500.0, 9000.0, dist);
+  // Långt bort jämnare snö och sten: små skiftningar blev där ett kornigt brus av vita prickar
+  float farS = smoothstep(5000.0, 16000.0, dist);
+  n2 = mix(n2, 0.5, 0.7 * farS);
+  // Snön följer den större formen: med de fina detaljerna i lutningen blev snöfälten prickiga
+  float slopeBig = nor.y;
   if (near > 0.0) {
     vec3 b = gnoised(pn * 0.03) + 0.5 * gnoised(pn * 0.09 + 3.1);
-    nor = normalize(nor + vec3(b.y, 0.0, b.z) * 0.45 * near * smoothstep(0.95, 0.6, nor.y));
+    // Måttligt: starkare gav ett krispigt, överskärpt brus i berget som syntes lika mycket på alla avstånd
+    nor = normalize(nor + vec3(b.y, 0.0, b.z) * 0.22 * near * smoothstep(0.95, 0.6, nor.y));
   }
   float slope = nor.y;
   float flat_ = smoothstep(0.62, 0.86, slope + 0.08 * (n2 - 0.5));
 
-  // Sten: grå med bruna stråk och mörkare ränder
-  vec3 rock = mix(vec3(0.075, 0.078, 0.085), vec3(0.17, 0.165, 0.16), n2);
-  rock = mix(rock, vec3(0.26, 0.21, 0.16), smoothstep(0.55, 0.8, n1) * 0.6);
-  rock *= 0.85 + 0.3 * vnoise(vec2(p.x * 0.01, h * 0.035) + n2);
+  // Sten: mörk blågrå skiffer med svaga bruna stråk, som fjällen i ett flygfoto
+  vec3 rock = mix(vec3(0.034, 0.044, 0.064), vec3(0.08, 0.092, 0.115), n2);
+  rock = mix(rock, vec3(0.2, 0.17, 0.14), smoothstep(0.6, 0.85, n1) * 0.25);
+  rock *= 0.9 + 0.2 * vnoise(vec2(p.x * 0.01, h * 0.035) + n2);
   // Ängar i dalen, fjällhed ovanför trädgränsen, myr på flacka partier
   // Dämpade, gråaktiga gröna: från ovan ska dalen se ut som i ett flygfoto, inte som en gräsmatta
   vec3 meadow = mix(vec3(0.058, 0.07, 0.046), vec3(0.092, 0.098, 0.066), n2);
   meadow = mix(meadow, vec3(0.05, 0.065, 0.045), smoothstep(0.5, 0.8, vnoise(p * 0.11)) * 0.3);
   // Myrar: gulbruna på flacka partier i dalen
   meadow = mix(meadow, vec3(0.12, 0.105, 0.068), smoothstep(0.55, 0.7, vnoise(p * 0.004 + 9.1)) * 0.6);
-  vec3 heath = mix(vec3(0.19, 0.17, 0.1), vec3(0.27, 0.24, 0.14), n2);
+  // Fjällhed: dämpad grönbrun, inte gul, så att dalarna långt bort inte lyser gula i diset
+  vec3 heath = mix(vec3(0.13, 0.14, 0.095), vec3(0.2, 0.19, 0.12), n2);
   float alpine = smoothstep(420.0, 850.0, h + 180.0 * (n1 - 0.5));
   vec3 veg = mix(meadow, heath, alpine);
   veg = mix(veg, vec3(0.25, 0.22, 0.12), (1.0 - alpine) * smoothstep(0.6, 0.72, n1) * 0.7);
-  vec3 col = mix(rock, veg, flat_);
+  // Långt bort blir växtligheten gråblå i luften, inte olivgrön: dalarna mellan kedjorna ska inte lysa gröna
+  veg = mix(veg, vec3(dot(veg, vec3(0.3, 0.5, 0.2))) * vec3(0.7, 1.0, 1.15), 0.6 * smoothstep(3500.0, 9000.0, dist));
+  // Långt bort syns mest sten på fjällsidorna: de bortre topparna blir mörkt blågrå med snö, inte gröngrå
+  vec3 col = mix(rock, veg, flat_ * (1.0 - 0.6 * smoothstep(7000.0, 14000.0, dist) * smoothstep(500.0, 900.0, h)));
   // Skog: mörk gran med ljusare björkfläckar
   float forest = forestAt(p, h) * smoothstep(0.55, 0.75, slope);
   // Blågrön granskog; björkpartierna bara lite ljusare, så att de inte blir lysande fläckar på avstånd
@@ -741,14 +948,21 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
     col = mix(col, mix(vec3(0.2, 0.19, 0.17), vec3(0.27, 0.25, 0.22), n3), apron);
   }
   // Snö: över snögränsen på allt som inte är för brant, högre upp även brantare
-  float line = 1150.0 + 320.0 * (n1 - 0.5);
-  float above = smoothstep(line - 120.0, line + 120.0, h);
+  // Kedjorna bakom milstolparna har snö på sina övre delar: det är snön som gör dem till tydliga toppar i diset
+  float line = 1250.0 + 300.0 * (n1 - 0.5) + 150.0 * smoothstep(6000.0, 14000.0, p.y) + 250.0 * smoothstep(14000.0, 30000.0, p.y);
+  vec2 pk = peakSnowLine(p);
+  line = min(line, pk.x + 200.0 * (n1 - 0.5));
+  float above = smoothstep(line - 140.0, line + 140.0, h);
   // Högt upp fastnar snön även i branta sluttningar: stora snöfält med mörka klippribbor emellan
-  float hold = slope + 0.18 * (n2 - 0.5) + 0.2 * smoothstep(1300.0, 2100.0, h) + 0.08 * smoothstep(2500.0, 4500.0, h);
+  float hold = mix(slopeBig, slope, 0.35) - uVista * (0.26 - 0.36 * farS) + 0.14 * (n2 - 0.5) + 0.15 * smoothstep(1100.0, 1900.0, h) + 0.08 * smoothstep(2500.0, 4500.0, h) + 0.15 * pk.y;
   // Snön ligger i stråk och fåror nedför sluttningen, med mörk sten emellan
   float streak = vnoise(vec2(pn.x * 0.014, pn.y * 0.005));
-  float snow = above * smoothstep(0.62, 0.8, hold + 0.2 * (streak - 0.5));
-  col = mix(col, vec3(0.9, 0.93, 0.97), snow);
+  // Stråken är ~70 m breda: när de blir smalare än några pixlar i bild blev krönen långt bort prickiga
+  streak = mix(0.5, streak, smoothstep(4.0, 12.0, 71.0 * uFocal / dist));
+  float sw = 0.1 * farS; // bredare övergång långt bort, så att snöfälten inte blir prickiga
+  // Bara de flackare partierna håller snön: snöfält och fåror med mycket mörk sten emellan, som i ett flygfoto
+  float snow = above * smoothstep(0.63 - sw + 0.13 * farS, 0.8 + sw + 0.13 * farS, hold + 0.3 * (streak - 0.5) * (1.0 - 0.5 * farS));
+  col = mix(col, vec3(0.78, 0.81, 0.86), snow);
   col = padColor(p, col);
 
   // Ljus: sol med mjuka skuggor och molnskuggor, himmel, studs från marken
@@ -759,8 +973,13 @@ vec3 terrainShade(vec3 pos, vec3 nor, vec3 rd, float sha) {
   // Skrymslen får mindre himmelsljus
   float occ = mix(0.55, 1.0, smoothstep(-0.2, 0.6, n3 * 0.4 + slope * 0.6)) * (1.0 - 0.35 * forest);
   // Skuggsidorna får bara himlens blå ljus: djupt blå snö och mörk skiffer i skuggan
-  vec3 skyAmb = mix(vec3(0.26, 0.44, 0.92), vec3(0.28, 0.33, 0.52), uDusk) * (1.0 - 0.3 * uThin);
-  vec3 lin = dif * sha * sunColor() + sky * occ * skyAmb * 0.6 + bou * mix(vec3(0.25, 0.22, 0.16), vec3(0.3, 0.18, 0.1), uDusk) * 0.4;
+  // Gråblått, inte mättat: skuggsidorna blir mörk skiffer och blågrå snö i stället för klarblått
+  // Svagare himmelsljus än solen: snön i skugga blir tydligt blå och mörkare än den solbelysta, så att varje topp
+  // har en ljus och en skuggad sida även långt bort
+  // Klart blått himmelsljus i skuggan: snön i skugga blir ljust blågrå och stenen mörk skiffer, som i ett flygfoto
+  vec3 skyAmb = mix(vec3(0.25, 0.4, 0.8), vec3(0.28, 0.33, 0.52), uDusk) * (1.0 - 0.3 * uThin);
+  skyAmb = mix(skyAmb, vec3(0.14, 0.3, 0.78), 0.7 * uVista);
+  vec3 lin = dif * sha * sunColor() + sky * occ * skyAmb * mix(0.6, 0.5, uDusk) + bou * mix(vec3(0.25, 0.22, 0.16), vec3(0.3, 0.18, 0.1), uDusk) * 0.4;
   col *= lin;
   // Snön blänker i solen
   float spe = pow(clamp(dot(reflect(rd, nor), sun), 0.0, 1.0), 20.0);
@@ -814,6 +1033,24 @@ vec3 waterShade(vec3 pos, vec3 rd, float t, vec2 frag) {
   return col;
 }
 
+// Dis i dalarna mellan kedjorna: de låga dalbottnarna några kilometer bort försvinner i en ljus, gråblå
+// slöja med lite moln i, så att kedjorna står i lager över dimman i stället för på gröna slätter.
+vec3 valleyMist(vec3 col, vec3 pos, float t) {
+  float far = smoothstep(5500.0, 10000.0, t) * (1.0 - uDusk * 0.5);
+  if (far <= 0.0) return col;
+  float pat = vnoise(pos.xz * (1.0 / 2600.0) + vec2(3.3, 1.9)) * 0.6 + vnoise(pos.xz * (1.0 / 900.0)) * 0.4;
+  // Längre bort når dimman högre: platåerna bakom milstolparna ligger också i den
+  // Bara nere i dalarna: topparna på mellanavstånd ska stå klara över diset, inte tvättas ur av det
+  float top = 760.0 + 320.0 * pat + 260.0 * smoothstep(7000.0, 13000.0, t);
+  float m = smoothstep(top, top - 520.0, pos.y) * far;
+  // Blått dis, inte mjölkvitt: dalarna blir djupa och blå mellan kedjorna
+  // Ljusare än stenen men mörkare än snön: dalarna mellan kedjorna fylls av ljust blått dis, så att varje
+  // kedja står som en egen siluett framför nästa (luftperspektiv), utan att topparna tvättas ur
+  vec3 mist = mix(vec3(0.2, 0.28, 0.42), vec3(0.32, 0.4, 0.53), smoothstep(0.35, 0.8, pat));
+  mist = mix(mist, vec3(0.3, 0.27, 0.34), uDusk * (1.0 - 0.6 * uVista)); // i kvällsljuset ljuslila skymningsdis
+  return mix(col, mist, m * 0.62);
+}
+
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
@@ -830,6 +1067,7 @@ void main() {
     vec3 pos = ro + rd * t;
     if (g.w > 1.5) col = waterShade(pos, rd, t, frag);
     else col = terrainShade(pos, gridNormal(g), rd, min(g.w, 1.0));
+    col = valleyMist(col, pos, t);
     col = applyFog(col, ro, rd, t);
   } else if (rd.y < 0.0 && -ro.y / rd.y * rd.z < uRowZ0) {
     // Närmare än rutnätets första rad: platt dalbotten
@@ -840,15 +1078,22 @@ void main() {
     col = skyColor(rd);
   }
   vec4 cl = uHasClouds > 0.0 ? texture(uCloudTex, gl_FragCoord.xy / uRes) : vec4(0.0);
-  col = col * (1.0 - cl.a) + cl.rgb;
+  // Utsikten: fjällen och molnen mörkare mot den ljusa himlen, som i ett kvällsfoto
+  if (hit) col *= 1.0 - 0.4 * uVista;
+  col = col * (1.0 - cl.a) + cl.rgb * (1.0 - 0.35 * uVista);
   float disc = hit ? 0.0 : clamp(sunDisc(rd), 0.0, 1.0) * (1.0 - cl.a);
 
-  col = aces(col * mix(0.9, 1.05, uDusk));
+  col = aces(col * mix(0.82, 1.05, uDusk));
   col = pow(col, vec3(1.0 / 2.2));
   col = mix(col, mix(vec3(1.0, 0.99, 0.95), vec3(1.0, 0.97, 0.86), uDusk), disc);
   // Lite mer mättnad, som ett foto
   float luma = dot(col, vec3(0.299, 0.587, 0.114));
-  col = clamp(mix(vec3(luma), col, 1.12), 0.0, 1.0);
+  col = clamp(mix(vec3(luma), col, 1.08), 0.0, 1.0);
+  // Utsikten: blå skuggor och varma högdagrar (split toning), som ett kvällsfoto i fjällen
+  if (uVista > 0.0) {
+    vec3 tone = mix(vec3(0.74, 0.92, 1.28), vec3(1.06, 0.98, 0.9), smoothstep(0.15, 0.75, luma));
+    col = clamp(mix(col, col * tone, uVista), 0.0, 1.0);
+  }
   // Lite mer kontrast på dagen: mörkare skuggsidor och klarare snö
   col = mix(col, col * col * (3.0 - 2.0 * col), 0.3 * (1.0 - uDusk));
   vec2 uv = gl_FragCoord.xy / uRes;
@@ -867,9 +1112,10 @@ function mulberry32(seed) {
   };
 }
 
-// Dagsolen står till höger, lite bakom kameran: släpljus från sidan, så att fjällen får en ljus och en mörk sida
-// (från samma sida som 3D-helikopterns sol i heli3d.js)
-const DAY_LIGHT = norm([0.78, 0.48, -0.14]);
+// Dagsolen står till höger, snett bakom kameran: släpljus från sidan, så att fjällen vänder en solbelyst sida
+// och en skuggsida mot betraktaren (med solen framför kameran var nästan allt man såg skuggsidor i motljus).
+// Från samma sida som 3D-helikopterns sol i heli3d.js.
+const DAY_LIGHT = norm([0.78, 0.45, -0.42]);
 const DUSK_LIGHT = norm([0.75, 0.15, 1]); // ungefär där kvällssolen står i bild
 
 function norm(v) {
@@ -877,7 +1123,7 @@ function norm(v) {
   return v.map((x) => x / l);
 }
 
-/** Solen på himlen: dagsolen till höger bakom kameran, kvällssolen på samma ställe i bild (v.sun) på varje skärm. */
+/** Solen på himlen: dagsolen till höger snett bakom kameran, kvällssolen på samma ställe i bild (v.sun) på varje skärm. */
 function sunDir(v) {
   const sun = v.sun ?? { x: 0.86, y: 0.2 };
   const dusk = norm([(sun.x * v.width - v.cx) / v.focal, (v.cy - sun.y * v.height) / v.focal, 1]);
@@ -1070,6 +1316,11 @@ export class TerrainRenderer {
     u('uLight', 'uniform3f', ...f.light);
     u('uSunDir', 'uniform3f', ...f.sunDir);
     u('uClouds', 'uniform1f', f.clouds);
+    u('uCloudNear', 'uniform1f', f.v.cloudNear ?? 4500);
+    u('uCloudMore', 'uniform1f', f.v.cloudMore ?? 0);
+    u('uVista', 'uniform1f', f.v.vista ?? 0);
+    u('uCloudLift', 'uniform1f', f.v.cloudLift ?? 0);
+    u('uLake', 'uniform4f', ...(f.v.lake ? [f.v.lake.x, f.v.lake.z, f.v.lake.rx, f.v.lake.rz] : [0, 0, 0, 0]));
     u('uCloudSteps', 'uniform1i', f.q.cloudSteps);
     u('uRowZ0', 'uniform1f', GRID.z0);
     u('uRowLog', 'uniform1f', f.rowLog);
@@ -1162,8 +1413,9 @@ export class TerrainRenderer {
       box[2] = Math.max(box[2], x + p.r);
       box[3] = Math.max(box[3], z + p.r);
     });
-    const light = lightDir(v.dusk);
-    const smooth = norm(DAY_LIGHT.map((d, i) => d + (DUSK_LIGHT[i] - d) * Math.min(1, Math.max(0, v.dusk))));
+    // Egen ljusriktning (startskärmens utsikt), annars mellan dags- och kvällsljuset
+    const light = v.light ? { key: 'v' + v.light.join(','), dir: norm(v.light) } : lightDir(v.dusk);
+    const smooth = v.light ? light.dir : norm(DAY_LIGHT.map((d, i) => d + (DUSK_LIGHT[i] - d) * Math.min(1, Math.max(0, v.dusk))));
     const dirty = [];
     const shadowDirty = [];
     for (let i = 0; i < MAX_PEAKS; i++) {
@@ -1203,7 +1455,10 @@ export class TerrainRenderer {
       NC,
       NR,
     };
-    const valid = !fresh && !tooMany && s.camX !== undefined;
+    // En ny sjö (startskärmens utsikt) ändrar höjderna överallt: räkna om allt
+    const lakeKey = v.lake ? [v.lake.x, v.lake.z, v.lake.rx, v.lake.rz].join('|') : '';
+    const valid = !fresh && !tooMany && s.camX !== undefined && s.lakeKey === lakeKey;
+    s.lakeKey = lakeKey;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     gl.bindVertexArray(this.quad);
@@ -1244,7 +1499,7 @@ export class TerrainRenderer {
     // Spegelbilden i full upplösning: i halv blev fjällens kanter i sjön trappstegiga
     const reflW = w;
     const reflH = h;
-    const water = v.cy + ((v.camY - WATER_M) * v.focal) / 3500 < v.height;
+    const water = v.mirror ?? v.cy + ((v.camY - WATER_M) * v.focal) / 3500 < v.height;
     const gKey = [w, h, v.width, v.height, v.cx, v.cy, v.focal, v.camY, cols, water].join('|');
     const sameG = still && lightSame && s.gKey === gKey && s.g?.w === w && s.g?.h === h;
     s.gKey = gKey;
@@ -1288,6 +1543,23 @@ export class TerrainRenderer {
     u('uReflScale', 'uniform1f', water ? reflW / v.width : 0);
     u('uHasClouds', 'uniform1f', hasClouds ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /**
+   * Håller grafikkortet igång när landskapet inte ritas (t.ex. under flygloggens uppspelning i
+   * helskärm): en liten ritning i en egen textur varje bild. Fick kortet vila mellan bilderna gav
+   * grafikdrivrutinen långa stopp (300–500 ms).
+   */
+  keepAlive() {
+    if (!this.ready) return;
+    const { gl } = this;
+    this.idle = this.#target(this.idle, 1, 1, gl.RGBA8);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.idle.fbo);
+    gl.viewport(0, 0, 1, 1);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.flush();
   }
 
   /**

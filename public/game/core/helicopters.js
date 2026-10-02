@@ -9,7 +9,7 @@ export const HELICOPTERS = [
     ceiling: 1500, // m
     winch: false, // ingen vinsch och ingen plats för patient
     seats: 0,
-    livery: { body: '#f4f5f7', accent: '#f0b414', trim: '#ffffff', label: 'SKOLA', scheme: 'lower' },
+    livery: { body: '#f4f5f7', accent: '#c92f28', trim: '#ffffff', label: 'SKOLA', scheme: 'lower' },
   },
   {
     id: 'rescue',

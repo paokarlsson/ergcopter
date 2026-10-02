@@ -33,11 +33,14 @@ test('hovringen: plattan ligger under horisonten och helikoptern ovanför ringen
   assert.ok(padProject(f, 0, 0, 10).y < pad.y);
 });
 
-test('hovringen: solen står ovanför, och helikopterns sol är spegelvänd i sidled', () => {
+test('hovringen: solen står ovanför, och helikopterns sol är spegelvänd i sidled och lite lägre', () => {
   for (const dusk of [0, 1]) {
     const s = padSun(dusk);
+    const h = heliSun(dusk);
     assert.ok(Math.abs(Math.hypot(...s) - 1) < 1e-9);
-    assert.ok(s[1] > 0);
-    assert.deepEqual(heliSun(dusk), [-s[0], s[1], s[2]]);
+    assert.ok(Math.abs(Math.hypot(...h) - 1) < 1e-9);
+    assert.ok(s[1] > 0 && h[1] > 0 && h[1] < s[1]);
+    // Samma väderstreck: x spegelvänt, samma riktning framåt
+    assert.ok(Math.abs(Math.atan2(-h[0], h[2]) - Math.atan2(s[0], s[2])) < 1e-9);
   }
 });

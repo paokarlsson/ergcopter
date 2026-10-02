@@ -13,6 +13,9 @@
 /** Kameran: så långt framför plattans mitt (m) och så högt över plattan. */
 export const PAD_CAM = { dist: 21, height: 4.35 };
 
+/** Den gula streckade cirkelns radie på plattan (m). */
+const PAINT_R = 5.7;
+
 // Stenblocken på hyllan (m): mitt c och radier r. Mitten ligger under hällen, så att blocken sitter
 // fast i berget. Längs kanten åt båda håll, utspridda mindre block och två i förgrunden.
 const BOULDERS = [
@@ -35,9 +38,290 @@ const VERTEX = `#version 300 es
 in vec2 aPos;
 void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
+// Utsikten från hyllan, bara i helbilden (FULL): dalen långt därunder med en sjö som slingrar
+// sig bort mellan skogsklädda kullar, och snöklädda fjäll bakom. Höjdfältet strålföljs per
+// bildpunkt med skuggor, spegling i sjön och dis. Det är dyrt men ritas bara en gång per
+// hovring, i remsor över flera bilder (HoverPad.view), så det kostar inget när man väl hovrar.
+const OVERLOOK = `
+#ifdef FULL
+const float LAKE = -450.0; // sjöns yta, m under plattan
+// Trädkronornas knottror i höjdfältet: bara på nära håll. Längre bort blir de bara solbelysta
+// prickar i normalerna, så de tonas ut med avståndet (sätts i overlook före normalen).
+float oCrown = 1.0;
+
+float ohash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+// Värdebrus med derivator, för de eroderade sluttningarna
+vec3 onoised(vec2 x) {
+  vec2 i = floor(x);
+  vec2 f = fract(x);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  vec2 du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+  float a = ohash(i);
+  float b = ohash(i + vec2(1.0, 0.0));
+  float c = ohash(i + vec2(0.0, 1.0));
+  float d = ohash(i + vec2(1.0, 1.0));
+  float k1 = b - a;
+  float k2 = c - a;
+  float k4 = a - b - c + d;
+  return vec3(a + k1 * u.x + k2 * u.y + k4 * u.x * u.y, du * vec2(k1 + k4 * u.y, k2 + k4 * u.x));
+}
+float onoise(vec2 x) {
+  return onoised(x).x;
+}
+const mat2 OM = mat2(0.8, -0.6, 0.6, 0.8);
+float ofbm(vec2 p, int oct) {
+  float a = 0.0;
+  float b = 0.5;
+  for (int i = 0; i < 8; i++) {
+    if (i >= oct) break;
+    a += b * onoise(p);
+    b *= 0.5;
+    p = OM * p * 2.03;
+  }
+  return a;
+}
+// Eroderat brus: lutningen dämpar de finare oktaverna, så att det blir åsar och raviner
+float eroded(vec2 p, int oct) {
+  float a = 0.0;
+  float b = 0.5;
+  vec2 d = vec2(0.0);
+  for (int i = 0; i < 11; i++) {
+    if (i >= oct) break;
+    vec3 n = onoised(p);
+    d += n.yz;
+    a += b * n.x / (1.0 + dot(d, d));
+    b *= 0.5;
+    p = OM * p * 2.0;
+  }
+  return a;
+}
+
+// Dalens mitt i sidled (m) på avståndet z: sjön slingrar sig bort mot fjällen
+float valleyX(float z) {
+  return 0.13 * z - 200.0 + 2200.0 * (onoise(vec2(z / 8000.0, 3.7)) - 0.5);
+}
+// Hur långt ut från dalens mitt punkten är: 0 mitt i sjön, 1 vid stranden, mer upp mot fjällen
+float valleyD(vec2 q) {
+  float w = 0.17 * q.y + 700.0;
+  return abs(q.x - valleyX(q.y)) / w + 0.4 * (onoise(q / 2200.0 + 1.3) - 0.5);
+}
+// Markens höjd (m, i plattans koordinater) i punkten q = (x, z)
+float oHeight(vec2 q, int oct) {
+  float e = eroded(q / 2600.0 + vec2(4.3, 1.9), oct);
+  float d = valleyD(q);
+  float m = max(smoothstep(0.9, 2.6, d), smoothstep(13000.0, 21000.0, q.y));
+  float massif = 0.55 + 0.45 * onoise(q / 9000.0 + 7.1);
+  // Högre längre bort, så att de bortre kedjorna reser sig över de närmare
+  float mtn = (250.0 + 3100.0 * massif * pow(e, 1.6)) * (1.0 + 0.85 * smoothstep(12000.0, 30000.0, q.y));
+  // Kullarna i dalen: skog, uddar och öar, under vattnet mitt i sjön
+  float hills = (e * 560.0 - 150.0) * smoothstep(0.3, 1.2, d) - 70.0 * (1.0 - smoothstep(0.25, 0.8, d));
+  float h = mix(hills, mtn, m);
+  // En skogsklädd rygg nedanför hyllan, till vänster om sjön: skogen mellan plattan och vattnet
+  float s = (q.x - valleyX(q.y)) / (0.17 * q.y + 700.0);
+  float ridge = smoothstep(1100.0, 2100.0, q.y) * (1.0 - smoothstep(3800.0, 5600.0, q.y)) * (1.0 - smoothstep(-0.55, 0.15, s));
+  // Ryggen får raviner och små kullar, så att skogen på den får relief i stället för en slät yta
+  float gully = ridge > 0.0 ? 60.0 * (onoise(q / 320.0 + 2.1) + 0.5 * onoise(q / 150.0 + 4.7) - 0.75) - 60.0 * pow(1.0 - abs(2.0 * onoise(q / 520.0 + 6.3) - 1.0), 6.0) : 0.0;
+  h = max(h, ridge * (120.0 + 240.0 * e + gully) - 40.0 * (1.0 - ridge));
+  // Trädkronorna: skogen nedanför trädgränsen får en knottrig yta på nära håll
+  if (oct > 7 && oCrown > 0.0 && h > 4.0 && h < 650.0) h += oCrown * 14.0 * onoise(q / 16.0) * smoothstep(4.0, 30.0, h) * (1.0 - smoothstep(450.0, 650.0, h));
+  return LAKE + h;
+}
+
+// Strålen mot marken eller sjön: avståndet, eller -1 om den går ut i himlen. Speglingen i sjön
+// (floorY = höjd långt under sjön) räknar inte med vattenytan, som strålen annars kröp längs.
+float oMarch(vec3 ro, vec3 rd, float tmax, int steps, float floorY) {
+  float t = 40.0;
+  float last = t;
+  for (int i = 0; i < 480; i++) {
+    if (i >= steps) break;
+    vec3 p = ro + rd * t;
+    float dh = p.y - max(oHeight(p.xz, 7), floorY);
+    if (dh < 0.0) {
+      float a = last;
+      float b = t;
+      for (int k = 0; k < 7; k++) {
+        float mid = 0.5 * (a + b);
+        vec3 pm = ro + rd * mid;
+        if (pm.y - max(oHeight(pm.xz, 7), floorY) < 0.0) b = mid;
+        else a = mid;
+      }
+      return b;
+    }
+    if (rd.y > 0.0 && p.y > LAKE + 2900.0) break;
+    last = t;
+    t += max(0.42 * dh, 0.0015 * t + 2.0);
+    if (t > tmax) break;
+  }
+  return -1.0;
+}
+
+float oShadow(vec3 p, vec3 L) {
+  float res = 1.0;
+  float t = 15.0;
+  for (int i = 0; i < 72; i++) {
+    vec3 q = p + L * t;
+    float dh = q.y - oHeight(q.xz, 6);
+    res = min(res, 10.0 * dh / t);
+    if (res < 0.0 || q.y > LAKE + 2900.0) break;
+    t += clamp(0.5 * dh, 20.0, 900.0);
+  }
+  return smoothstep(0.0, 1.0, clamp(res, 0.0, 1.0));
+}
+
+vec3 oSunCol() {
+  return mix(vec3(1.0, 0.84, 0.62) * 2.7, vec3(1.0, 0.62, 0.36) * 3.0, uDusk);
+}
+
+// Himlen: djupblå uppåt, ljus och disig mot horisonten, och några tunna moln
+vec3 oSky(vec3 rd, vec3 L) {
+  float y = max(rd.y, 0.0);
+  vec3 hor = mix(vec3(0.5, 0.6, 0.74), vec3(0.78, 0.62, 0.5), uDusk);
+  vec3 zen = mix(vec3(0.02, 0.1, 0.3), vec3(0.08, 0.1, 0.28), uDusk);
+  vec3 c = mix(hor, zen, pow(min(y * 6.0, 1.0), 0.55));
+  // Ett varmt, ljust disband precis ovanför fjällen
+  c = mix(c, mix(vec3(0.72, 0.74, 0.74), vec3(0.95, 0.6, 0.4), uDusk), 0.4 * exp(-y * 40.0));
+  c += oSunCol() * 0.05 * pow(max(dot(rd, L), 0.0), 6.0);
+  if (rd.y > 0.003) {
+    // Molnen på ett plan högt över fjällen: stråk av slöjmoln och några tussar nära horisonten
+    vec2 uv = rd.xz * (3200.0 / rd.y) / 5200.0 + vec2(3.1, 1.7);
+    float n = ofbm(uv * vec2(1.0, 2.6), 6);
+    float cl = smoothstep(0.6, 0.82, n) * (1.0 - smoothstep(0.02, 0.1, rd.y));
+    vec3 cc = mix(vec3(0.95, 0.95, 0.97), vec3(1.0, 0.8, 0.62), uDusk) * (0.8 + 0.25 * smoothstep(0.5, 0.8, n));
+    c = mix(c, cc, cl * 0.75 * smoothstep(0.003, 0.03, rd.y));
+  }
+  return c;
+}
+
+// Disets färg: himlen vid horisonten, varmare mot solen
+vec3 oHaze(vec3 rd, vec3 L) {
+  vec3 h = mix(vec3(0.17, 0.32, 0.64), vec3(0.72, 0.58, 0.5), uDusk);
+  return h + oSunCol() * 0.06 * pow(max(dot(rd, L), 0.0), 3.0);
+}
+
+// Markens färg och ljus i punkten p (normal N), utan dis
+vec3 oShade(vec3 p, vec3 N, vec3 rd, float t, vec3 L, bool shadows) {
+  float alt = p.y - LAKE;
+  vec2 q = p.xz;
+  float n1 = ofbm(q / 400.0, 4);
+  float n2 = onoise(q / 37.0);
+  // Berg i dagen där det är brant, hed och gräs, skog nedanför trädgränsen, snö högt upp
+  vec3 rock = mix(vec3(0.24, 0.24, 0.25), vec3(0.42, 0.39, 0.36), n1) * (0.85 + 0.3 * n2);
+  rock *= 0.9 + 0.12 * sin(alt * 0.03 + n1 * 9.0 + 4.0 * n2); // skikt i berget
+  vec3 heath = mix(vec3(0.26, 0.29, 0.15), vec3(0.4, 0.36, 0.22), n1);
+  // Finare detaljer bara på nära håll: längre bort blir de prickar (en bildpunkt är t/1600 m)
+  float near = 1.0 - smoothstep(900.0, 2600.0, t);
+  float n3 = ofbm(q / 140.0, 3);
+  // Barrskog i mörkgrönt, med stråk av ljusare björk och lövskog i solen
+  vec3 forest = mix(vec3(0.06, 0.1, 0.045), vec3(0.13, 0.17, 0.07), smoothstep(0.35, 0.7, n3));
+  forest = mix(forest, vec3(0.22, 0.22, 0.08), 0.45 * smoothstep(0.55, 0.75, n1 + 0.2 * (n3 - 0.5)));
+  // Dungar och gläntor med gyllene gräs och myr, så stora att de syns som mönster på håll
+  float clump = ofbm(q / 260.0 + 3.3, 4);
+  forest = mix(forest, mix(vec3(0.22, 0.24, 0.1), vec3(0.3, 0.29, 0.13), n2), smoothstep(0.56, 0.76, clump) * 0.6);
+  forest *= 1.0 + near * 0.35 * (onoise(q / 9.0) - 0.5) + 0.25 * (n2 - 0.5) * (0.4 + 0.6 * near);
+  // Kronorna som mörka och ljusa fläckar i grönt på medellångt håll, i stället för gula prickar
+  forest *= 1.0 + 0.4 * (onoise(q / 30.0) - 0.5) * (1.0 - smoothstep(3500.0, 7000.0, t)) * (1.0 - near);
+  float flat0 = smoothstep(0.55, 0.8, N.y);
+  float tree = (1.0 - smoothstep(520.0, 720.0, alt + 220.0 * (n1 - 0.5))) * smoothstep(0.6, 0.78, N.y);
+  tree *= smoothstep(0.22, 0.38, n1 + 0.25 * (n2 - 0.5) * near);
+  vec3 col = mix(rock, heath, flat0);
+  col = mix(col, forest, tree);
+  float shore = 1.0 - smoothstep(1.0, 6.0, alt);
+  col = mix(col, vec3(0.42, 0.4, 0.34), shore * 0.7);
+  float snowLine = 1300.0 + 300.0 * (n1 - 0.5);
+  float snow = smoothstep(snowLine - 120.0, snowLine + 120.0, alt + 500.0 * (N.y - 0.7)) * smoothstep(0.5, 0.72, N.y + 0.2 * n2);
+  col = mix(col, vec3(0.93, 0.95, 1.0), snow);
+  col = pow(col, vec3(2.2));
+
+  float ndl = max(dot(N, L), 0.0);
+  float sh = shadows && ndl > 0.0 ? oShadow(p + N * 2.0, L) : 1.0;
+  vec3 skyAmb = mix(vec3(0.17, 0.26, 0.5), vec3(0.4, 0.32, 0.38), uDusk);
+  vec3 bounce = vec3(0.12, 0.11, 0.08);
+  vec3 c = col * (oSunCol() * ndl * sh + skyAmb * (0.6 + 0.4 * N.y) + bounce * (0.5 - 0.5 * N.y));
+  // Snön glänser lite i solen
+  c += snow * oSunCol() * 0.06 * pow(max(dot(N, normalize(L - rd)), 0.0), 24.0) * sh;
+  return c;
+}
+
+// Dis längs strålen till punkten på höjden y (m, plattans koordinater): tunt överallt, och ett
+// blått dis som ligger kvar nere i dalen och gör skuggsidorna där ljusa och blå
+vec3 oFog(vec3 c, vec3 rd, float t, vec3 L, float y) {
+  float alt = rd.y * t; // höjd över ögat där strålen slutar
+  float f = 1.0 - exp(-t / 52000.0 * mix(1.0, 0.6, smoothstep(-200.0, 2400.0, alt)));
+  float valley = (1.0 - exp(-t / 7000.0)) * (1.0 - smoothstep(LAKE, LAKE + 1100.0, y));
+  return mix(c, oHaze(rd, L), max(f, 0.42 * valley));
+}
+
+vec3 tonemapO(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+// Utsikten längs strålen dir från ögat eye, i sRGB. Strålföljningen och ljuset anropas från
+// ett enda ställe var (sjöns spegling är ett andra varv i slingan), så att shadern blir liten
+// och går fort att bygga.
+vec3 overlook(vec3 eye, vec3 dir) {
+  // Över dalen står solen lågt till vänster, nästan i sidled: fjällen får ljusa vänstersidor och
+  // skuggsidor åt höger, och sluttningarna mot kameran får varmt sidoljus
+  vec3 L = normalize(vec3(-0.6, mix(0.6, 0.15, uDusk), -0.55));
+  vec3 ro = eye;
+  vec3 rd = dir;
+  float t0 = -1.0;     // avståndet till sjön, om strålen träffade den
+  float fres = 0.0;
+  vec3 c = vec3(0.0);
+  float t = -1.0;
+  for (int pass = 0; pass < 2; pass++) {
+    t = oMarch(ro, rd, pass == 0 ? 90000.0 : 60000.0, pass == 0 ? 460 : 360, pass == 0 ? LAKE : LAKE - 1e4);
+    if (t < 0.0) {
+      c = oSky(rd, L);
+      break;
+    }
+    vec3 p = ro + rd * t;
+    if (pass == 0 && oHeight(p.xz, 8) <= LAKE + 0.01) {
+      // Sjön: speglar fjällen och himlen, mörk och klar rakt nedåt
+      // Långa, mjuka dyningar i stället för krusningar, som på långt håll bara blev brus i speglingen
+      vec2 rip = vec2(onoise(p.xz / vec2(900.0, 160.0)), onoise(p.xz / vec2(900.0, 160.0) + 5.2)) - 0.5;
+      rip *= 0.006;
+      vec3 Nw = normalize(vec3(rip.x, 1.0, rip.y));
+      fres = 0.04 + 0.96 * pow(1.0 - max(dot(-dir, Nw), 0.0), 5.0);
+      t0 = t;
+      ro = vec3(p.x, LAKE + 0.5, p.z);
+      rd = reflect(dir, Nw);
+      rd.y = max(rd.y, 0.002);
+      continue;
+    }
+    // Normalen ur tre höjder, i en slinga så att höjdfunktionen bara byggs in en gång
+    float e = 2.0 + (t + max(t0, 0.0)) * 0.0012;
+    int oct = t < 5000.0 ? 10 : t < 14000.0 ? 9 : 8;
+    oCrown = 1.0 - smoothstep(700.0, 2600.0, t + max(t0, 0.0));
+    float hh[3];
+    for (int k = 0; k < 3; k++) hh[k] = oHeight(p.xz + (k == 1 ? vec2(e, 0.0) : k == 2 ? vec2(0.0, e) : vec2(0.0)), oct);
+    vec3 N = normalize(vec3(hh[0] - hh[1], e, hh[0] - hh[2]));
+    c = oShade(p, N, rd, t, L, pass == 0);
+    c = oFog(c, rd, t, L, p.y);
+    // I speglingen suddas fjällen ut av krusningar och dis, så att de inte blir vita fläckar
+    if (pass == 1) c = min(mix(c, oHaze(rd, L), 0.6), oHaze(rd, L) * 1.25);
+    break;
+  }
+  if (t0 > 0.0) {
+    // Klart, djupt blått vatten som speglar himlen och fjällen
+    vec3 deep = vec3(0.025, 0.1, 0.24);
+    c = mix(deep, c * vec3(0.78, 0.88, 1.0), 0.1 + fres * 0.65);
+    c = oFog(c, dir, t0, L, LAKE);
+  }
+  // Lite mättnad, som i en solig eftermiddag med klar luft
+  c = max(mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, 1.22), 0.0);
+  return pow(tonemapO(c), vec3(1.0 / 2.2));
+}
+#endif
+`;
+
 const FRAGMENT = `#version 300 es
 precision highp float;
 uniform vec2 uRes;      // canvasens storlek i bildpunkter
+uniform float uRowTop;  // canvasens överkant i hela bilden (bildpunkter), när den ritas i remsor
 uniform float uScale;   // bildpunkter per CSS-pixel
 uniform float uCx;      // optiska mitten i sidled (CSS-px)
 uniform float uFocal;   // brännvidd (CSS-px)
@@ -45,6 +329,7 @@ uniform float uCamH;    // kamerans höjd över plattan
 uniform float uCamD;    // kamerans avstånd framför plattans mitt
 uniform vec3 uSun;      // riktning mot solen
 uniform float uDusk;
+uniform float uHorizon; // horisontens läge i canvasen (CSS-px från överkanten), 0 för bara hyllan
 out vec4 outColor;
 
 float hash(vec2 p) {
@@ -92,6 +377,7 @@ vec3 tonemap(vec3 x) {
 
 // Stenblock på hyllan: ellipsoider (mitt och radier i m) som skärs analytiskt. Stora block längs
 // kanten bryter den raka kantlinjen mot dalen, några mindre ligger utspridda och två i förgrunden.
+const float PAINT_R = ${PAINT_R.toFixed(2)}; // den gula streckade cirkelns radie (m)
 const int NB = ${BOULDERS.length};
 const vec3 B_C[NB] = vec3[](${BOULDERS.map((b) => `vec3(${b.c.map((v) => v.toFixed(2)).join(', ')})`).join(', ')});
 const vec3 B_R[NB] = vec3[](${BOULDERS.map((b) => `vec3(${b.r.map((v) => v.toFixed(2)).join(', ')})`).join(', ')});
@@ -184,27 +470,83 @@ float spruce(vec2 q, out float side) {
 
 // Granit: ljusgrå häll med flammor, korn, några långa fogar och lavfläckar
 vec3 granite(vec2 g, float fw) {
-  vec3 col = mix(vec3(0.25, 0.245, 0.235), vec3(0.47, 0.46, 0.43), smoothstep(0.25, 0.75, fbm(g * 0.16)));
-  col *= 0.86 + 0.24 * fbm(g * 0.8 + 11.0);
+  vec3 col = mix(vec3(0.3, 0.29, 0.28), vec3(0.52, 0.49, 0.45), smoothstep(0.25, 0.75, fbm(g * 0.16)));
+  col *= 0.78 + 0.4 * fbm(g * 0.8 + 11.0);
+  // Fläckar i halvmetersskala: mörkare mineral och ljusare kvarts, så att hällen inte blir slät på håll
+  col *= 0.82 + 0.36 * smoothstep(0.3, 0.7, fbm(g * 2.6 + 23.0));
+  col = mix(col, col * vec3(1.12, 1.0, 0.84), smoothstep(0.55, 0.75, fbm(g * 0.5 + 31.0)) * 0.5); // brunare partier
   // Kornen: fältspat och glimmer, tonas bort på avstånd innan de flimrar
   float grain = noise(g * 26.0) - 0.5 + 0.5 * (noise(g * 61.0) - 0.5);
   col *= 1.0 + 0.32 * grain * (1.0 - smoothstep(0.03, 0.12, fw));
   // Vittrade, mörkare partier och varma rostflammor
-  col = mix(col, col * vec3(0.78, 0.76, 0.74), smoothstep(0.55, 0.8, fbm(g * 0.09 + 4.0)));
+  col = mix(col, col * vec3(0.86, 0.84, 0.82), smoothstep(0.55, 0.8, fbm(g * 0.09 + 4.0)));
   col = mix(col, col * vec3(1.1, 1.0, 0.86), smoothstep(0.5, 0.75, fbm(g * 0.33 + 17.0)) * 0.6);
   // Långa, raka fogar mellan hällens flak
-  col *= 1.0 - 0.38 * cracks(g * 0.32 + 30.0) * smoothstep(0.45, 0.6, noise(g * 0.25 + 8.0));
-  col *= 1.0 - 0.14 * cracks(g * 0.9 + 3.0) * smoothstep(0.55, 0.7, noise(g * 0.7 + 3.0));
+  col *= 1.0 - 0.13 * cracks(g * 0.32 + 30.0) * smoothstep(0.45, 0.6, noise(g * 0.25 + 8.0));
+  col *= 1.0 - 0.09 * cracks(g * 0.9 + 3.0) * smoothstep(0.55, 0.7, noise(g * 0.7 + 3.0));
   // Lav: bleka gröngrå och ockra fläckar
   float lich = smoothstep(0.66, 0.74, fbm(g * 0.55 + 3.0));
   col = mix(col, vec3(0.56, 0.58, 0.46), lich * 0.5);
   col = mix(col, vec3(0.62, 0.5, 0.28), smoothstep(0.72, 0.8, fbm(g * 1.3 + 9.0)) * 0.4);
-  return col;
+  // Lite gråare och ljusare: i det varma solljuset blir hällen annars brun som torkad lera
+  return mix(col, vec3(dot(col, vec3(0.3, 0.4, 0.3))), 0.3) * 1.06;
 }
 
-void main() {
-  // CSS-pixel i canvasen; canvasens överkant ligger på horisonten
-  vec2 px = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uScale;
+// Cellbrus: avståndet till närmaste kant mellan två celler (x) och cellens slumptal (y). Ger
+// hällens flak, där berget flagnat av i skivor med smala fogar emellan.
+vec2 cells(vec2 p) {
+  vec2 n = floor(p);
+  vec2 f = fract(p);
+  vec2 mr = vec2(0.0);
+  vec2 mg = vec2(0.0);
+  float md = 8.0;
+  float id = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 r = g + vec2(hash(n + g), hash(n + g + 17.3)) - f;
+      float d = dot(r, r);
+      if (d < md) {
+        md = d;
+        mr = r;
+        mg = g;
+        id = hash(n + g + 3.1);
+      }
+    }
+  }
+  md = 8.0;
+  for (int j = -2; j <= 2; j++) {
+    for (int i = -2; i <= 2; i++) {
+      vec2 g = mg + vec2(float(i), float(j));
+      vec2 r = g + vec2(hash(n + g), hash(n + g + 17.3)) - f;
+      if (dot(mr - r, mr - r) > 1e-5) md = min(md, dot(0.5 * (mr + r), normalize(r - mr)));
+    }
+  }
+  return vec2(md, id);
+}
+
+// Hällens relief (m) i punkten g: flak som ligger på olika höjd, fogar mellan dem, skiktens
+// vågiga strimmor och knottrig yta. Finare detaljer tonas bort på avstånd (fw: m per bildpunkt).
+// flake = cellbrusets värden, för färgen.
+float rockRelief(vec2 g, float fw, out vec2 flake) {
+  vec2 w = vec2(fbm(g * 0.3), fbm(g * 0.3 + 5.2)) - 0.5;
+  // Flaken är avlånga, som skivor som släppt längs berggrundens skikt
+  flake = cells(g * vec2(0.42, 0.75) + w * 2.4);
+  // Fogarna syns bara där bruset vill: berget har spruckit här och var, inte överallt
+  float open = smoothstep(0.5, 0.72, noise(g * 0.35 + 9.0));
+  float groove = (1.0 - smoothstep(0.0, 0.05, flake.x)) * open;
+  float h = 0.05 * flake.y * open - 0.035 * groove;
+  // Skikten: långa vågiga strimmor tvärs över hällen
+  float strata = abs(fract(g.y * 0.8 + 1.6 * fbm(g * 0.22 + 2.0) + 0.3 * g.x * 0.2) - 0.5);
+  h += 0.012 * smoothstep(0.1, 0.0, strata);
+  h += 0.03 * fbm(g * 0.9 + 3.0) + 0.012 * noise(g * 3.3);
+  h += 0.004 * (noise(g * 11.0) + noise(g * 23.0)) * (1.0 - smoothstep(0.015, 0.05, fw));
+  return h;
+}
+
+// Hyllan med plattan, blocken och växtligheten i CSS-pixeln px (y nedåt från horisonten), som
+// förmultiplicerad färg: alfa 0 bortom kanten
+vec4 ledge(vec2 px) {
   vec3 eye = vec3(0.0, uCamH, -uCamD);
   vec3 dir = normalize(vec3((px.x - uCx) / uFocal, -px.y / uFocal, 1.0));
 
@@ -233,10 +575,10 @@ void main() {
   float side;
   float treeCov = spruce(pv.xy, side);
   float cov = max(inside(pv.y - vh), treeCov) * (1.0 - alpha);
-  if (!rock && alpha <= 0.0 && cov <= 0.0) discard;
+  if (!rock && alpha <= 0.0 && cov <= 0.0) return vec4(0.0);
 
   vec3 L = normalize(uSun);
-  vec3 sunCol = mix(vec3(1.0, 0.88, 0.7) * 2.9, vec3(1.0, 0.62, 0.36) * 3.4, uDusk);
+  vec3 sunCol = mix(vec3(1.0, 0.85, 0.64) * 3.1, vec3(1.0, 0.62, 0.36) * 3.4, uDusk); // samma gyllene sol som över dalen
   vec3 sky = mix(vec3(0.34, 0.47, 0.74), vec3(0.45, 0.36, 0.48), uDusk);
   vec3 col;
   vec3 N;
@@ -263,20 +605,32 @@ void main() {
     hit = p;
     vec2 g = p.xz;
     float fw = length(fwidth(g));
+    // Hällen: flak av grå granit med fogar och vågiga skikt. Reliefen ger normalen, så att den
+    // låga solen tar i flakens kanter och lämnar fogarna i skugga.
+    vec2 flake;
+    float e = 0.025;
+    vec2 tmp;
+    float h0 = rockRelief(g, fw, flake);
+    float hx = rockRelief(g + vec2(e, 0.0), fw, tmp);
+    float hz = rockRelief(g + vec2(0.0, e), fw, tmp);
+    float relief = 1.0 - smoothstep(0.04, 0.2, fw); // långt bort blir reliefen bara brus
+    N = normalize(vec3(-(hx - h0) / e * relief, 1.0, -(hz - h0) / e * relief));
     col = granite(g, fw);
-    // Ojämn häll: stora buckler och små knölar (svagare på plattan, som är slipad)
-    float e = 0.06;
-    float bump = 1.0 - 0.7 * inside(length(g) - 8.2);
-    vec2 q0 = g * 0.7;
-    vec2 q1 = g * 3.0 + 7.0;
-    float h0 = fbm(q0) + 0.35 * noise(q1);
-    float hx = fbm(q0 + vec2(e * 0.7, 0.0)) + 0.35 * noise(q1 + vec2(e * 3.0, 0.0));
-    float hz = fbm(q0 + vec2(0.0, e * 0.7)) + 0.35 * noise(q1 + vec2(0.0, e * 3.0));
-    N = normalize(vec3(-(hx - h0) / e * 0.3 * bump, 1.0, -(hz - h0) / e * 0.3 * bump));
+    // Varje flak har sin egen ton: ljusare nyss avflagnade, mörkare och rostigare gamla
+    float open = smoothstep(0.5, 0.72, noise(g * 0.35 + 9.0));
+    col *= mix(1.0, 0.8 + 0.36 * flake.y, open * 0.8);
+    col = mix(col, col * vec3(1.08, 0.96, 0.82), smoothstep(0.75, 0.95, flake.y) * open * 0.6);
+    float groove = (1.0 - smoothstep(0.0, 0.035, flake.x)) * open;
+    // Fogarna mörka men smala: ett tätt nät av svarta linjer ser ut som torkad lera, inte granit
+    col *= 1.0 - 0.18 * groove;
+    ao *= 1.0 - 0.25 * groove;
+    // Ränder av fukt och smuts i sänkorna
+    col *= 1.0 - 0.22 * smoothstep(0.012, -0.01, h0 - 0.03 * fbm(g * 0.9 + 3.0) - 0.02);
     // Nära kanten: mörkare sten, lingonris och gräs i skrevorna, och kanten själv rundar av
     float edge = smoothstep(3.5, 0.0, rim - p.z);
     vec3 scrub = mix(vec3(0.10, 0.14, 0.06), vec3(0.36, 0.30, 0.12), fbm(g * 2.3));
     col = mix(col, scrub, edge * 0.85 * smoothstep(0.3, 0.55, fbm(g * 1.1 + 5.0)));
+    col = mix(col, scrub, groove * 0.5 * smoothstep(0.45, 0.7, fbm(g * 1.7 + 2.0))); // gräs i fogarna
     col *= 1.0 - 0.4 * smoothstep(0.9, 0.0, rim - p.z);
     // Grus och småsten utanför plattan
     float r0 = length(g);
@@ -291,29 +645,28 @@ void main() {
       if (top <= 0.0) continue;
       vec2 d = (g - c.xz) / r.xz;
       float contact = length(d);
-      ao *= mix(0.45, 1.0, smoothstep(0.85, 1.5, contact));
+      ao *= mix(0.35, 1.0, smoothstep(0.85, 1.6, contact));
       vec2 ds = (g - c.xz - sdir * top * 0.6) / (r.xz + vec2(top * 0.3));
-      shade *= mix(0.35, 1.0, smoothstep(0.7, 1.15, length(ds)));
+      shade *= mix(0.3, 1.0, smoothstep(0.7, 1.1, length(ds)));
     }
 
-    // Plattan: slätare sten med färgen målad direkt på hällen: gul streckad cirkel, ett H och en mittlinje mot kameran
+    // Plattan: färgen målad direkt på hällen: gul streckad cirkel, ett H och en mittlinje mot kameran
     float r = r0;
-    float slab = inside(r - 8.2);
-    vec3 polished = granite(g * 0.6 + 50.0, fw) * 1.05;
     // Avgassot och slitage mitt på plattan
-    polished *= 1.0 - 0.16 * smoothstep(5.0, 0.0, r) * fbm(g * 0.9);
-    col = mix(col, polished, slab * 0.5);
-    float wear = 0.55 + 0.45 * smoothstep(0.2, 0.5, fbm(g * 2.5 + 40.0)); // nött färg
-    vec3 yellow = vec3(0.98, 0.74, 0.08);
+    col *= 1.0 - 0.12 * smoothstep(4.5, 0.0, r) * fbm(g * 0.9);
+    // Nött färg: färgen sitter kvar på flakens toppar men har slitits bort i fogar och sänkor
+    float wear = (0.5 + 0.5 * smoothstep(0.2, 0.5, fbm(g * 2.5 + 40.0))) * (1.0 - groove) * smoothstep(-0.02, 0.02, h0 - 0.02);
+    vec3 yellow = vec3(0.96, 0.72, 0.1);
     float ang = atan(g.y, g.x);
-    float dash = step(0.42, fract(ang * 34.0 / 6.2831853));
-    float ring = inside(abs(r - 6.3) - 0.15) * dash;
-    float cl = inside(abs(g.x) - 0.13) * step(g.y, -6.75) * step(-11.5, g.y) * step(fract(g.y * 0.5), 0.55);
+    float dash = step(0.24, fract(ang * 36.0 / 6.2831853));
+    float ring = inside(abs(r - PAINT_R) - 0.13) * dash;
+    float cl = inside(abs(g.x) - 0.13) * step(g.y, -PAINT_R - 0.45) * step(-11.5, g.y) * step(fract(g.y * 0.5), 0.55);
     float hl = inside(abs(abs(g.x) - 1.0) - 0.22) * inside(abs(g.y) - 1.55);
     float hm = inside(abs(g.x) - 1.0) * inside(abs(g.y) - 0.2);
     float circ = inside(abs(r - 2.75) - 0.12);
-    float paint = max(max(ring, cl), max(max(hl, hm), circ)) * wear;
-    col = mix(col, yellow, paint * 0.92);
+    // H:et och den inre cirkeln är nästan bortnötta av hjulen och dammet
+    float paint = max(max(ring, cl), 0.3 * max(max(hl, hm), circ)) * wear;
+    col = mix(col, yellow, paint * 0.95);
   }
 
   col = pow(col, vec3(2.2)); // färgerna ovan är valda i sRGB, ljuset räknas linjärt
@@ -332,7 +685,7 @@ void main() {
   float a = rock ? 1.0 : alpha;
   vec3 outc = c * a;
   if (!rock && cov > 0.0) {
-    // Riset och granarna: mörkgrönt, granarna nästan svarta med ljusare solsida (solen från höger)
+    // Riset och granarna: mörkgrönt, granarna nästan svarta med ljusare solsida (solen från vänster)
     float rel = clamp(pv.y / max(vh, 0.2), 0.0, 1.0);
     float leaf = fbm(vec2(pv.x * 6.0, pv.y * 9.0));
     vec3 vc = mix(vec3(0.07, 0.1, 0.045), vec3(0.2, 0.24, 0.1), leaf);
@@ -340,7 +693,7 @@ void main() {
     float lit = 0.35 + 0.65 * smoothstep(0.1, 1.0, rel) * (0.5 + 0.5 * leaf);
     float isTree = step(inside(pv.y - vh), treeCov - 0.01);
     vc = mix(vc, mix(vec3(0.03, 0.055, 0.035), vec3(0.09, 0.13, 0.06), leaf), isTree);
-    lit = mix(lit, 0.25 + 0.9 * smoothstep(0.3, 1.0, side), isTree);
+    lit = mix(lit, 0.25 + 0.9 * smoothstep(0.3, 1.0, 1.0 - side), isTree);
     vc = pow(vc, vec3(2.2));
     vec3 cv = vc * (sky * 0.45 + sunCol * max(L.y, 0.2) * lit * 0.9);
     cv = mix(cv, mix(vec3(0.45, 0.55, 0.72), vec3(0.6, 0.42, 0.38), uDusk), 1.0 - exp(-tv / 600.0));
@@ -348,16 +701,37 @@ void main() {
     outc += cv * cov;
     a += cov;
   }
-  outColor = vec4(outc, a);
+  return vec4(outc, a);
+}
+// OVERLOOK
+void main() {
+  // CSS-pixel i canvasen, y nedåt från horisonten (som ligger uHorizon CSS-px ned i canvasen)
+  vec2 px = vec2(gl_FragCoord.x, uRowTop + uRes.y - gl_FragCoord.y) / uScale - vec2(0.0, uHorizon);
+  vec4 c = px.y > 0.0 ? ledge(px) : vec4(0.0);
+#ifdef FULL
+  // Utsikten bakom hyllan: dalen med sjön, skogen och fjällen
+  if (c.a < 0.999) {
+    vec3 dir = normalize(vec3((px.x - uCx) / uFocal, -px.y / uFocal, 1.0));
+    c = vec4(c.rgb + overlook(vec3(0.0, uCamH, -uCamD), dir) * (1.0 - c.a), 1.0);
+  }
+#else
+  if (c.a <= 0.0) discard;
+#endif
+  outColor = c;
 }`;
 
-function compile(gl, type, src) {
+function compile(gl, type, src, check = true) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
   gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader');
+  if (check && !gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader');
   return s;
 }
+
+const UNIFORMS = ['uRes', 'uRowTop', 'uScale', 'uCx', 'uFocal', 'uCamH', 'uCamD', 'uSun', 'uDusk', 'uHorizon'];
+// Helbilden ritas i remsor, en remsa per bild, så att ingen enskild bild tar för lång tid för
+// grafikkortet. Remsans höjd anpassas efter hur lång tid bilderna tar (bildpunkter per remsa).
+const STRIP_PX = { start: 1920 * 6, min: 1920 * 2, max: 1920 * 32 };
 
 export class HoverPad {
   /**
@@ -376,6 +750,8 @@ export class HoverPad {
     }
   }
 
+  #shot = { key: '', doneKey: '', row: 0, next: null, done: null, px: STRIP_PX.start };
+
   constructor(canvas, gl) {
     this.canvas = canvas;
     this.gl = gl;
@@ -385,15 +761,13 @@ export class HoverPad {
       e.preventDefault();
       this.lost = true;
     });
-    const p = gl.createProgram();
-    gl.attachShader(p, compile(gl, gl.VERTEX_SHADER, VERTEX));
-    gl.attachShader(p, compile(gl, gl.FRAGMENT_SHADER, FRAGMENT));
-    gl.bindAttribLocation(p, 0, 'aPos');
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'link');
-    this.program = p;
-    this.u = {};
-    for (const name of ['uRes', 'uScale', 'uCx', 'uFocal', 'uCamH', 'uCamD', 'uSun', 'uDusk']) this.u[name] = gl.getUniformLocation(p, name);
+    this.pad = this.#program(FRAGMENT);
+    // Helbilden med utsikten: samma shader med FULL definierad. Den är stor och tar en stund att
+    // bygga, så den byggs i bakgrunden när det går (KHR_parallel_shader_compile) och används först
+    // när den är klar; till dess hovrar man framför 3D-landskapet som förut.
+    this.parallel = gl.getExtension('KHR_parallel_shader_compile');
+    const full = FRAGMENT.replace('precision highp float;', 'precision highp float;\n#define FULL').replace('// OVERLOOK', OVERLOOK);
+    this.full = this.#program(full, !this.parallel);
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -403,6 +777,76 @@ export class HoverPad {
     gl.bindVertexArray(null);
     // En liten bild direkt, så att shadern byggs klart när sidan laddas och inte hackar första hovringen
     this.render({ width: 2, height: 2, cx: 1, focal: 10, sun: [0, 1, 0] });
+    if (!this.parallel) this.#fullReady();
+  }
+
+  /** Bygger ett program; utan wait får finish() vänta tills det är klart (se #fullReady). */
+  #program(fs, wait = true) {
+    const gl = this.gl;
+    const p = gl.createProgram();
+    const shaders = [compile(gl, gl.VERTEX_SHADER, VERTEX, wait), compile(gl, gl.FRAGMENT_SHADER, fs, wait)];
+    for (const sh of shaders) gl.attachShader(p, sh);
+    gl.bindAttribLocation(p, 0, 'aPos');
+    gl.linkProgram(p);
+    const prog = { p, u: null, shaders, failed: false };
+    if (wait) this.#finish(prog);
+    return prog;
+  }
+
+  /** Kontrollerar länkningen och hämtar programmets uniforms. */
+  #finish(prog) {
+    const gl = this.gl;
+    if (!gl.getProgramParameter(prog.p, gl.LINK_STATUS)) {
+      prog.failed = true;
+      const log = gl.getProgramInfoLog(prog.p) || prog.shaders.map((sh) => gl.getShaderInfoLog(sh)).join('\n');
+      throw new Error(log || 'link');
+    }
+    prog.u = {};
+    for (const name of UNIFORMS) prog.u[name] = gl.getUniformLocation(prog.p, name);
+  }
+
+  /** Är helbildens program byggt? Första gången det är klart ritas en liten bild, så att drivrutinen gör klart sitt. */
+  #fullReady() {
+    const prog = this.full;
+    if (prog.u) return true;
+    if (prog.failed) return false;
+    if (this.parallel && !this.gl.getProgramParameter(prog.p, this.parallel.COMPLETION_STATUS_KHR)) return false;
+    try {
+      this.#finish(prog);
+    } catch (err) {
+      console.warn('[Ergcopter] Utsikten från plattan går inte att bygga:', err.message);
+      return false;
+    }
+    this.#draw(prog, { width: 2, cx: 1, focal: 10, sun: [0, 1, 0], horizon: 1 }, 2, 2, 1, 0);
+    this.key = '';
+    return true;
+  }
+
+  /** Ritar canvasen (w × h bildpunkter), som är remsan från rad rowTop i bilden. */
+  #draw(prog, o, w, h, scale, rowTop) {
+    const { gl, canvas } = this;
+    const { p, u } = prog;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(p);
+    gl.uniform2f(u.uRes, w, h);
+    gl.uniform1f(u.uRowTop, rowTop);
+    gl.uniform1f(u.uScale, scale);
+    gl.uniform1f(u.uCx, o.cx);
+    gl.uniform1f(u.uFocal, o.focal);
+    gl.uniform1f(u.uCamH, PAD_CAM.height);
+    gl.uniform1f(u.uCamD, PAD_CAM.dist);
+    gl.uniform3fv(u.uSun, o.sun);
+    gl.uniform1f(u.uDusk, o.dusk ?? 0);
+    gl.uniform1f(u.uHorizon, o.horizon ?? 0);
+    gl.bindVertexArray(this.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
   }
 
   /**
@@ -418,33 +862,54 @@ export class HoverPad {
    */
   render(o) {
     if (this.lost) return null;
-    const { gl, canvas, u } = this;
     const scale = o.scale ?? 1;
     const w = Math.max(1, Math.round(o.width * scale));
     const h = Math.max(1, Math.round(o.height * scale));
     const key = [w, h, o.cx, o.focal, ...o.sun, o.dusk ?? 0].map((v) => Math.round(v * 100)).join(',');
-    if (key === this.key) return canvas;
+    if (key === this.key) return this.canvas;
     this.key = key;
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+    this.#draw(this.pad, { ...o, horizon: 0 }, w, h, scale, 0);
+    return this.canvas;
+  }
+
+  /**
+   * Hela bilden i hovringen: himlen, utsikten över dalen och hyllan med plattan, med
+   * horisonten o.horizon CSS-px ned. Utsikten är tung att räkna, så den ritas i remsor, en
+   * per anrop, till en egen 2D-canvas. Tills den är klar ges den förra färdiga bilden, eller null.
+   * @param {object} o  som render(), plus o.height (hela bildens höjd), o.horizon och o.frameMs
+   *   (förra bildens längd: blev den lång görs remsorna smalare)
+   * @returns {{canvas: HTMLCanvasElement, ready: boolean}|null}
+   */
+  view(o) {
+    if (this.lost || typeof document === 'undefined') return null;
+    const v = this.#shot;
+    if (!this.#fullReady()) return null;
+    const scale = o.scale ?? 1;
+    const w = Math.max(1, Math.round(o.width * scale));
+    const h = Math.max(1, Math.round(o.height * scale));
+    const key = [w, h, o.cx, o.focal, o.horizon, ...o.sun, o.dusk ?? 0].map((x) => Math.round(x * 100)).join(',');
+    if (key !== v.doneKey) {
+      if (key !== v.key) {
+        v.key = key;
+        v.row = 0;
+        v.next ??= document.createElement('canvas');
+        v.next.width = w;
+        v.next.height = h;
+      }
+      const ms = o.frameMs ?? 0;
+      if (ms > 20) v.px = Math.max(STRIP_PX.min, v.px * 0.6);
+      else if (ms > 0 && ms < 18) v.px = Math.min(STRIP_PX.max, v.px * 1.15);
+      const rows = Math.max(1, Math.floor(v.px / w));
+      this.#draw(this.full, o, w, rows, scale, v.row);
+      this.key = ''; // hyllans egen bild i canvasen är borta
+      v.next.getContext('2d').drawImage(this.canvas, 0, 0, w, rows, 0, v.row, w, rows);
+      v.row += rows;
+      if (v.row >= h) {
+        [v.done, v.next] = [v.next, v.done];
+        v.doneKey = key;
+      }
     }
-    gl.viewport(0, 0, w, h);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(this.program);
-    gl.uniform2f(u.uRes, w, h);
-    gl.uniform1f(u.uScale, scale);
-    gl.uniform1f(u.uCx, o.cx);
-    gl.uniform1f(u.uFocal, o.focal);
-    gl.uniform1f(u.uCamH, PAD_CAM.height);
-    gl.uniform1f(u.uCamD, PAD_CAM.dist);
-    gl.uniform3fv(u.uSun, o.sun);
-    gl.uniform1f(u.uDusk, o.dusk ?? 0);
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.bindVertexArray(null);
-    return canvas;
+    return v.done ? { canvas: v.done, ready: v.doneKey === key } : null;
   }
 }
 
@@ -490,22 +955,27 @@ export function padProject(f, x, y, z) {
 }
 
 /**
- * Riktningen mot solen i plattans koordinater: snett framifrån till höger, så att helikopterns
- * nos och vindruta är solbelysta och skuggan faller bakåt på plattan. heli3d.js får samma
- * riktning sedd från kameran (heliSun).
+ * Riktningen mot solen i plattans koordinater: snett uppifrån vänster och lite bakom kameran. Då får
+ * helikopterns nos och vänstra sida varmt solljus och den högra sidan skugga (form i stället för platt
+ * motljus). Skuggan på plattan kastas brantare (drawHeliShadow). heli3d.js får samma riktning sedd
+ * från kameran (heliSun).
  */
 export function padSun(dusk = 0) {
-  const day = [0.7, 0.55, -0.45];
-  const eve = [0.75, 0.2, -0.35];
+  const day = [-0.7, 0.68, -0.24];
+  const eve = [-0.82, 0.46, -0.18];
   const s = day.map((v, i) => v + (eve[i] - v) * dusk);
   const n = Math.hypot(...s);
   return s.map((v) => v / n);
 }
 
-/** Solen för heli3d.js, som räknar x åt vänster i bild. */
+/**
+ * Solen för heli3d.js, som räknar x åt vänster i bild. Lite lägre än över plattan, så att ljuset
+ * tar i nosen och vindrutan i stället för bara i taket (skuggan på plattan följer padSun).
+ */
 export function heliSun(dusk = 0) {
   const [x, y, z] = padSun(dusk);
-  return [-x, y, z];
+  const n = Math.hypot(x, y * 0.6, z);
+  return [-x / n, (y * 0.6) / n, z / n];
 }
 
 /** En vågrät cirkel (mitt x, y, z och radie r) som ellips i bild. */
@@ -515,46 +985,111 @@ function flatEllipse(f, x, y, z, r) {
   return { x: p.x, y: p.y, rx: p.k * r, ry: (p.k * r * (PAD_CAM.height - y)) / depth };
 }
 
-/** Mjuk mörk fläck i form av en ellips, för skuggor. */
-function softBlob(ctx, e, a) {
-  if (e.rx < 1 || e.ry < 0.5) return;
-  ctx.save();
-  ctx.translate(e.x, e.y);
-  ctx.scale(1, e.ry / e.rx);
-  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, e.rx);
-  g.addColorStop(0, `rgb(18 22 30 / ${a})`);
-  g.addColorStop(0.55, `rgb(18 22 30 / ${a * 0.75})`);
-  g.addColorStop(1, 'rgb(18 22 30 / 0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, e.rx, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
+// Helikopterns form för skuggan, i heli3d.js modellkoordinater (m): x åt sidan, y upp från medarna,
+// z framåt mot nosen. Kroppens halva bredd längs z, bommen, fenan, stabilisatorn och medarna.
+const HULL = [[2.86, 0.03], [2.78, 0.34], [2.5, 0.6], [2.05, 0.62], [1.45, 0.69], [0.6, 0.71], [-0.6, 0.71],
+  [-1.3, 0.69], [-1.72, 0.66], [-1.98, 0.5], [-2.1, 0.3], [-2.13, 0.03]];
+const TAILBOOM = [[-1.5, 0.3], [-2.6, 0.25], [-5.0, 0.18], [-6.45, 0.14], [-6.6, 0.03]];
+const MODEL_CENTER = [0, 1.55, -1.6]; // heli3d.js CENTER: punkten som hamnar på (0, hh, 0) över plattan
+const MODEL_HUB = [0, 2.98, 0.15];
+let shadowCanvas = null;
 
 /**
- * Helikopterns skugga på plattan: kroppen, bommen och rotorskivan, förskjutna bort från solen.
+ * Helikopterns skugga på plattan: kroppens, bommens, fenans, medarnas och rotorskivans form
+ * kastad längs solens riktning ned på hällen. Den hamnar längre bort och blir mjukare ju högre
+ * helikoptern hovrar, och krymper och skärps när den sjunker mot plattan.
  * @param {number} hh  helikopterns mitt över plattan (m)
  */
 export function drawHeliShadow(ctx, f, hh, sun, alpha) {
-  const s = sun;
-  const dx = (-s[0] / s[1]) * hh;
-  const dz = (-s[2] / s[1]) * hh;
-  const a = alpha * Math.max(0.25, 1 - (hh - 2) / 9);
-  softBlob(ctx, flatEllipse(f, dx, 0, dz, 5.0), 0.12 * a); // rotorskivan
-  softBlob(ctx, { ...flatEllipse(f, dx, 0, dz - 1.6, 1.2), ry: flatEllipse(f, dx, 0, dz - 1.6, 2.8).ry }, 0.55 * a); // kabinen
-  // Bommen bakåt (bort från kameran), smal
-  const p0 = padProject(f, dx, 0, dz + 0.6);
-  const p1 = padProject(f, dx, 0, dz + 6.2);
-  ctx.save();
-  ctx.strokeStyle = `rgb(18 22 30 / ${0.35 * a})`;
-  ctx.lineCap = 'round';
-  ctx.lineWidth = Math.max(2, p0.k * 0.45);
-  ctx.beginPath();
-  ctx.moveTo(p0.x, p0.y);
-  ctx.lineTo(p1.x, p1.y);
-  ctx.stroke();
-  ctx.restore();
+  if (typeof document === 'undefined' || alpha <= 0) return;
+  // Modellens punkt till skuggans punkt på plattan (bildpunkter): nosen mot kameran, så x och z vänds.
+  // Skuggan kastas brantare än solen lyser på kroppen: den ska ligga under helikoptern, innanför
+  // ringen, och bara glida en bit åt solens motsatta håll. Annars hamnar den metrar bort på plattan
+  // och ser inte ut att höra till helikoptern.
+  const ly = Math.max(sun[1], 0.15) + 3.2;
+  const at = (mx, my, mz) => {
+    const y = Math.max(0, my - MODEL_CENTER[1] + hh);
+    return padProject(f, -mx - (sun[0] / ly) * y, 0, -(mz - MODEL_CENTER[2]) - (sun[2] / ly) * y);
+  };
+  const shapes = [];
+  // Kroppen i tre skivor (buken, mitten och motorkåpan): tillsammans blir det kroppens hela skugga
+  for (const [y, w] of [[0.5, 0.85], [1.25, 1], [2.0, 0.72]]) {
+    shapes.push({ fill: [...HULL.map(([z, hw]) => at(hw * w, y, z)), ...HULL.toReversed().map(([z, hw]) => at(-hw * w, y, z))] });
+  }
+  shapes.push({ fill: [...TAILBOOM.map(([z, hw]) => at(hw, 1.86, z)), ...TAILBOOM.toReversed().map(([z, hw]) => at(-hw, 1.86, z))] });
+  // Fenan är hög och smal: skuggan blir ett streck längs solen
+  shapes.push({ line: [at(0, 1.6, -6.3), at(0, 2.0, -7.0), at(0, 2.6, -7.8)], w: 0.32 });
+  shapes.push({ line: [at(-0.6, 1.86, -5.95), at(0.6, 1.86, -5.95)], w: 0.3 });
+  for (const sx of [-1.12, 1.12]) shapes.push({ line: [at(sx, 0.06, -1.45), at(sx, 0.08, 1.98), at(sx, 0.22, 2.15)], w: 0.1 });
+  for (const z of [1.05, -0.75]) {
+    shapes.push({ line: [at(-1.12, 0.06, z), at(-0.7, 0.48, z), at(0.7, 0.48, z), at(1.12, 0.06, z)], w: 0.09 });
+  }
+  shapes.push({ line: [at(0, 2.2, MODEL_HUB[2]), at(0, MODEL_HUB[1], MODEL_HUB[2])], w: 0.22 });
+  const disc = [];
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * Math.PI * 2;
+    disc.push(at(Math.cos(a) * 5.1, MODEL_HUB[1], MODEL_HUB[2] + Math.sin(a) * 5.1));
+  }
+
+  // Ritas i lägre upplösning på en egen canvas, mjukad med oskärpa, och läggs sedan på plattan
+  const all = [...disc, ...shapes.flatMap((sh) => sh.fill ?? sh.line)];
+  const mid = at(0, 1.25, 0);
+  const blur = mid.k * (0.012 + 0.006 * hh); // halvskuggan växer med höjden
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const q of all) {
+    x0 = Math.min(x0, q.x);
+    y0 = Math.min(y0, q.y);
+    x1 = Math.max(x1, q.x);
+    y1 = Math.max(y1, q.y);
+  }
+  const m = blur * 2 + 4;
+  x0 -= m;
+  y0 -= m;
+  const k = 0.5; // skuggans canvas har halva upplösningen
+  const cw = Math.ceil((x1 + m - x0) * k);
+  const ch = Math.ceil((y1 + m - y0) * k);
+  if (cw < 2 || ch < 2 || cw > 4096 || ch > 4096) return;
+  shadowCanvas ??= document.createElement('canvas');
+  const c = shadowCanvas;
+  if (c.width < cw || c.height < ch) {
+    c.width = Math.max(c.width, cw);
+    c.height = Math.max(c.height, ch);
+  }
+  const x = c.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.clearRect(0, 0, cw, ch);
+  x.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+  x.filter = `blur(${(blur * k).toFixed(1)}px)`;
+  const path = (pts) => {
+    x.beginPath();
+    pts.forEach((q, i) => (i ? x.lineTo(q.x, q.y) : x.moveTo(q.x, q.y)));
+  };
+  // Rotorskivan: bladen snurrar, så skivan ger bara en svag skugga
+  x.fillStyle = 'rgb(0 0 0 / 0.1)';
+  path(disc);
+  x.fill();
+  x.fillStyle = '#000';
+  x.strokeStyle = '#000';
+  x.lineCap = 'round';
+  x.lineJoin = 'round';
+  for (const sh of shapes) {
+    if (sh.fill) {
+      path(sh.fill);
+      x.fill();
+    } else {
+      x.lineWidth = Math.max(1, mid.k * sh.w);
+      path(sh.line);
+      x.stroke();
+    }
+  }
+  x.filter = 'none';
+  // Mörkare när den ligger nära: högre upp sprids ljuset runt den
+  ctx.globalAlpha = alpha * Math.max(0.42, 0.66 - 0.03 * Math.max(0, hh - 2));
+  ctx.drawImage(c, 0, 0, cw, ch, x0, y0, cw / k, ch / k);
+  ctx.globalAlpha = 1;
 }
 
 let dustSprite = null;
@@ -585,10 +1120,10 @@ export function drawDownwash(ctx, f, hh, t, alpha, part) {
   if (part === 'front') {
     // Pelaren: luften som trycks ned genom rotorn. Flera lager med mjukt avtagande bredd ger en
     // dimmig pelare med mjuka kanter i stället för en skarp ljusstråle.
-    const top = padProject(f, 0, hh - 1.3, 0);
+    const top = padProject(f, 0, hh - 1.45, 0);
     const bottom = padProject(f, 0, 0.1, 0);
-    const w0 = top.k * 0.35;
-    const w1 = bottom.k * 1.1;
+    const w0 = top.k * 0.45;
+    const w1 = bottom.k * 1.5;
     const column = (scale, a0, a1, rgb) => {
       const g = ctx.createLinearGradient(0, top.y, 0, bottom.y);
       g.addColorStop(0, `rgb(${rgb} / 0)`);
@@ -603,20 +1138,34 @@ export function drawDownwash(ctx, f, hh, t, alpha, part) {
       ctx.closePath();
       ctx.fill();
     };
-    for (const sc of [1, 0.72, 0.48, 0.3]) column(sc, 0.04 * a, 0.12 * a, '246 240 226');
-    // Den ljusa kärnan rakt ned från magen
-    column(0.12, 0.18 * a, 0.35 * a, '255 251 240');
-    column(0.05, 0.3 * a, 0.5 * a, '255 252 244');
-    // Virvlar som följer luften nedåt och vidgas
+    // En bred, dimmig kon och en mjuk kärna, inte en smal ljusstråle
+    for (const sc of [1, 0.7, 0.46]) column(sc, 0.045 * a, 0.15 * a, '246 240 226');
+    // Kärnan: en ljus, solbelyst pelare av dimma mitt under rotorn
+    column(0.24, 0.14 * a, 0.34 * a, '255 250 238');
+    column(0.1, 0.2 * a, 0.42 * a, '255 253 246');
+    // Där luften slår i hällen lyser dammet i solen
+    const glow = ctx.createRadialGradient(bottom.x, bottom.y, 0, bottom.x, bottom.y, bottom.k * 1.6);
+    glow.addColorStop(0, `rgb(255 244 214 / ${(0.5 * a).toFixed(3)})`);
+    glow.addColorStop(0.35, `rgb(250 230 190 / ${(0.2 * a).toFixed(3)})`);
+    glow.addColorStop(1, 'rgb(250 230 190 / 0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = glow;
+    ctx.translate(bottom.x, bottom.y);
+    ctx.scale(1, 0.4);
+    ctx.translate(-bottom.x, -bottom.y);
+    ctx.fillRect(bottom.x - bottom.k * 1.6, bottom.y - bottom.k * 1.6, bottom.k * 3.2, bottom.k * 3.2);
+    ctx.restore();
+    // Virvlar av fukt och damm som följer luften nedåt och vidgas, så att pelaren blir ojämn
     if (sprite) {
-      for (let i = 0; i < 9; i++) {
-        const age = (t * 0.55 + i / 9) % 1;
+      for (let i = 0; i < 16; i++) {
+        const age = (t * 0.55 + i / 16) % 1;
         const fy = age ** 0.8;
         const y = top.y + (bottom.y - top.y) * fy;
         const k = top.k + (bottom.k - top.k) * fy;
-        const size = k * (0.35 + 0.9 * age);
-        const dx = Math.sin(i * 2.3 + t * 1.7) * k * 0.25 * age;
-        ctx.globalAlpha = a * 0.32 * Math.sin(Math.PI * age);
+        const size = k * (0.3 + 0.75 * age);
+        const dx = Math.sin(i * 2.3 + t * 1.7) * k * (0.15 + 0.5 * age);
+        ctx.globalAlpha = a * 0.3 * Math.sin(Math.PI * age);
         ctx.drawImage(sprite, top.x + dx - size, y - size * 0.6, size * 2, size * 1.2);
       }
       ctx.globalAlpha = 1;
@@ -624,13 +1173,34 @@ export function drawDownwash(ctx, f, hh, t, alpha, part) {
     // Ett dammoln där den slår i plattan
     if (sprite) {
       for (let i = 0; i < 3; i++) {
-        const size = bottom.k * (1.6 + i * 0.9 + 0.2 * Math.sin(t * 2 + i));
-        ctx.globalAlpha = a * (0.7 - i * 0.15);
+        const size = bottom.k * (0.9 + i * 0.65 + 0.15 * Math.sin(t * 2 + i));
+        ctx.globalAlpha = a * (0.55 - i * 0.12);
         ctx.drawImage(sprite, bottom.x - size, bottom.y - size * 0.75, size * 2, size * 1.1);
       }
       ctx.globalAlpha = 1;
     }
   }
+  // Vinden sveper damm utåt längs hällen: korta strimmor som rusar ut från mitten och tunnas ut
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 44; i++) {
+    const seed = Math.sin(i * 57.3 + 1.7) * 43758.5453;
+    const rnd = seed - Math.floor(seed);
+    const ang = (i / 44) * Math.PI * 2 + rnd * 0.4;
+    if ((part === 'back') !== Math.sin(ang) > 0) continue;
+    const age = (t * (0.7 + 0.5 * rnd) + rnd * 3.1) % 1;
+    const r = 0.8 + age * (4.5 + 1.5 * rnd);
+    const len = 0.5 + 1.1 * age;
+    const p0 = padProject(f, Math.cos(ang) * r, 0.04, Math.sin(ang) * r);
+    const p1 = padProject(f, Math.cos(ang) * (r + len), 0.04, Math.sin(ang) * (r + len));
+    ctx.strokeStyle = `rgb(238 228 208 / ${(a * 0.15 * Math.sin(Math.PI * age)).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1, p0.k * (0.03 + 0.04 * rnd));
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+  ctx.restore();
   if (!sprite) return;
   // Dammet: puffar som föds vid mitten och driver utåt längs plattan
   const N = 26;
@@ -643,8 +1213,8 @@ export function drawDownwash(ctx, f, hh, t, alpha, part) {
     const age = (t * (0.32 + 0.18 * rnd) + rnd) % 1;
     const r = 1.2 + age * (4.2 + 2 * rnd); // dammet lägger sig innan det når plattans kant
     const p = padProject(f, Math.cos(ang) * r, 0.25 + age * 0.9, Math.sin(ang) * r);
-    const size = p.k * (1.0 + age * 2.4);
-    ctx.globalAlpha = a * Math.sin(Math.PI * age) * 0.5;
+    const size = p.k * (0.6 + age * 1.5);
+    ctx.globalAlpha = a * Math.sin(Math.PI * age) * 0.24;
     ctx.drawImage(sprite, p.x - size, p.y - size * 0.6, size * 2, size * 1.2);
   }
   ctx.globalAlpha = 1;
@@ -677,10 +1247,9 @@ function ringHalf(e, part, inside) {
   x.lineCap = 'butt'; // rundade ändar sticker ut där halvorna möts
   // Skenet runt röret, sedan röret och den ljusa kärnan
   x.shadowColor = inside ? 'rgb(40 255 100 / 0.95)' : 'rgb(120 230 150 / 0.6)';
-  x.shadowBlur = 0.7 * k;
+  x.shadowBlur = 0.28 * k;
   x.strokeStyle = inside ? 'rgb(40 225 90)' : 'rgb(110 190 130)';
-  arc(0.22 * k);
-  arc(0.22 * k);
+  arc(0.2 * k);
   x.shadowBlur = 0.12 * k;
   x.shadowColor = 'rgb(160 255 180 / 0.9)';
   x.strokeStyle = inside ? 'rgb(150 255 170)' : 'rgb(190 235 200)';
@@ -708,7 +1277,7 @@ export function drawTargetRing(ctx, f, inside, t, alpha, part) {
     ctx.scale(1, spill.ry / spill.rx);
     const g = ctx.createRadialGradient(0, 0, spill.rx * 0.55, 0, 0, spill.rx);
     g.addColorStop(0, 'rgb(60 255 120 / 0)');
-    g.addColorStop(0.72, `rgb(60 255 120 / ${(inside ? 0.2 : 0.08) * pulse * alpha})`);
+    g.addColorStop(0.72, `rgb(60 255 120 / ${(inside ? 0.05 : 0.025) * pulse * alpha})`);
     g.addColorStop(1, 'rgb(60 255 120 / 0)');
     ctx.fillStyle = g;
     ctx.beginPath();

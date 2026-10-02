@@ -609,6 +609,7 @@ function frame() {
   game.tick(t);
   // Uppspelningen av en flyglogg i helskärm täcker scenen: rita inte det som inte syns
   if (logView.coversScreen) {
+    if (renderer.landscape3d) terrain.keepAlive();
     requestAnimationFrame(frame);
     return;
   }
@@ -678,6 +679,7 @@ function frame() {
     winch: winchInfo(run, f),
     livery: attract ? null : game.helicopter?.livery,
     chase,
+    title: attract, // startskärmen: 3D-helikoptern snett framifrån (render.js)
   });
   sound.update(power / P0, rotor.omega);
 

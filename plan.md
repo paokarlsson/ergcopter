@@ -149,7 +149,7 @@ Balansen styrs av tidskonstanten `τ = H_air / G` (spec §5). Om maxhöjden ska 
    - Ingen fallbroms: den faller lika fort som de andra.
    - Ett tak på 1 500 m, där den inte stiger mer. Den klarar övningshöjderna men inte de höga topparna. Taket valdes i stället för att luften tunnas ut snabbare, eftersom det senare hade gjort övningarna på 1 000 m tyngre och gynnat styrka.
    - Den har ingen vinsch och ingen plats för patient. Det förklarar varför aspiranten bara övar.
-   - Den är vit och gul (gul nos, kabinsidor och stjärt, som räddningshelikopterns röda) med texten SKOLA (`helicopters.js`, ritas av `heli-draw.js` och `heli3d.js`).
+   - Den är vit med rött bara nedtill (röd nos, buk och stjärt, medan räddningshelikoptern har röda kabinsidor) och texten SKOLA (`helicopters.js`, ritas av `heli-draw.js` och `heli3d.js`).
    - Ljudet får ljusare ton och snabbare rotor (`helicopter-sound.js`). Inte byggt än.
 2. **Lätt räddningshelikopter** (junior och fjällräddare, `rescue`)
    - Vinsch och en patient. Fysiken som i dag.

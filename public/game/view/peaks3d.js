@@ -30,8 +30,9 @@ const LANDMARK_FREE = 4; // och de lämnar alltid så här många platser till t
  */
 export function peakSize(m) {
   const r = 0.85 * m.h + 300;
-  // Långt bort, i fjällkedjan: då står toppen i bild som ett massiv bland de andra, inte som en kon framför kameran
-  return { z: Math.max(3000, r + 1900) + 1600 * rand(m.h * 0.37 + m.name.length), r };
+  // Långt bort, i fjällkedjan: då står toppen i bild som ett massiv bland de andra, inte som en kon framför
+  // kameran, och några kilometer emellan på djupet, så att topparna står i olika lager av diset
+  return { z: Math.max(3000, 1.6 * r + 1500) + 2000 * rand(m.h * 0.37 + m.name.length), r };
 }
 
 export class PeakField {
