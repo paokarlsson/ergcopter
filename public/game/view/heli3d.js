@@ -459,7 +459,8 @@ void main() {
     vec3 Nb = vec3(0.0, sign(dot(V, vec3(0.0, 1.0, 0.0)) + 1e-4), 0.0);
     vec3 blade = vec3(0.045, 0.048, 0.055);
     float bl = max(dot(Nb, L), 0.0);
-    vec3 lit = blade * (amb * 0.6 + uSunCol * bl * 0.6);
+    // (i närbilderna är bladen mattsvarta: sedda ovanifrån i solen blir de annars ljusgrå streck)
+    vec3 lit = blade * (amb * 0.6 + uSunCol * bl * mix(0.6, 0.25, uShine));
     float spec = pow(max(dot(Nb, Hh), 0.0), 30.0) * 0.5;
     vec3 c = lit + uSunCol * spec * 0.1 + envColor(reflect(-V, Nb)) * 0.07;
     c = mix(c, vec3(0.9, 0.9, 0.86) * (amb + uSunCol * bl) * 0.6, tip * 0.7);

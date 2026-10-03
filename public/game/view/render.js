@@ -92,6 +92,46 @@ const SETUP_VIEW = {
   x: 0.835, horizon: 0.515, mPerW: 0.051, aspect: 1.07, heading: -0.6, hh: 1.55, dusk: 0.25, fadeS: 0.45,
   sun: [0.3, 0.85, -0.45], sunK: 1.2,
 };
+// Helikoptern vid inmatningen i samma blanka finish som på startskärmen (heli3d.js shine): lacken och glaset
+// speglar himlen. Huvudljuset kommer snett framifrån från vänster (heli3d.js räknar x åt vänster), så att nosen
+// lyser och sidan mot oss får form i stället för att lysas upp jämnt; ett varmt motljus bakifrån till höger
+// lägger en kant längs bommen och kåpan som lyfter den från utsikten. Rotorskivan lutar lite mot kameran,
+// så att bladen syns som blad och inte som ett streck rakt från sidan.
+const SETUP_HELI = {
+  sun: [0.55, 0.6, -0.45], sunColor: '#ffe2c0', sunK: 1.35, fill: 0.36, discTilt: 0.08, blur: 0.12,
+  rim: { dir: [0.5, 0.3, 0.8], color: '#ffb070', k: 2.5 },
+  stretch: [1.03, 1.1, 0.94],
+};
+
+/**
+ * Kontaktskuggan under medarna vid inmatningen: mörka, mjuka fläckar där medarna vilar på hällen, så att
+ * helikoptern står på plattan och inte svävar över den. Medarnas läge som i heli3d.js (x ±1,12 m,
+ * z −1,45 … 1,98 m), sträckta och vridna som modellen, med mittpunkten (z −1,6) över plattans mitt.
+ */
+function drawSkidContact(ctx, f, heading, stretch, alpha) {
+  const hc = Math.cos(heading);
+  const hs = Math.sin(heading);
+  ctx.save();
+  for (const side of [-1, 1]) {
+    for (let i = 0; i <= 6; i++) {
+      const mx = side * 1.12 * stretch[0];
+      const dz = (-1.45 + (i / 6) * 3.43) * stretch[2] + 1.6;
+      const p = padProject(f, -(mx * hc + dz * hs), 0, -(-mx * hs + dz * hc));
+      const r = p.k * 0.6;
+      ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d * 0.3, 0, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.scale(1, 0.3);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, `rgb(12 9 6 / ${0.3 * alpha})`);
+      g.addColorStop(1, 'rgb(12 9 6 / 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-r, -r, 2 * r, 2 * r);
+    }
+  }
+  ctx.restore();
+}
 // Topparna i utsikten (m): i sidled från kameran, avstånd och höjd. De sprids över bildens bredd bakom sjön.
 const OVERLOOK_PEAKS = [
   { dx: -3800, z: 9500, h: 2050 },
@@ -106,7 +146,7 @@ const OVERLOOK_PEAKS = [
 // skärmar. turn är massivets ryggrad i varv (0 = åt höger, 0,25 = rakt bort). Sjön står fast i världen (m från
 // kameran). Horisonten i andel av höjden.
 const TITLE_LAND = {
-  x: 52000, camM: 3000, horizon: 0.515, cx: 0.5, sun: { x: 0.93, y: 0.5 }, cloudNear: 1200, cloudMore: 0.36, cloudLift: 250,
+  x: 52000, camM: 3000, horizon: 0.515, cx: 0.5, sun: { x: 0.93, y: 0.5 }, cloudNear: 1200, cloudMore: 0.55, cloudLift: 400,
   light: [0.72, 0.16, 0.68], // låg kvällssol till höger bakom fjällen: varma krön mot solen, blåvioletta skuggsidor mot oss
   lake: { dx: 0, z: 15000, rx: 4500, rz: 2500 },
   peaks: [
@@ -121,6 +161,26 @@ const TITLE_LAND = {
     { sx: 0.1, sy: 0.555, z: 14000, r: 4600, turn: 0.95 },
     { sx: 0.27, sy: 0.56, z: 12000, r: 3400, turn: 0.52 },
     { sx: 0.25, sy: 0.548, z: 19000, r: 5000, turn: 0.02 },
+  ],
+};
+
+// Resultatskärmens utsikt i kvällssol (fri flygning): en solbelyst topp till vänster bakom rubriken, en kedja
+// längs horisonten och låga klippor nedtill. Höger halva täcks av räddaren på klippan (rescuer.js).
+// Samma fält som TITLE_LAND; dusk är kvällsljusets styrka.
+const RESULT_LAND = {
+  x: 81000, camM: 2300, horizon: 0.5, cx: 0.5, sun: { x: 0.95, y: 0.4 }, cloudNear: 2600, cloudMore: 0.2, cloudLift: 0,
+  dusk: 0.95,
+  lake: { dx: 0, z: 15000, rx: 4500, rz: 2500 }, // används inte (som TITLE_LAND)
+  light: [0.85, 0.3, -0.2], // låg sol till höger, lite framifrån: varma solsidor och snö som lyser
+  vista: 0.5, // mer snö än startskärmen
+  peaks: [
+    { sx: 0.16, sy: 0.3, z: 9000, r: 3800, turn: 0.9 }, // den stora toppen till vänster
+    { sx: 0.03, sy: 0.4, z: 12000, r: 4200, turn: 0.4 },
+    { sx: 0.33, sy: 0.43, z: 15000, r: 4200, turn: 0.55 },
+    { sx: 0.47, sy: 0.445, z: 19000, r: 4800, turn: 0.1 },
+    { sx: 0.6, sy: 0.43, z: 17000, r: 4600, turn: 0.6 },
+    { sx: 0.76, sy: 0.44, z: 20000, r: 5200, turn: 0.3 },
+    { sx: 0.92, sy: 0.43, z: 16000, r: 4600, turn: 0.8 },
   ],
 };
 
@@ -257,6 +317,8 @@ export class GameRenderer {
    * @param {DOMRect[]} [v.avoid]      instrument i DOM som etiketter inte får hamna under
    * @param {boolean} [v.flying]        skicka in nya berg (bara under passet)
    * @param {boolean} [v.gauge]         rita höjdskalan till vänster
+   * @param {boolean} [v.labels]        false: inga etiketter på topparna (resultatskärmen)
+   * @param {boolean} [v.result]        resultatet efter fri flygning: en fast utsikt i kvällssol (RESULT_LAND)
    * @param {number} [v.heliX, v.heliY] helikopterns plats, andel av bredd och höjd (glider dit)
    * @param {number} [v.dusk]           0–1, kvällsljus på start- och resultatskärmen (glider dit)
    * @param {object[]} [v.guides]        övningens hjälplinjer (exercise.js stepGuides)
@@ -323,7 +385,7 @@ export class GameRenderer {
     if (!v.setup) this.setupFade = 0;
     else if (this.#setupStage(ctx, W, H, v, t, dt, frameS)) return;
     // Startskärmen i 3D: en fast utsikt över fjällen, där helikoptern alltid hänger i luften
-    const vista = Boolean(v.title) && td;
+    const vista = Boolean(v.title || v.result) && td;
     // Hovringen: kameran svänger runt till helikopterns framsida, med plattan under (hoverpad.js)
     const hov = this.#hoverState(v, dt, W, H);
     // Över plattan står solen lite lägre och varmare (eftermiddagsljus), så att hällen, blocken och
@@ -364,6 +426,12 @@ export class GameRenderer {
       this.#clouds(ctx, W, H, cam, y, dusk);
     }
     if (!vista && y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk, td);
+    if (vista && v.result) {
+      // Resultatet: bara utsikten bakom panelerna, helikoptern har landat utom synhåll (och konfettin vid befordran)
+      this.effects.drawParticles(ctx, y);
+      this.gaugeY = H / 2;
+      return;
+    }
     if (!td) drawFog(ctx, W, H, fogAmount(cam), c);
     if (v.blind) drawCloudBank(ctx, W, H, t, this.distance, c);
     if (v.gauge && !v.blind) gaugeShade(ctx, W, H);
@@ -475,7 +543,7 @@ export class GameRenderer {
       nose: airborne * (T.nose + 0.02 * Math.sin(t * 0.5)) - Math.max(-0.03, Math.min(0.03, v.vy * 0.001)),
       discTilt: 0.05 + (T.tilt - 0.05) * airborne,
       rotor: { ...v.rotor, blur: v.rotor.blur * 0.35 }, // kort slutartid: bladen syns, med kort svep
-      livery: v.livery ?? TITLE_LIVERY,
+      livery: v.livery,
       shine: 1,
       dusk: 0, // blå himmel som fyllnadsljus i skuggorna och en varm, gyllene sol: kallt mot varmt
       time: t,
@@ -531,6 +599,7 @@ export class GameRenderer {
     ctx.drawImage(view.canvas, 0, 0, W, H);
     ctx.globalAlpha = 1;
     drawHeliShadow(ctx, f, S.hh, sun, a, S.heading);
+    drawSkidContact(ctx, f, S.heading, SETUP_HELI.stretch, a);
     const out = this.heli3d.render({
       pxPerM,
       dpr: devicePixelRatio || 1,
@@ -538,15 +607,20 @@ export class GameRenderer {
       pitch: Math.atan2(PAD_CAM.height - S.hh, PAD_CAM.dist),
       dist: PAD_CAM.dist,
       heading: S.heading,
-      discTilt: 0.02,
-      rotor: { ...v.rotor, blur: v.rotor.blur * 0.35 }, // kort slutartid: bladen syns
+      discTilt: SETUP_HELI.discTilt,
+      // Rotorn går på tomgång: bladen syns, med ett kort svep av rörelseoskärpa
+      rotor: { angle: (v.rotor.angle ?? 0) + t * 0.9, blur: Math.max(v.rotor.blur * 0.35, SETUP_HELI.blur) },
       livery: v.livery,
+      shine: 1,
       dusk: S.dusk,
       time: t,
-      sun: [-sun[0], sun[1] * 0.6, sun[2]], // heli3d.js räknar x åt vänster, och solen lite lägre (heliSun)
+      sun: SETUP_HELI.sun,
+      sunColor: SETUP_HELI.sunColor,
+      rim: SETUP_HELI.rim,
+      fill: SETUP_HELI.fill,
       warm: 1, // samma gyllene eftermiddagssol som på plattan
-      sunK: S.sunK,
-      stretch: TITLE_VIEW.stretch, // H135:ans höga, korta kabin, som på startskärmen
+      sunK: SETUP_HELI.sunK,
+      stretch: SETUP_HELI.stretch,
     });
     const c = padProject(f, 0, S.hh, 0);
     ctx.globalAlpha = a;
@@ -775,6 +849,10 @@ export class GameRenderer {
    * @param {{m:object, sx:number, sy:number, passed:boolean}[]} visible  topparna i bild
    */
   #signs(ctx, W, v, visible, dt, hx, scale, y) {
+    if (v.labels === false) {
+      this.signAlpha.clear(); // tonas in igen nästa gång de syns
+      return;
+    }
     const c = this.colors;
     const taken = [...(v.avoid ?? [])];
     // Etiketterna skalar med skärmbredden: ~1,6 på 1 600 px, större på en storskärm.
@@ -861,7 +939,7 @@ export class GameRenderer {
    * (peaks3d.js) och får etiketter här.
    */
   #landscape3d(ctx, W, H, v, o) {
-    if (o.vista) return this.#titleLandscape(W, H, o);
+    if (o.vista) return this.#titleLandscape(W, H, o, v.result ? RESULT_LAND : TITLE_LAND);
     const basePxPerM = (H * 0.8) / VIEW_SPAN_M; // utan utzoomning, så att sidledes läget inte hoppar
     // Kamerans läge i meter räknas i steg, så att landskapet och topparna inte hoppar när fönstret
     // byter storlek (t.ex. helskärm mitt i flygningen): skalan per pixel ändras då.
@@ -927,8 +1005,7 @@ export class GameRenderer {
    * Startskärmens utsikt (TITLE_LAND): kameran står still, så att rutnätet bara räknas en gång och
    * varje bild bara ritar om molnen och färgerna. Brännvidden följer inte utzoomningen.
    */
-  #titleLandscape(W, H, o) {
-    const T = TITLE_LAND;
+  #titleLandscape(W, H, o, T = TITLE_LAND) {
     const focal = ((H * 0.8) / VIEW_SPAN_M) * PLANE_M;
     const cx = W * T.cx;
     const cy = H * T.horizon;
@@ -947,14 +1024,14 @@ export class GameRenderer {
       focal,
       camX: T.x,
       camY: T.camM,
-      dusk: o.dusk * 0.75,
+      dusk: o.dusk * (T.dusk ?? 0.75),
       thin: 0,
       sun: T.sun,
       peaks,
       pad: null,
       lake: null && { x: T.x + dx, z, rx, rz },
       mirror: true, // kameran står still: spegelbilden ritas bara en gång
-      vista: 1,
+      vista: T.vista ?? 1,
       cloudNear: T.cloudNear,
       cloudMore: T.cloudMore,
       cloudLift: T.cloudLift,

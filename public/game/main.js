@@ -661,6 +661,9 @@ function frame() {
     hMax: school || attract ? 0 : f?.hMax ?? 0,
     todayBest: attract ? null : todayBest,
     milestones: school ? [] : cfg.milestones,
+    // Resultatet visar topparna i sin panel: inga etiketter i landskapet bakom höjden
+    labels: game.state !== 'FINISHED',
+    result: game.state === 'FINISHED' && !school, // fast utsikt i kvällssol bakom resultatet (render.js)
     avoid: [...(attract ? ui.idleRects() : hud.rects()), screenControls.getBoundingClientRect()],
     flying: game.state === 'FLYING' || attract,
     gauge: instruments,
