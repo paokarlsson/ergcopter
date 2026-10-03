@@ -596,7 +596,7 @@ setInterval(() => game.tick(now()), 50);
 const STAGE = {
   IDLE: { heliX: 0.24, heliY: 0.36, dusk: 1 },
   SETUP: { heliX: 0.68, dusk: 0 },
-  MENU: { heliX: 0.5, dusk: 0.6 },
+  MENU: { heliX: 0.5, dusk: 0.9 },
   FINISHED: { heliX: 0.74, dusk: 1 },
 };
 
@@ -683,6 +683,7 @@ function frame() {
     livery: attract ? null : game.helicopter?.livery,
     chase,
     title: attract, // startskärmen: 3D-helikoptern snett framifrån (render.js)
+    menu: game.state === 'MENU', // Fjällräddaren-menyn: en fast utsikt i kvällssol bakom korten (render.js)
     setup: game.state === 'SETUP', // inmatningen: helikoptern parkerad på plattan (render.js)
   });
   sound.update(power / P0, rotor.omega);

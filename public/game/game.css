@@ -859,11 +859,12 @@ button.danger {
 
 .screen.career-screen {
   padding: 14px max(16px, 2vw) 18px;
-  /* Överst en klarblå himmel bakom rubriken som ljusnar mot ett varmt dis, sedan mörkare bakom korten */
+  /* Överst en klarblå himmel bakom rubriken som ljusnar mot ett varmt dis. Fjällen i kvällssol (render.js
+     MENU_LAND) får synas genom glaset; bara en lätt skymning bakom korten och varmt ljus nere till höger. */
   background:
-    radial-gradient(42% 14% at 70% 20%, rgb(255 210 160 / 0.2), rgb(255 210 160 / 0)),
-    linear-gradient(180deg, rgb(34 88 172 / 0.6), rgb(80 128 194 / 0.4) 10%, rgb(168 190 216 / 0.3) 18%, rgb(168 190 216 / 0) 26%),
-    linear-gradient(180deg, rgb(5 12 26 / 0), rgb(5 12 26 / 0.3) 19%, rgb(5 12 26 / 0.78) 34%);
+    radial-gradient(34% 30% at 88% 100%, rgb(255 150 70 / 0.22), rgb(255 150 70 / 0)),
+    linear-gradient(180deg, rgb(26 70 156 / 0.62), rgb(60 110 186 / 0.34) 12%, rgb(120 150 200 / 0.12) 22%, rgb(120 150 200 / 0) 28%),
+    linear-gradient(180deg, rgb(5 12 26 / 0), rgb(5 12 26 / 0.14) 24%, rgb(5 12 26 / 0.4) 60%, rgb(5 12 26 / 0.5));
 }
 /* Fjällräddaren sedd över axeln uppe till höger (view/rescuer-bust.js), bakom flikarna och sidopanelen */
 .career-figure {
@@ -1074,10 +1075,12 @@ button.danger {
   scrollbar-width: thin;
   scrollbar-color: rgb(150 196 255 / 0.4) transparent;
   list-style: none;
-  border: 1px solid rgb(150 196 255 / 0.28);
+  border: 1px solid rgb(150 196 255 / 0.3);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgb(12 22 42 / 0.62), rgb(6 12 26 / 0.72));
-  box-shadow: 0 14px 40px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.07);
+  /* Rökfärgat glas: fjällen bakom syns mjukt mellan korten, med en ljus slipad överkant */
+  background: linear-gradient(180deg, rgb(16 32 60 / 0.5), rgb(8 16 34 / 0.6));
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.3), inset 0 1px 0 rgb(200 225 255 / 0.22), inset 0 0 0 1px rgb(255 255 255 / 0.03);
+  backdrop-filter: blur(9px) saturate(1.15);
 }
 .cards > li {
   min-height: 0;
@@ -1105,6 +1108,8 @@ button.danger {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Bilden lyser som ett foto i kvällsljus: ljusare och klarare än landskapet bakom glaset */
+  filter: brightness(1.12) contrast(1.06) saturate(1.12);
 }
 .card-btn::after {
   /* Mörkare upptill och nedtill så att texten syns mot bilden, och en tunn glans i överkanten */
@@ -1113,8 +1118,8 @@ button.danger {
   inset: 0;
   border-radius: inherit;
   background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0) 12%),
-    linear-gradient(180deg, rgb(4 10 22 / 0.62), rgb(4 10 22 / 0) 34%, rgb(4 10 22 / 0) 60%, rgb(4 10 22 / 0.58));
+    linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0) 14%),
+    linear-gradient(180deg, rgb(4 10 22 / 0.42), rgb(4 10 22 / 0) 28%, rgb(4 10 22 / 0) 66%, rgb(4 10 22 / 0.4));
   pointer-events: none;
 }
 .card-btn:hover:not(:disabled),
@@ -1177,9 +1182,9 @@ button.danger {
   filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.55));
 }
 .card-stars .star path {
-  fill: rgb(12 20 38 / 0.72);
-  stroke: rgb(235 242 252 / 0.75);
-  stroke-width: 1.4;
+  fill: rgb(8 16 32 / 0.78);
+  stroke: rgb(235 242 252 / 0.82);
+  stroke-width: 1.7;
   stroke-linejoin: round;
 }
 .card-stars .star.on path {
@@ -1257,6 +1262,15 @@ button.danger {
 .side-text {
   color: var(--ink-muted);
 }
+/* Beskrivningen i menyns sidopanel i samma smala stil som rubrikerna, som i en spelmeny */
+.career-side .side-text {
+  color: #d3deec;
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 1.65vw, 1.95rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
 .side-goal {
   padding: 10px 12px;
   border-left: 4px solid var(--cyan);
@@ -1324,18 +1338,29 @@ button.danger {
   place-items: center start;
   padding-left: max(16px, 6vw);
   padding-top: max(24px, 3vh); /* rubriken ligger till vänster, skärmknapparna till höger */
+  /* Gradienterna ligger över 3D-utsikten men under klippan och räddaren (.result-figure): djupblå kvällshimmel
+     uppe till vänster, en mjuk mörk fläck bakom rubriken och mörkare förgrund nedtill */
   background:
+    radial-gradient(ellipse 70% 60% at 0% 0%, rgb(18 40 104 / 0.62), rgb(18 40 104 / 0.24) 50%, rgb(18 40 104 / 0)),
     radial-gradient(ellipse 34% 30% at 37% 24%, rgb(6 14 32 / 0.4), rgb(6 14 32 / 0.18) 60%, rgb(6 14 32 / 0)),
     linear-gradient(90deg, rgb(4 10 22 / 0.34), rgb(4 10 22 / 0.14) 45%, rgb(4 10 22 / 0) 66%),
     linear-gradient(0deg, rgb(8 8 16 / 0.72), rgb(8 8 16 / 0.36) 20%, rgb(8 8 16 / 0) 40%); /* mörk förgrund under knapparna */
+}
+/* Ljussättningen över hela bilden, även klippan och räddaren: förgrunden sjunker i kall skugga nedtill */
+.screen.result::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(0deg, rgb(6 10 22 / 0.5), rgb(6 10 22 / 0.22) 12%, rgb(6 10 22 / 0) 24%);
+  pointer-events: none;
 }
 /* Fjällräddaren på klippan till höger (view/rescuer.js); under resultatet i staplingsordningen */
 .result-figure {
   position: absolute;
   top: 0;
   right: 0;
-  width: 92vh;
-  max-width: 100%;
+  width: 100%; /* klippan räknas från högerkanten; på breda skärmar fortsätter hällarna längs hela nederkanten */
   height: 100%;
   z-index: -1;
   pointer-events: none;
@@ -1469,10 +1494,12 @@ button.danger {
   border: 0;
   border-radius: 9px;
   background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0) 38%),
-    linear-gradient(180deg, rgb(26 36 58 / 0.74), rgb(10 16 28 / 0.82));
-  box-shadow: 0 18px 40px rgb(0 0 0 / 0.34), 0 2px 6px rgb(0 0 0 / 0.2);
-  /* Ingen backdrop-filter: landskapet bakom ritas om varje bild och suddet kostade 60 bilder/s */
+    linear-gradient(180deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0) 38%),
+    linear-gradient(180deg, rgb(22 32 56 / 0.6), rgb(8 14 28 / 0.7));
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.34), 0 2px 6px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(200 220 255 / 0.12);
+  /* Utsikten bakom står still (render.js ritar den en gång), så suddet bakom glaset kostar inte bildtakten */
+  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+  backdrop-filter: blur(12px) saturate(1.25);
 }
 .result-cards > .glass::before {
   content: '';

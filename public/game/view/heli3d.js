@@ -13,8 +13,10 @@
 
 const ROTOR_R = 5.1; // huvudrotorns radie (m)
 const HUB = [0, 2.98, 0.15]; // rotornavet
-const CENTER = [0, 1.55, -1.6];
-const INTAKE_X = 0.5; // motorernas luftintag på var sida om masten // punkten som kameran tittar på och som render.js placerar
+const CENTER = [0, 1.55, -1.6]; // punkten som kameran tittar på och som render.js placerar
+const INTAKE_X = 0.5; // motorernas luftintag på var sida om masten
+const INTAKE_X_FRONT = 0.52; // och i framvyns form (buildBody(true))
+const MAST_LIFT = 0.14; // framvyns form: navet sitter så mycket högre, på en synlig mast (m)
 const SIZE_STEP = 64; // canvasens storlek avrundas uppåt, så att den inte byts varje bild
 const MAX_DIM = 2400; // canvasens största sida i bildpunkter
 
@@ -41,18 +43,22 @@ const DECAL_GLSL = DECALS.map((d) => {
 const VERTEX = `#version 300 es
 in vec3 aPos;
 in vec3 aNor;
+in vec3 aPos2;          // samma hörn i framvyns form (buildBody(true) m.fl.)
+in vec3 aNor2;
 uniform mat4 uProj;
 uniform mat4 uView;
 uniform mat4 uModel;
 uniform vec3 uNScale;   // 1/skalan² per axel: normalerna blir rätt när modellen sträcks olika mycket på ledderna
+uniform float uMorph;   // 0 = vanliga formen, 1 = framvyns form (hovringen över plattan)
 out vec3 vW;
 out vec3 vN;
 out vec3 vObj;
 void main() {
-  vec4 w = uModel * vec4(aPos, 1.0);
+  vec3 pos = mix(aPos, aPos2, uMorph);
+  vec4 w = uModel * vec4(pos, 1.0);
   vW = w.xyz;
-  vN = mat3(uModel) * (aNor * uNScale);
-  vObj = aPos;
+  vN = mat3(uModel) * (mix(aNor, aNor2, uMorph) * uNScale);
+  vObj = pos;
   gl_Position = uProj * uView * w;
 }`;
 
@@ -81,8 +87,11 @@ uniform vec3 uRimDir;   // motljuset: riktning mot en andra, låg sol bakom heli
 uniform vec3 uRimCol;   // och dess färg; svart = inget motljus
 uniform float uWhite;   // 1 = vit kabin med röd bakdel, nos och stjärt (livery.scheme 'white', startskärmen)
 uniform float uShine;   // 0–1: blank lack och glas som speglar kvällshimlen (startskärmens närbild)
+uniform float uDay;     // 0–1: den blanka lacken speglar en dagshimmel i stället för kvällshimlen (hovringen)
+uniform float uBladeK;  // bladens ljushet (1 = vanlig); över plattan mörka blad som på ett foto mot himlen
 uniform sampler2D uDecals; // dekalerna: texter och emblem som ritas med canvas (buildDecals)
 uniform float uDecal;   // 1 = dekalerna syns (den vita lackeringen)
+uniform float uFront;   // 0–1: framvyns form (som uMorph): bredare radom och strålkastarna ute i nosens hörn
 uniform highp sampler2DShadow uShadowMap; // djupet sett från solen (skuggkartan)
 uniform mat4 uLightVP;
 out vec4 outColor;
@@ -150,8 +159,10 @@ vec3 skyEnv(vec3 r, float detail) {
   vec2 h = normalize(r.xz + vec2(1e-4));
   vec2 sd = normalize(uRimDir.xz + vec2(1e-4));
   float toward = pow(max(dot(h, sd), 0.0), 2.0);
-  vec3 zen = vec3(0.09, 0.15, 0.34);
+  vec3 zen = mix(vec3(0.09, 0.15, 0.34), vec3(0.13, 0.27, 0.6), uDay);
   vec3 hor = mix(vec3(0.55, 0.58, 0.78), vec3(1.7, 0.82, 0.42), toward);
+  // Dagshimlen: ljus, kall horisont med bara en aning värme åt solen
+  hor = mix(hor, mix(vec3(0.74, 0.82, 0.97), vec3(1.15, 1.02, 0.86), toward * 0.6), uDay);
   vec3 c = mix(hor, zen, smoothstep(0.0, 0.55, r.y));
   float up = max(r.y, 0.0);
   float cl = noise(vec3(h * 3.0 / (up + 0.25), 2.0)) * 0.7 + noise(vec3(h * 9.0 / (up + 0.25), 5.0)) * 0.3;
@@ -159,6 +170,7 @@ vec3 skyEnv(vec3 r, float detail) {
   float az = atan(r.x, r.z);
   float ridge = 0.02 + 0.07 * noise(vec3(az * 6.0, 1.0, 0.0)) + 0.03 * noise(vec3(az * 21.0, 4.0, 0.0));
   vec3 below = mix(vec3(0.05, 0.05, 0.08), hor * 0.18, smoothstep(-0.5, 0.0, r.y));
+  below = mix(below, mix(vec3(0.05, 0.06, 0.05), vec3(0.2, 0.24, 0.3), smoothstep(-0.5, 0.0, r.y)), uDay); // dalen och sjön
   c = mix(c, below, mix(smoothstep(0.12, -0.25, r.y), inside((r.y - ridge) * 40.0), detail));
   c += uRimCol * 0.12 * pow(max(dot(r, normalize(uRimDir)), 0.0), 120.0);
   return c;
@@ -194,7 +206,8 @@ vec4 livery(vec3 p, out float lines) {
   float sill = 0.95 + 0.05 * smoothstep(-1.5, 1.8, z);
   float lower = inside(y - mix(belt, sill, uLower)) * (1.0 - uWhite);
   // Skolhelikopterns nos är vit framtill, med dekorfärgen bara på sidorna under rutorna
-  lower *= 1.0 - uLower * smoothstep(1.75, 2.25, z) * (1.0 - smoothstep(0.32, 0.58, ax));
+  // (framvyns trubbiga nos är bred: där en skarp kant, annars blir övergången en suddig rosa fläck)
+  lower *= 1.0 - uLower * smoothstep(1.75, 2.25, z) * (1.0 - mix(smoothstep(0.32, 0.58, ax), inside(0.52 - ax), uFront));
   lines += line(y - sill, 0.008) * uLower * step(-2.15, z) * inside(z - 2.3);
   float tail = inside(z + 2.12);
   col = mix(col, uAccent, max(lower, tail));
@@ -224,12 +237,12 @@ vec4 livery(vec3 p, out float lines) {
   // (framkanten lutar bakåt nedåt, så att randen växer ur den smala randen längs kabinen)
   col = mix(col, uAccent, inside(2.0 - 1.6 * (0.9 - y) - z) * inside(y - 0.88 + 0.1 * smoothstep(2.0, 2.8, z)) * uWhite);
   // Radomen mitt på nosen: en mörk, blank kåpa mellan strålkastarna, som går upp i vindrutans mitt
-  float radome = roundRect(vec2(p.x, y), vec2(0.0, 0.98), vec2(0.14, 0.36), 0.11);
+  float radome = roundRect(vec2(p.x, y), vec2(0.0, 0.98), vec2(mix(0.14, 0.22, uFront), 0.36), 0.11);
   // (den vita lackeringen har nosen i dekorfärgen, utan mörk radom)
   col = mix(col, mix(vec3(0.025, 0.027, 0.03), uAccent, uWhite), inside(radome) * step(2.4, z));
   lines += line(radome, 0.006) * step(2.4, z);
   // Strålkastarna sitter i mörka fördjupningar på var sida om radomen
-  float pocket = roundRect(vec2(ax, y), vec2(0.3, 0.79), vec2(0.13, 0.1), 0.08);
+  float pocket = roundRect(vec2(ax, y), mix(vec2(0.3, 0.79), vec2(0.43, 0.74), uFront), mix(vec2(0.13, 0.1), vec2(0.15, 0.11), uFront), 0.08);
   // (den vita lackeringen har strålkastarna under nosen, så där är noskonen hel)
   col = mix(col, vec3(0.05, 0.055, 0.06), inside(pocket) * step(2.35, z) * (1.0 - uWhite));
   lines += line(pocket, 0.006) * step(2.35, z) * (1.0 - uWhite);
@@ -277,7 +290,7 @@ vec4 livery(vec3 p, out float lines) {
   float post = (line(p.x, 0.04) * ws + frame) * cabin; // mittstolpen och ramen, mörka
   ws *= 1.0 - line(p.x, 0.04);
   // Torkarna: ett tunt mörkt streck snett upp på var ruta
-  float wiper = line(ax - 0.2 - (y - wsLow) * 0.35, 0.012) * step(y, wsLow + 0.42) * step(1.9, z);
+  float wiper = line(ax - 0.2 - (y - wsLow) * 0.35, 0.012) * step(y, wsLow + 0.42) * step(1.9, z) * (1.0 - uFront);
   post = max(post, wiper * ws * cabin);
   ws *= 1.0 - wiper;
   lines += line(wsD - 0.035, 0.006) * cabin;
@@ -341,6 +354,7 @@ vec4 livery(vec3 p, out float lines) {
   // Bakom rutorna: mörk instrumentpanel nedtill, ljusare tak och bakre rutor högre upp
   // Instrumentbrädans skärm nedtill (mörk), ovanför den kabinens ljusare tak och de bakre rutorna
   vec3 interior = mix(vec3(0.015, 0.016, 0.02), vec3(0.11, 0.12, 0.13), smoothstep(1.45, 1.95, y));
+  interior *= 1.0 - 0.5 * uFront; // framifrån i solen: tonat glas, kabinen mörk bakom rutorna
   // Skärmarnas sken på instrumentbrädan
   interior += vec3(0.02, 0.05, 0.06) * inside(abs(ax - 0.33) - 0.1) * inside(abs(y - 1.42) - 0.04);
   // Piloterna bakom vindrutan: ljusa hjälmar och mörka axlar
@@ -463,6 +477,7 @@ void main() {
     vec3 lit = blade * (amb * 0.6 + uSunCol * bl * mix(0.6, 0.25, uShine));
     float spec = pow(max(dot(Nb, Hh), 0.0), 30.0) * 0.5;
     vec3 c = lit + uSunCol * spec * 0.1 + envColor(reflect(-V, Nb)) * 0.07;
+    c *= uBladeK;
     c = mix(c, vec3(0.9, 0.9, 0.86) * (amb + uSunCol * bl) * 0.6, tip * 0.7);
     c = pow(tonemap(c), vec3(1.0 / 2.2));
     outColor = vec4(c * a, a);
@@ -529,6 +544,7 @@ void main() {
   // Rutorna är djupt tonade: rakt framifrån speglar de lite, i flack vinkel mycket (Fresnel)
   // Lacken speglar måttligt även i flack vinkel, annars blir konturen en ljus kant runt hela kroppen
   float coat = uMat == 0 ? mix(0.035, 0.16, glassAmt) + F * mix(0.55, 1.3, glassAmt) : 0.03 + F * (uMat == 5 ? 0.25 : 0.45);
+  coat *= 1.0 - 0.45 * uFront * glassAmt; // framifrån: djupt tonad vindruta, mörk med bara svaga speglingar
   // Rutorna är tonade: de speglar en mörk dal nedtill och himlen upptill, inte den ljusa horisonten,
   // så att vindrutan läses som glas framifrån
   vec3 env = envColor(R);
@@ -567,6 +583,9 @@ void main() {
     float wsGlass = step(1.6, vObj.z) * step(1.05, vObj.y);
     Fg += 0.06 * wsGlass;
     vec3 cg = c * mix(0.12, 0.3, wsGlass) * (1.0 - Fg) + sky * Fg * mix(0.32, 0.8, wsGlass) + uSunCol * pow(max(dot(N, Hh), 0.0), 600.0) * 4.0 * sh;
+    // Dagsljus: horisonten speglas som ett ljust band tvärs över rutorna och solen som en mjuk glans,
+    // så att vindrutan läses som blankt, böjt glas och inte som en mörk fläck
+    cg += uDay * (vec3(0.75, 0.82, 0.95) * 0.55 * exp(-abs(R.y - 0.06) * 14.0) + uSunCol * pow(max(dot(N, Hh), 0.0), 60.0) * 0.5 * sh);
     c = mix(c, cg, uShine * glassAmt);
     // Klarlacken: kvällshimlen speglas i lacken, tydligast i flack vinkel och på rundningarna
     // (dämpat på den röda lacken, så att den förblir djupt röd och inte blir rosa av himlen)
@@ -577,10 +596,16 @@ void main() {
     // Längre ned speglas det solbelysta molnhavet under fjällen: ljus undersida i stället för smutsgrå
     paintSky += vec3(0.32, 0.28, 0.27) * smoothstep(-0.12, -0.45, R.y);
     float Fp = (0.07 + 0.55 * pow(1.0 - nv, 4.0)) * ao * uShine * (1.0 - glassAmt) * (1.0 - 0.75 * red) * (1.0 - hole);
+    Fp *= 1.0 - 0.45 * uDay; // dagsljus: skuggsidan ska bli blågrå, inte lysa vit av speglad himmel
+    Fp *= mix(1.0, smoothstep(0.03, 0.25, base.g), uDay); // ramarna och mittstolpen förblir svarta
     c = mix(c, paintSky, Fp);
     // och kvällssolen bakom ger en varm glansdager på nosen och kanterna som vetter mot den
     c += uRimCol * pow(max(dot(N, normalize(uRimDir + V)), 0.0), 40.0) * 0.35 * ao * uShine * (1.0 - glassAmt);
   }
+  // Framvyn: lacken mörknar mot konturen, där ytan vänder sig bort från kameran och speglar den mörkare
+  // dalen. Det rundar av den breda, vita nosen och kabinens sidor, som annars blir en platt vit skiva.
+  float edgeK = uFront * float(uMat == 0) * (1.0 - glassAmt) * (1.0 - 0.6 * ndl * sh);
+  c *= 1.0 - 0.42 * edgeK * pow(1.0 - nv, 1.6);
   // (i närbilden är skarvarna tunnare streck i lacken, inte svarta konturer)
   c *= 1.0 - mix(0.75, 0.5, uShine) * clamp(lines, 0.0, 1.0);
   c = pow(tonemap(c), vec3(1.0 / 2.2));
@@ -590,10 +615,12 @@ void main() {
 // Skuggkartan: bara djupet, sett från solen
 const DEPTH_VERTEX = `#version 300 es
 in vec3 aPos;
+in vec3 aPos2;
 uniform mat4 uLightVP;
 uniform mat4 uModel;
+uniform float uMorph;
 void main() {
-  gl_Position = uLightVP * uModel * vec4(aPos, 1.0);
+  gl_Position = uLightVP * uModel * vec4(mix(aPos, aPos2, uMorph), 1.0);
 }`;
 const DEPTH_FRAGMENT = `#version 300 es
 precision mediump float;
@@ -743,26 +770,48 @@ function tube(mesh, points, r, { segs = 10, steps = 4, caps = true } = {}) {
   mesh.rings(rings, path, caps);
 }
 
-/** Kabinen, motorkåpan, stjärtbommen, fenan och stabilisatorn (lackerade delar). */
-function buildBody() {
+/**
+ * Kabinen, motorkåpan, stjärtbommen, fenan och stabilisatorn (lackerade delar).
+ * front: framvyns form (hovringen över plattan), med samma hörn så att formerna kan glida över i varandra.
+ * Framifrån ser en äggformad kabin ut som en leksak; H135 är kantig: bred, nästan lodräta sidor, platt
+ * buk och en trubbig nos lika bred som kabinen, med stora luftintag på axlarna och en hög mast.
+ */
+function buildBody(front = false) {
   const m = new Mesh();
-  // [z, cy, halvbredd, upp, ned, exponent]
+  const F = (a, b) => (front ? b : a);
+  // [z, cy, halvbredd, upp, ned, exponent, cx, bukens bredd]
   loft(
     m,
-    [
-      [2.86, 0.98, 0.03, 0.03, 0.03, 2],
-      [2.78, 0.99, 0.34, 0.36, 0.33, 2.2],
-      [2.5, 1.06, 0.6, 0.6, 0.56, 2.6],
-      [2.05, 1.17, 0.63, 0.86, 0.72, 3.0, 0, 0.9],
-      [1.45, 1.25, 0.7, 0.95, 0.82, 2.9, 0, 0.88],
-      [0.6, 1.28, 0.73, 0.94, 0.86, 3.0, 0, 0.88],
-      [-0.6, 1.3, 0.73, 0.92, 0.86, 3.0, 0, 0.88],
-      [-1.3, 1.36, 0.7, 0.86, 0.8, 2.9, 0, 0.86],
-      [-1.72, 1.44, 0.66, 0.74, 0.68, 2.9],
-      [-1.98, 1.52, 0.5, 0.58, 0.48, 2.5],
-      [-2.1, 1.56, 0.3, 0.3, 0.22, 2.2],
-      [-2.13, 1.58, 0.03, 0.03, 0.03, 2],
-    ],
+    F(
+      [
+        [2.86, 0.98, 0.03, 0.03, 0.03, 2],
+        [2.78, 0.99, 0.34, 0.36, 0.33, 2.2],
+        [2.5, 1.06, 0.6, 0.6, 0.56, 2.6],
+        [2.05, 1.17, 0.63, 0.86, 0.72, 3.0, 0, 0.9],
+        [1.45, 1.25, 0.7, 0.95, 0.82, 2.9, 0, 0.88],
+        [0.6, 1.28, 0.73, 0.94, 0.86, 3.0, 0, 0.88],
+        [-0.6, 1.3, 0.73, 0.92, 0.86, 3.0, 0, 0.88],
+        [-1.3, 1.36, 0.7, 0.86, 0.8, 2.9, 0, 0.86],
+        [-1.72, 1.44, 0.66, 0.74, 0.68, 2.9],
+        [-1.98, 1.52, 0.5, 0.58, 0.48, 2.5],
+        [-2.1, 1.56, 0.3, 0.3, 0.22, 2.2],
+        [-2.13, 1.58, 0.03, 0.03, 0.03, 2],
+      ],
+      [
+        [2.93, 0.96, 0.12, 0.1, 0.1, 2.4],
+        [2.88, 0.97, 0.47, 0.4, 0.4, 2.6, 0, 1.0],
+        [2.62, 1.03, 0.7, 0.64, 0.6, 3.0, 0, 1.0],
+        [2.05, 1.17, 0.77, 0.86, 0.74, 4.2, 0, 1.0],
+        [1.45, 1.25, 0.81, 0.95, 0.83, 4.2, 0, 1.0],
+        [0.6, 1.28, 0.82, 0.94, 0.86, 4.2, 0, 1.0],
+        [-0.6, 1.3, 0.82, 0.92, 0.86, 4.2, 0, 1.0],
+        [-1.3, 1.36, 0.78, 0.86, 0.8, 3.8, 0, 0.96],
+        [-1.72, 1.44, 0.72, 0.74, 0.68, 3.2],
+        [-1.98, 1.52, 0.54, 0.58, 0.48, 2.6],
+        [-2.1, 1.56, 0.32, 0.3, 0.22, 2.2],
+        [-2.13, 1.58, 0.03, 0.03, 0.03, 2],
+      ]
+    ),
     { segs: 40, steps: 5 }
   );
   // Stjärtbommen ut från kabinens övre bakkant (bakom den finns kabinens bakdörrar)
@@ -782,9 +831,9 @@ function buildBody() {
     m,
     [
       [1.1, 2.1, 0.06, 0.04, 0.04, 2],
-      [0.92, 2.14, 0.5, 0.26, 0.08, 2.6],
-      [0.3, 2.17, 0.6, 0.46, 0.1, 3.2],
-      [-1.0, 2.15, 0.6, 0.46, 0.1, 3.2],
+      [0.92, 2.14, F(0.5, 0.56), 0.26, 0.08, 2.6],
+      [0.3, 2.17, F(0.6, 0.66), 0.46, 0.1, 3.2],
+      [-1.0, 2.15, F(0.6, 0.66), 0.46, 0.1, 3.2],
       [-1.9, 2.06, 0.52, 0.34, 0.12, 2.8],
       [-2.5, 2.0, 0.42, 0.2, 0.12, 2.4],
       [-2.95, 1.96, 0.26, 0.13, 0.1, 2.2],
@@ -793,12 +842,13 @@ function buildBody() {
     { segs: 32, steps: 4 }
   );
   // Motorernas luftintag: två kåpor på var sida om masten, med mörka öppningar framåt (buildFrame)
-  for (const sx of [-INTAKE_X, INTAKE_X]) {
+  // (framvyns form: lite längre ut, så att de syns vid sidan av masten utan att bli stora öron)
+  for (const sx of [-1, 1].map((k) => k * F(INTAKE_X, INTAKE_X_FRONT))) {
     loft(
       m,
       [
-        [0.84, 2.3, 0.18, 0.13, 0.12, 2.8, sx],
-        [0.55, 2.32, 0.2, 0.15, 0.14, 3.0, sx],
+        [F(0.84, 0.8), 2.3, F(0.18, 0.17), F(0.13, 0.12), F(0.12, 0.12), 2.8, sx],
+        [0.55, 2.32, F(0.2, 0.19), F(0.15, 0.14), F(0.14, 0.13), 3.0, sx],
         [-0.3, 2.31, 0.17, 0.12, 0.13, 2.6, sx],
         [-0.8, 2.26, 0.08, 0.05, 0.05, 2, sx],
       ],
@@ -810,9 +860,9 @@ function buildBody() {
     m,
     [
       [2.42, HUB[2], 0.36, 0.36, 0.36, 2.2],
-      [2.56, HUB[2], 0.3, 0.3, 0.3, 2.2],
-      [2.7, HUB[2], 0.18, 0.18, 0.18, 2],
-      [2.74, HUB[2], 0.04, 0.04, 0.04, 2],
+      [2.56, HUB[2], F(0.3, 0.27), F(0.3, 0.27), F(0.3, 0.27), 2.2],
+      [F(2.7, 2.66), HUB[2], F(0.18, 0.15), F(0.18, 0.15), F(0.18, 0.15), 2],
+      [F(2.74, 2.7), HUB[2], 0.04, 0.04, 0.04, 2],
     ],
     { segs: 24, steps: 2, map: ([x, y, z]) => [x, z, y] }
   );
@@ -857,11 +907,16 @@ function buildBody() {
   return m;
 }
 
-/** Medarna och tvärbommarna (grålackerade, blanka rör). */
-function buildGear() {
+/**
+ * Medarna och tvärbommarna (grålackerade, blanka rör).
+ * front: framvyns form, där tvärbommarna går nästan vågrätt ut under den platta buken och böjer
+ * ned i en tydlig knä mot medarna (som på H135), i stället för sneda ben som ser ut som insektsben.
+ */
+function buildGear(front = false) {
   const m = new Mesh();
+  const X = front ? 1.16 : 1.12;
   for (const sx of [-1, 1]) {
-    const x = sx * 1.12;
+    const x = sx * X;
     tube(
       m,
       [
@@ -869,18 +924,27 @@ function buildGear() {
         [x, 0.06, -1.2],
         [x, 0.06, 0.8],
         [x, 0.06, 1.7],
-        [x, 0.1, 1.98],
-        [x, 0.19, 2.12],
-        [x, 0.22, 2.15],
+        [x, front ? 0.08 : 0.1, 1.98],
+        [x, front ? 0.13 : 0.19, front ? 2.08 : 2.12],
+        [x, front ? 0.15 : 0.22, front ? 2.1 : 2.15],
       ],
-      0.052,
+      front ? 0.058 : 0.052,
       { segs: 14, steps: 5 }
     );
   }
   for (const z of [1.05, -0.75]) {
-    tube(
-      m,
-      [
+    const arch = front
+      ? [
+        [-X, 0.06, z],
+        [-X + 0.01, 0.26, z],
+        [-X + 0.09, 0.42, z],
+        [-X + 0.3, 0.48, z],
+        [X - 0.3, 0.48, z],
+        [X - 0.09, 0.42, z],
+        [X - 0.01, 0.26, z],
+        [X, 0.06, z],
+      ]
+      : [
         [-1.12, 0.06, z],
         [-1.06, 0.18, z],
         [-0.82, 0.42, z],
@@ -889,29 +953,29 @@ function buildGear() {
         [0.82, 0.42, z],
         [1.06, 0.18, z],
         [1.12, 0.06, z],
-      ],
-      0.048,
-      { segs: 14, steps: 4 }
-    );
+      ];
+    tube(m, arch, front ? 0.056 : 0.048, { segs: 14, steps: 4 });
   }
   return m;
 }
 
-/** Masten och sotet innanför avgasrören (mörk metall). */
-function buildFrame() {
+/** Masten och sotet innanför avgasrören (mörk metall). front: framvyns form med högre mast (MAST_LIFT). */
+function buildFrame(front = false) {
   const m = new Mesh();
+  const lift = front ? MAST_LIFT : 0;
   for (const sx of [-1, 1]) {
     tube(m, [[sx * 0.36, 2.285, -2.3], [sx * 0.45, 2.33, -2.52]], 0.1, { segs: 14, steps: 1 }); // sotigt innanför avgasröret
   }
-  tube(m, [[HUB[0], 2.3, HUB[2]], [HUB[0], HUB[1] - 0.05, HUB[2]]], 0.13, { segs: 16, steps: 1 });
+  tube(m, [[HUB[0], 2.3, HUB[2]], [HUB[0], HUB[1] + lift - 0.05, HUB[2]]], front ? 0.1 : 0.13, { segs: 16, steps: 1 });
   // Styrplattan runt masten och stängerna upp till bladfästena
+  const r = front ? 0.22 : 0.27;
   loft(
     m,
     [
-      [2.76, 0, 0.05, 0.05, 0.05, 2],
-      [2.77, 0, 0.27, 0.27, 0.27, 2],
-      [2.84, 0, 0.27, 0.27, 0.27, 2],
-      [2.85, 0, 0.05, 0.05, 0.05, 2],
+      [2.76 + lift, 0, 0.05, 0.05, 0.05, 2],
+      [2.77 + lift, 0, r, r, r, 2],
+      [2.84 + lift, 0, r, r, r, 2],
+      [2.85 + lift, 0, 0.05, 0.05, 0.05, 2],
     ],
     { segs: 24, steps: 1, map: ([x, y, z]) => [x, z, y + HUB[2]] }
   );
@@ -919,13 +983,14 @@ function buildFrame() {
   tube(m, [[-0.24, 0.47, 1.62], [-0.24, 0.34, 1.68]], 0.035, { segs: 8, steps: 1 });
   tube(m, [[-0.24, 0.34, 1.52], [-0.24, 0.31, 1.84]], 0.1, { segs: 16, steps: 1 });
   // Intagens öppningar: mörka, nästan platta skivor precis framför intagskåporna
-  for (const sx of [-INTAKE_X, INTAKE_X]) {
+  for (const sx of [-1, 1].map((k) => k * (front ? INTAKE_X_FRONT : INTAKE_X))) {
+    const [z0, w, hu, hd] = front ? [0.912, 0.18, 0.145, 0.135] : [0.852, 0.155, 0.11, 0.1];
     loft(
       m,
       [
-        [0.852, 2.3, 0.02, 0.02, 0.02, 2, sx],
-        [0.85, 2.3, 0.155, 0.11, 0.1, 2.8, sx],
-        [0.838, 2.3, 0.155, 0.11, 0.1, 2.8, sx],
+        [z0, 2.3, 0.02, 0.02, 0.02, 2, sx],
+        [z0 - 0.002, 2.3, w, hu, hd, 2.8, sx],
+        [z0 - 0.014, 2.3, w, hu, hd, 2.8, sx],
       ],
       { segs: 20, steps: 1 }
     );
@@ -975,8 +1040,9 @@ const LAMPS = [
   { at: [-0.92, 2.06, -6.0], color: '#3bff7a', r: 0.045 },
   { at: [0, 2.2, -7.74], color: '#ffffff', r: 0.045 },
   // Strålkastarna i nosen; de lyser bara mot kameran när nosen pekar ditåt (dir)
-  { at: [0.27, 0.8, 2.74], color: '#fff3d6', r: 0.075, dir: [0.25, -0.15, 1] },
-  { at: [-0.27, 0.8, 2.74], color: '#fff3d6', r: 0.075, dir: [-0.25, -0.15, 1] },
+  // (front: läget i framvyns form, ute i nosens nedre hörn som på H135)
+  { at: [0.27, 0.8, 2.74], front: [0.42, 0.74, 2.84], color: '#fff3d6', r: 0.075, dir: [0.25, -0.15, 1] },
+  { at: [-0.27, 0.8, 2.74], front: [-0.42, 0.74, 2.84], color: '#fff3d6', r: 0.075, dir: [-0.25, -0.15, 1] },
   { at: [-0.24, 0.31, 1.85], color: '#fff3d6', r: 0.07, dir: [0, -0.1, 1] }, // sökarljuset
 ];
 function buildLamp(r) {
@@ -1041,6 +1107,8 @@ function link(gl, vs, fs) {
   }
   gl.bindAttribLocation(program, 0, 'aPos');
   gl.bindAttribLocation(program, 1, 'aNor');
+  gl.bindAttribLocation(program, 2, 'aPos2');
+  gl.bindAttribLocation(program, 3, 'aNor2');
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
   return program;
@@ -1229,9 +1297,9 @@ export class Heli3D {
     this.#drawDecals();
     document.fonts?.load('800 100px "Barlow Condensed"').then(() => this.#drawDecals(), () => {});
     this.parts = {
-      body: this.#upload(buildBody()),
-      frame: this.#upload(buildFrame()),
-      gear: this.#upload(buildGear()),
+      body: this.#upload(buildBody(), buildBody(true)),
+      frame: this.#upload(buildFrame(), buildFrame(true)),
+      gear: this.#upload(buildGear(), buildGear(true)),
       hub: this.#upload(buildHub()),
       disc: this.#upload(buildDisc()),
       hoist: this.#upload(buildHoist()),
@@ -1283,19 +1351,30 @@ export class Heli3D {
     if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, 4);
   }
 
-  #upload(mesh) {
+  /** Laddar upp nätet; front är samma nät i framvyns form (samma hörn i samma ordning), annars samma nät. */
+  #upload(mesh, front = mesh) {
     const { gl } = this;
+    if (front.pos.length !== mesh.pos.length) throw new Error('framvyns nät har inte samma hörn');
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    const buf = (data, loc) => {
+    const buf = (data, locs) => {
       const b = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, b);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+      for (const loc of locs) {
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+      }
     };
-    buf(mesh.pos, this.aPos);
-    buf(mesh.nor, this.aNor);
+    if (front === mesh) {
+      buf(mesh.pos, [0, 2]);
+      buf(mesh.nor, [1, 3]);
+    } else {
+      buf(mesh.pos, [0]);
+      buf(mesh.nor, [1]);
+      buf(front.pos, [2]);
+      buf(front.nor, [3]);
+    }
     const ib = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(mesh.idx), gl.STATIC_DRAW);
@@ -1325,6 +1404,8 @@ export class Heli3D {
    * @param {string} [o.sunColor]  solens färg (#rrggbb) i stället för dagens eller kvällens
    * @param {number} [o.fill]   skuggsidans ljus från himlen, i stället för standardvärdet
    * @param {number[]} [o.stretch]  kroppens skala per axel [x, y, z] (rotorn sträcks inte)
+   * @param {number} [o.front]  0–1: framvyns form (hovringen över plattan): kantigare kabin, trubbig nos,
+   *   högre mast och tvärbommar med knä (buildBody(true) m.fl.); glider mjukt mellan formerna
    * @param {{dir:number[], color:string, k:number}} [o.rim]  motljus från en låg sol bakom helikoptern
    *   (riktning sett från kameran som o.sun, färg #rrggbb och styrka)
    * @returns {{canvas:HTMLCanvasElement, x0:number, y0:number, w:number, h:number, lights:object[]}|null}
@@ -1356,7 +1437,8 @@ export class Heli3D {
     const focal = o.pxPerM * dist;
     // Rotorskivan lutar framåt i fart, mer än kroppen; bakifrån ses den då nästan från kanten
     const tilt = o.discTilt ?? 0.05;
-    const hubModel = mul(rigid, mul(translate(HUB[0] * st[0], HUB[1] * st[1], HUB[2] * st[2]), rotX(tilt)));
+    const morph = Math.max(0, Math.min(1, o.front ?? 0));
+    const hubModel = mul(rigid, mul(translate(HUB[0] * st[0], (HUB[1] + MAST_LIFT * morph) * st[1], HUB[2] * st[2]), rotX(tilt)));
     const discModel = mul(hubModel, translate(0, 0.08, 0));
 
     // Bildens utsträckning: rotorskivan och kroppens ytterpunkter
@@ -1415,7 +1497,10 @@ export class Heli3D {
     const lv = { ...DEFAULT_LIVERY, ...(o.livery ?? {}) };
     // I närbilden (shine) kastar navet ingen skugga: bladfästenas skuggor blir mörka streck tvärs över
     // kabinen, där den snurrande rotorn i verkligheten bara ger en svag, utsmetad skugga
-    const lightVP = this.#shadowPass(sun, model, hubModel, o.rotor?.angle ?? 0, lv.scheme !== 'lower', !(o.shine > 0));
+    // Navet är mindre i framvyns form: framifrån blir det annars en stor svart klump ovanpå kåpan
+    const hubSize = 1 - 0.28 * morph;
+    const hubDraw = mul(hubModel, mul(rotY(-(o.rotor?.angle ?? 0)), new Float32Array([hubSize, 0, 0, 0, 0, hubSize, 0, 0, 0, 0, hubSize, 0, 0, 0, 0, 1])));
+    const lightVP = this.#shadowPass(sun, model, hubDraw, morph, lv.scheme !== 'lower', !(o.shine > 0));
 
     gl.viewport(0, 0, W, H);
     gl.clearColor(0, 0, 0, 0);
@@ -1427,6 +1512,8 @@ export class Heli3D {
     gl.uniformMatrix4fv(u.uView, false, view);
     gl.uniform3fv(u.uEye, eye);
     gl.uniformMatrix4fv(u.uLightVP, false, lightVP);
+    gl.uniform1f(u.uMorph, morph);
+    gl.uniform1f(u.uFront, morph);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
     gl.uniform1i(u.uShadowMap, 0);
@@ -1459,6 +1546,8 @@ export class Heli3D {
     gl.uniform3fv(u.uRimCol, rim ? linear(rim.color).map((v) => v * rim.k) : [0, 0, 0]);
     gl.uniform1f(u.uWhite, lv.scheme === 'white' ? 1 : 0);
     gl.uniform1f(u.uShine, o.shine ?? 0);
+    gl.uniform1f(u.uDay, o.day ?? 0);
+    gl.uniform1f(u.uBladeK, o.bladeK ?? 1);
     gl.uniform1f(u.uDecal, lv.scheme === 'white' ? 1 : 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.decalTex);
@@ -1487,18 +1576,19 @@ export class Heli3D {
     for (const lamp of this.parts.lamps) {
       const on = lamp.flash ? Math.max(0, 1 - ((time * 1.1) % 1) * 6) : 1;
       gl.uniform3fv(u.uGlow, lamp.glow.map((v) => v * (0.25 + 0.75 * on) + 0.05));
-      draw(lamp.mesh, lamp.dir ? 6 : 4, mul(model, translate(...lamp.at)));
-      const wp = apply(model, lamp.at);
+      const at = lamp.front ? lamp.at.map((v, i) => v + (lamp.front[i] - v) * morph) : lamp.at;
+      draw(lamp.mesh, lamp.dir ? 6 : 4, mul(model, translate(...at)));
+      const wp = apply(model, at);
       const q = apply(view, wp);
       const zz = Math.max(0.5, -q[2]);
       // Riktade lampor syns bara framifrån (skenet ritas i 2D, utan djup)
-      const facing = lamp.dir ? Math.max(0, dot(normalize(sub(apply(model, add(lamp.at, lamp.dir)), wp)), normalize(sub(eye, wp)))) ** 2 : 1;
+      const facing = lamp.dir ? Math.max(0, dot(normalize(sub(apply(model, add(at, lamp.dir)), wp)), normalize(sub(eye, wp)))) ** 2 : 1;
       // Skenet ritas i 2D utan djup: en lampa som kroppen skymmer (blinkljuset bakom kabinen sett
       // framifrån) får inget sken, annars lyser det rött genom vindrutan
-      const seen = hiddenByCabin(apply(invertRigid(rigid), eye), lamp.at) ? 0 : 1;
+      const seen = hiddenByCabin(apply(invertRigid(rigid), eye), at) ? 0 : 1;
       lights.push({ x: (focal * q[0]) / zz, y: (-focal * q[1]) / zz, color: lamp.color, a: seen * on * facing * (lamp.flash ? 1 : lamp.dir ? 0.12 : 0.55) });
     }
-    draw(this.parts.hub, 1, mul(hubModel, rotY(-(o.rotor?.angle ?? 0))), false);
+    draw(this.parts.hub, 1, hubDraw, false);
     // Rotorskivan sist, genomskinlig och utan att skriva djup
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -1516,7 +1606,7 @@ export class Heli3D {
    * skuggor på kroppen och medarna. Rotorskivan är genomskinlig och kastar ingen skugga.
    * @returns {Float32Array} solens vy och projektion, för uppslagningen i shadern
    */
-  #shadowPass(sun, model, hubModel, angle, winch, hub = true) {
+  #shadowPass(sun, model, hubDraw, morph, winch, hub = true) {
     const { gl, du } = this;
     const C = CENTER;
     const up = Math.abs(sun[1]) > 0.95 ? [0, 0, 1] : [0, 1, 0];
@@ -1531,6 +1621,7 @@ export class Heli3D {
     gl.polygonOffset(1.5, 3);
     gl.useProgram(this.depthProgram);
     gl.uniformMatrix4fv(du.uLightVP, false, lightVP);
+    gl.uniform1f(du.uMorph, morph);
     const draw = (part, m) => {
       gl.uniformMatrix4fv(du.uModel, false, m);
       gl.bindVertexArray(part.vao);
@@ -1541,7 +1632,7 @@ export class Heli3D {
     draw(this.parts.gear, model);
     draw(this.parts.hoist, model);
     if (winch) draw(this.parts.winch, model);
-    if (hub) draw(this.parts.hub, mul(hubModel, rotY(-angle)));
+    if (hub) draw(this.parts.hub, hubDraw);
     gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return lightVP;

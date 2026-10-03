@@ -11,7 +11,7 @@ const FEET_U = -0.148; // mitten mellan räddarens fötter, i H från högerkant
 /**
  * Ritar figuren på en canvas och ritar om när storleken ändras (även när skärmen visas efter att ha varit dold).
  * Klippan och fjällen tar närmare en sekund att räkna fram, så det görs i en egen tråd (rescuer-worker.js)
- * redan när sidan laddas, i den storlek canvasen får när skärmen visas (92vh bred, hela höjden; se .result-figure
+ * redan när sidan laddas, i den storlek canvasen får när skärmen visas (hela skärmen; se .result-figure
  * i game.css). Då hackar varken flygningen eller övergången till resultatet. Utan workers målas bilden direkt.
  * @param {HTMLCanvasElement|null} canvas
  */
@@ -75,7 +75,7 @@ export function mountRescuerScene(canvas) {
   const ahead = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (!visibleSize()) request(Math.min(innerHeight * 0.92, innerWidth), innerHeight, false);
+      if (!visibleSize()) request(innerWidth, innerHeight, false);
     }, 300);
   };
   addEventListener('resize', ahead);
@@ -437,6 +437,10 @@ const BLOCKS = [
   { z: 0.12, cap: 0.05, pts: [[-0.82, 0.8], [-0.75, 0.748], [-0.6, 0.718], [-0.45, 0.77]] },
   // Närmast, längst ned
   { z: 0.17, cap: 0.08, pts: [[-0.56, 0.9], [-0.47, 0.84], [-0.3, 0.82], [-0.13, 0.86], [0.03, 0.91]] },
+  // Hällar längs hela nederkanten på breda skärmar, under siffrorna och knapparna: molnhavet skymtar ovanför dem
+  { z: 0.1, cap: 0.05, pts: [[-2.0, 0.83], [-1.72, 0.8], [-1.5, 0.835], [-1.36, 0.81], [-1.2, 0.845], [-1.05, 0.875]] },
+  { z: 0.16, cap: 0.07, pts: [[-1.3, 0.94], [-1.12, 0.895], [-0.95, 0.875], [-0.8, 0.885], [-0.64, 0.93]] },
+  { z: 0.2, cap: 0.08, pts: [[-2.0, 0.95], [-1.8, 0.915], [-1.6, 0.93], [-1.42, 0.965]] },
 ];
 const SLOPE = 1.2; // hur brant ovansidan stiger mot betraktaren
 const STRATA = 80; // skikt per H på djupet under krönet

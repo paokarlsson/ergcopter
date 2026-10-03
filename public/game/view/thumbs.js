@@ -53,7 +53,7 @@ function grade(ctx, ledge = null) {
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, 'rgb(64 96 160)');
+  g.addColorStop(0, 'rgb(96 128 190)'); // himlen överst ljusare än skuggorna, så att kortet lyser uppifrån
   if (ledge === null) {
     g.addColorStop(0.45, 'rgb(132 154 202)');
     g.addColorStop(1, 'rgb(80 100 146)');
