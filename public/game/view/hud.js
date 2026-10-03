@@ -49,6 +49,7 @@ export class Hud {
       drill: $('drill'),
       drillStep: $('drill-step'),
       drillText: $('drill-text'),
+      drillLead: $('drill-lead'),
       drillNote: $('drill-note'),
       drillBar: $('drill-bar'),
       drillBarFill: $('drill-bar-fill'),
@@ -57,6 +58,8 @@ export class Hud {
       dsGoal: $('ds-goal'),
       dsGoalRow: $('ds-goal-row'),
       dsVy: $('ds-vy'),
+      dsVyRow: $('ds-vy-row'),
+      dsFx: $('ds-fx'),
       dsVyLabel: $('ds-vy-label'),
       graph: $('effect-graph'),
     };
@@ -70,6 +73,7 @@ export class Hud {
   /** Nytt pass: töm effektgrafen. */
   reset() {
     this.history = [];
+    this.graphKey = null;
   }
 
   /**
@@ -145,21 +149,28 @@ export class Hud {
    * @param {object|null} d
    * @param {string} d.step         t.ex. "Moment 2 av 3"
    * @param {string} d.text         instruktionen
+   * @param {string|null} d.lead    kort råd under instruktionen
    * @param {string|null} d.note    instruktörens kommentar
    * @param {number|null} d.progress  0–1 för stapeln
    * @param {{stars:number,text:string}[]|null} d.stars  stjärnkraven (exercise.js starGuide)
    * @param {number} d.h, d.vy
+   * @param {number} d.lift         motoreffekten mot det som krävs (andel), visas i stället för effektstapeln
    * @param {string|null} d.goal
    * @param {{speed:number,max:number}|null} d.sink  under landningen
    */
   updateDrill(d) {
     const e = this.el;
     e.drill.hidden = !d;
+    // Under övningen tar uppgiftspanelen effektstapelns plats överst (game.css .hud-right.drilling)
+    e.drill.parentElement.classList.toggle('drilling', !!d);
     if (!d) return;
     setText(e.drillStep, d.step);
     setText(e.drillText, d.text);
+    // Instruktörens kommentar tar rådets plats en stund
     e.drillNote.hidden = !d.note;
     if (d.note) setText(e.drillNote, d.note);
+    e.drillLead.hidden = !d.lead || !!d.note;
+    if (d.lead) setText(e.drillLead, d.lead);
     e.drillBar.hidden = d.progress == null;
     if (d.progress != null) e.drillBarFill.style.width = `${Math.round(d.progress * 100)}%`;
     const key = d.stars ? d.stars.map((s) => s.text).join('|') : '';
@@ -169,14 +180,19 @@ export class Hud {
       e.drillStars.replaceChildren(
         ...(d.stars ?? []).map(({ stars, text }) => {
           const li = document.createElement('li');
-          li.append(starSpan(stars, 's'), Object.assign(document.createElement('span'), { textContent: text }));
+          li.append(starIcons(stars), reqText(text));
           return li;
         })
       );
     }
     setText(e.dsH, `${fmtM(d.h)} m`);
-    e.dsGoalRow.hidden = !d.goal;
+    // Tre rader som mest: Höjd, Mål (eller sjunkfarten under landningen) och Effekt
+    e.dsGoalRow.hidden = !d.goal || !!d.sink;
     if (d.goal) setText(e.dsGoal, d.goal);
+    e.dsVyRow.hidden = !d.sink;
+    const pct = Math.round((d.lift - 1) * 100);
+    setText(e.dsFx, `${pct > 0 ? '+' : pct < 0 ? '−' : '±'}${Math.abs(pct)} %`);
+    e.dsFx.dataset.ok = String(pct >= 0);
     if (d.sink) {
       setText(e.dsVyLabel, `Sjunker (högst ${dec(d.sink.max)})`);
       setText(e.dsVy, `${dec(Math.max(0, d.sink.speed))} m/s`);
@@ -199,6 +215,11 @@ export class Hud {
   }
 
   #drawGraph() {
+    // Rita bara om när ett nytt värde har kommit (var GRAPH_EVERY_S), inte varje bildruta
+    const last = this.history.at(-1);
+    const key = last ? `${this.history.length}:${last[0]}` : '';
+    if (key === this.graphKey) return;
+    this.graphKey = key;
     const canvas = this.el.graph;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
@@ -323,6 +344,30 @@ const dec = (x) => x.toFixed(1).replace('.', ',');
 export function clock(seconds) {
   const s = Math.max(0, Math.floor(seconds));
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Kravets text med talen i fetstil, t.ex. "i snitt inom <b>7,5 m</b> från målet". */
+function reqText(text) {
+  const span = Object.assign(document.createElement('span'), { className: 'req' });
+  text.split(/([±−-]?\d[\d\s,]*(?:\s?(?:m\/s|m|s|%|ringar))?)/).forEach((part, i) => {
+    if (part) span.append(i % 2 ? Object.assign(document.createElement('b'), { textContent: part }) : part);
+  });
+  return span;
+}
+
+/** Kravens stjärnor som SVG: glansiga guldstjärnor och mörka fördjupningar för resten. */
+function starIcons(stars) {
+  const span = Object.assign(document.createElement('span'), { className: 'stars' });
+  span.setAttribute('role', 'img');
+  span.setAttribute('aria-label', `${stars} av 3 stjärnor`);
+  span.innerHTML = [0, 1, 2]
+    .map((i) =>
+      i < stars
+        ? '<svg class="star on" viewBox="0 0 24 24"><use class="body" href="#drill-star"/><use class="gloss" href="#drill-star"/></svg>'
+        : '<svg class="star off" viewBox="0 0 24 24"><use class="body" href="#drill-star"/></svg>'
+    )
+    .join('');
+  return span;
 }
 
 /** Stjärnor som spann: fyllda i guld, resten svaga. */

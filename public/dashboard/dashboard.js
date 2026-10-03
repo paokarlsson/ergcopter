@@ -94,7 +94,7 @@ let gameTimer = null;
 function showGame(msg) {
   set('game-h', `${Math.round(msg.h).toLocaleString('sv-SE')} m`);
   const pct = Math.round((msg.lift - 1) * 100);
-  set('game-diff', `${pct > 0 ? '+' : pct < 0 ? '−' : '±'}${Math.abs(pct)} %`);
+  set('game-diff', `${pct > 0 ? '+' : pct < 0 ? '−' : '±'}${Math.abs(pct)}%`);
   $('game-diff').dataset.sign = pct >= 0 ? 'up' : 'down';
   set('game-req', msg.watts ? `${Math.round(msg.watts.pReq)} W` : '–');
   $('game-hint').hidden = true;

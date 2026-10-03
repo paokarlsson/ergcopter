@@ -63,11 +63,28 @@
       </section>
     </div>
 
-    <main class="tiles">
-      <section class="metric"><h2>Drag/min</h2><output id="cadence">–</output></section>
-      <section class="metric"><h2>Medeleffekt</h2><output id="avg-power">–</output></section>
-      <section class="metric"><h2>Maxeffekt</h2><output id="max-power">–</output></section>
-      <section class="metric"><h2>Totalt antal drag</h2><output id="stroke-count">0</output></section>
+    <!-- Huvudsiffrorna: större glasrutor med en liten ikon, som spelets HUD -->
+    <main class="tiles main">
+      <section class="metric">
+        <h2>Drag/min</h2><output id="cadence">–</output>
+        <svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 12h4l2.5-6 5 12L17 12h4" />
+        </svg>
+      </section>
+      <section class="metric">
+        <h2>Medeleffekt</h2><output id="avg-power">–</output>
+        <svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 14h6l-1 8 8-12h-6l1-8Z" /></svg>
+      </section>
+      <section class="metric">
+        <h2>Maxeffekt</h2><output id="max-power">–</output>
+        <svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m2 20 7-11 4 6 3-4 6 9Z" /><path d="M9 4v2" /></svg>
+      </section>
+      <section class="metric">
+        <h2>Totalt antal drag</h2><output id="stroke-count">0</output>
+        <svg class="metric-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 4v16M10 4v16M15 4v16M3 15 19 8" />
+        </svg>
+      </section>
     </main>
 
     <main class="tiles small">

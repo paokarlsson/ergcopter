@@ -14,11 +14,14 @@ import { Rotor } from './view/rotor.js';
 import { attractFlight } from './view/attract.js';
 import { GameRenderer, fmtM, RING_SPEED_PX } from './view/render.js';
 import { TerrainRenderer } from './view/terrain.js';
+import { Heli3D } from './view/heli3d.js';
 import { thumbView } from './view/thumbs.js';
 import { GameUI, download } from './view/ui.js';
 import { Hud } from './view/hud.js';
 import { CareerMenu } from './view/career.js';
 import { ResultScreen } from './view/results.js';
+import { mountRescuerScene } from './view/rescuer.js';
+import { mountRescuerBust } from './view/rescuer-bust.js';
 import { FlightLogView } from './view/logplayer.js';
 import { Replay, landingTrajectory } from './core/replay.js';
 import { FlightLogStore } from './core/flightlog.js';
@@ -46,7 +49,7 @@ let attractStart = now();
 // 3D-landskapet bakom 2D-scenen, om webbläsaren klarar WebGL2 (annars ritar render.js i 2D).
 const terrainCanvas = document.getElementById('terrain');
 let terrain = null;
-const renderer = new GameRenderer(document.getElementById('scene'));
+const renderer = new GameRenderer(document.getElementById('scene'), { heli3d: Heli3D.create() });
 function setTerrain(on) {
   if (on && !terrain) terrain = TerrainRenderer.create(terrainCanvas);
   renderer.terrain = on ? terrain : null;
@@ -60,7 +63,11 @@ const hud = new Hud();
 const careerMenu = new CareerMenu();
 // Korten i menyn och flygloggarna får bilder av 3D-landskapet när det är igång
 careerMenu.photos = (ids) => (renderer.landscape3d ? terrain.snapshots(ids.map(thumbView)) : null);
+careerMenu.heli3d = renderer.heli3d; // korten får den belysta 3D-helikoptern
+careerMenu.hoverPad = renderer.hoverPad; // och hyllan med plattan i plattscenerna
 const resultScreen = new ResultScreen();
+mountRescuerScene(document.getElementById('fin-figure'));
+mountRescuerBust(document.getElementById('career-figure'));
 const logView = new FlightLogView(() => renderer.colors);
 logView.photo = (view) => (renderer.landscape3d ? terrain.snapshots([view])[0] : null);
 const sound = new RotorSound();
@@ -118,6 +125,7 @@ setInterval(() => {
 // --- Datakälla ------------------------------------------------------------------
 
 const DEMO_SPM = 40;
+const DEMO_MENU_REST_S = 12; // s som demospelaren står still i Fjällräddaren-menyn
 
 function createSource(kind) {
   if (kind === 'usb') return new UsbPm5Source();
@@ -197,8 +205,10 @@ async function runDemo() {
   setInterval(() => {
     if (program) {
       // Utanför flygningen drar demospelaren lugnt, så att menyn och resultatet går vidare.
+      // I Fjällräddaren-menyn vilar den först en stund, så att man hinner se menyn.
       const run = game.state === 'FLYING' ? game.run : null;
-      source.setPower(run?.step ? pilot({ flight: game.flight, run, step: run.step }) ?? 0 : 60);
+      const resting = game.state === 'MENU' && game.menuFor < DEMO_MENU_REST_S;
+      source.setPower(run?.step ? pilot({ flight: game.flight, run, step: run.step }) ?? 0 : resting ? 0 : 60);
       return;
     }
     let t = now() - start;
@@ -562,7 +572,7 @@ addEventListener('keydown', (e) => {
 
 /** Uppspelningen: mellanslag spelar och pausar, pilarna spolar, Esc stänger. */
 function logKeys(e) {
-  if (e.key === 'Escape') return logView.close();
+  if (e.key === 'Escape') return logView.back(); // först till listan, sedan stäng
   if (e.target.closest?.('textarea, button, input')) return;
   if (e.key === ' ') {
     e.preventDefault();
@@ -586,7 +596,7 @@ setInterval(() => game.tick(now()), 50);
 const STAGE = {
   IDLE: { heliX: 0.24, heliY: 0.36, dusk: 1 },
   SETUP: { heliX: 0.68, dusk: 0 },
-  MENU: { heliX: 0.5, dusk: 0.6 },
+  MENU: { heliX: 0.5, dusk: 0.9 },
   FINISHED: { heliX: 0.74, dusk: 1 },
 };
 
@@ -597,6 +607,12 @@ function frame() {
   const dt = last === null ? 0 : Math.min(0.1, t - last);
   last = t;
   game.tick(t);
+  // Uppspelningen av en flyglogg i helskärm täcker scenen: rita inte det som inte syns
+  if (logView.coversScreen) {
+    if (renderer.landscape3d) terrain.keepAlive();
+    requestAnimationFrame(frame);
+    return;
+  }
 
   const f = game.flight;
   let h = 0;
@@ -635,6 +651,9 @@ function frame() {
   const stage = STAGE[game.state] ?? {};
   const instruments = game.state === 'COUNTDOWN' || flying;
   renderer.advance(dt, shownRotor, h, !school || rings, rings ? RING_SPEED_PX : null);
+  // Fri flygning: 3D-helikoptern bakifrån, mitt i nedre delen av bilden. Notiserna flyttar åt sidan.
+  const chase = (flying || game.state === 'COUNTDOWN') && !school;
+  if (document.body.classList.contains('chase-view') !== chase) document.body.classList.toggle('chase-view', chase);
   renderer.draw({
     h,
     vy,
@@ -642,6 +661,9 @@ function frame() {
     hMax: school || attract ? 0 : f?.hMax ?? 0,
     todayBest: attract ? null : todayBest,
     milestones: school ? [] : cfg.milestones,
+    // Resultatet visar topparna i sin panel: inga etiketter i landskapet bakom höjden
+    labels: game.state !== 'FINISHED',
+    result: game.state === 'FINISHED' && !school, // fast utsikt i kvällssol bakom resultatet (render.js)
     avoid: [...(attract ? ui.idleRects() : hud.rects()), screenControls.getBoundingClientRect()],
     flying: game.state === 'FLYING' || attract,
     gauge: instruments,
@@ -650,6 +672,8 @@ function frame() {
     dusk: stage.dusk,
     guides: guides.lines,
     landingPad: guides.landingPad,
+    // Längre hovringar ses framifrån över en platta (render.js); korta mellansteg stannar i sidovyn
+    hoverPad: run?.step?.type === 'hover' && run.step.holdS >= 10,
     blind: guides.blind,
     workshop: school,
     // Aspiranten ser räddningshelikoptern som väntar vid verkstan.
@@ -657,6 +681,10 @@ function frame() {
     buddyLivery: INSTRUCTOR_LIVERY,
     winch: winchInfo(run, f),
     livery: attract ? null : game.helicopter?.livery,
+    chase,
+    title: attract, // startskärmen: 3D-helikoptern snett framifrån (render.js)
+    menu: game.state === 'MENU', // Fjällräddaren-menyn: en fast utsikt i kvällssol bakom korten (render.js)
+    setup: game.state === 'SETUP', // inmatningen: helikoptern parkerad på plattan (render.js)
   });
   sound.update(power / P0, rotor.omega);
 
@@ -681,7 +709,7 @@ function frame() {
           : [['Max i passet', `${fmtM(f?.hMax ?? 0)} m`], ['Dagens rekord', todayBest ? `${fmtM(todayBest)} m` : '–']],
       rawLine: cfg.showRawWatts && f ? `P0 ${Math.round(f.P0)} W · rotor ${Math.round(f.rotorSpeed * 100)} % · lyft ${Math.round(f.thrustRatio * 100)} %` : null,
     });
-    hud.updateDrill(run?.step ? drillInfo(run, f, h, vy) : null);
+    hud.updateDrill(run?.step ? drillInfo(run, f, h, vy, lift) : null);
   }
   // Dashboarden i en annan flik får höjden och effekten, watt bara med råa watt (spec §6).
   if (live && flying && t - lastLive > 0.25) {
@@ -751,7 +779,7 @@ function hudTitle(run) {
 }
 
 /** Övningspanelens innehåll för det aktuella steget. */
-function drillInfo(run, f, h, vy) {
+function drillInfo(run, f, h, vy, lift) {
   const step = run.step;
   const moments = run.program.moments.length;
   const steps = run.moment.steps.length;
@@ -769,15 +797,29 @@ function drillInfo(run, f, h, vy) {
   return {
     step: steps > 1 ? `Steg ${run.index + 1} av ${steps}` : moments > 1 ? `Moment ${run.momentIndex + 1} av ${moments}` : 'Uppgift',
     text: run.instruction,
+    lead: run.status === 'running' ? (STEP_LEADS[step.type] ?? null) : null,
     note,
     progress: done === null ? null : Math.min(1, done),
     stars: starGuide(step),
     h,
     vy,
     goal: stepGoal(step),
+    lift,
     sink: step.type === 'land' ? { speed: -f.v, max: step.maxSpeed } : null,
   };
 }
+
+/** Kort råd under instruktionen i övningens panel, per stegtyp. */
+const STEP_LEADS = {
+  climb: 'Dra hårdare än hovringen så stiger du. Släpp lite när du närmar dig målet.',
+  hover: 'Stabil höjd och jämna drag ger fler stjärnor.',
+  winch: 'Häng stilla i bandet medan vinschen arbetar.',
+  land: 'Bromsa i god tid och sätt ner mjukt på plattan.',
+  freefall: 'Låt den falla fritt och fånga upp den i zonen.',
+  engineout: 'Motorn kan stanna när som helst. Var beredd att fånga upp.',
+  follow: 'Ligg i nivå med instruktörens helikopter.',
+  rings: 'Pricka höjden när ringen passerar.',
+};
 
 /** Målet för steget i siffror, till panelen: höjd, band eller hämtzon. */
 function stepGoal(step) {

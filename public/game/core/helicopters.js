@@ -9,7 +9,7 @@ export const HELICOPTERS = [
     ceiling: 1500, // m
     winch: false, // ingen vinsch och ingen plats för patient
     seats: 0,
-    livery: { body: '#f2c230', accent: '#2a2f37', trim: '#ffffff', label: 'SKOLA' },
+    livery: { body: '#f4f5f7', accent: '#c92f28', trim: '#ffffff', label: 'SKOLA', scheme: 'lower' },
   },
   {
     id: 'rescue',
@@ -18,7 +18,7 @@ export const HELICOPTERS = [
     ceiling: 0,
     winch: true,
     seats: 1,
-    livery: { body: '#f4f5f7', accent: '#d7263d', trim: '#ffffff', label: '112' },
+    livery: { body: '#f4f5f7', accent: '#d3302a', trim: '#ffffff', label: '112' },
   },
 ];
 

@@ -14,6 +14,7 @@ import { Effects } from './effects.js';
 import { mix, alpha } from './color.js';
 import { PLANE_M } from './terrain.js';
 import { PeakField } from './peaks3d.js';
+import { HoverPad, hoverFrame, hoverHeight, padProject, padSun, heliSun, drawHeliShadow, drawDownwash, drawTargetRing, drawPadLabel, PAD_CAM } from './hoverpad.js';
 
 const VIEW_SPAN_M = 300; // höjd som syns i huvudvyn
 const GROUND_MARGIN_PX = 56; // marken så här högt upp när man står på den
@@ -23,7 +24,9 @@ const GAUGE_STEPS_M = [2000, 3000, 5000, 7000, 9500];
 const SCHOOL_GAUGE_STEPS_M = [250, 500, 1000, 1500]; // skolhelikopterns tak är 1 500 m
 const GAUGE_X = 46; // höjdskalan till vänster
 const GAUGE_TOP_PX = 100; // plats för övningens rubrik ovanför
-const GAUGE_BOTTOM_PX = 156; // och för tiden nedanför, så att höjdrutan på 0 m inte täcker den
+const GAUGE_TOP_FREE = 0.055; // i fri flygning börjar skalan nära överkanten (andel av höjden)
+const GAUGE_BOTTOM_FREE = 0.155; // och slutar ovanför tiden, så att höjdrutan på 0 m inte täcker den
+const GAUGE_HEADROOM = 0.12; // andel av skalan ovanför den översta siffran
 const LABEL_LEFT_PX = 260; // övningarnas etiketter till höger om höjdrutan
 const GUIDE_LABEL_TOP_PX = 110; // och under övningens rubrik
 const HELI_X = 0.4; // helikopterns plats i sidled under flygningen, andel av bredden
@@ -44,31 +47,206 @@ const DOWNWASH_M = 30; // rotorvinden blåser upp damm under den här höjden
 export const RING_SPEED_PX = 320; // ringbanan: landskapet och ringarna rullar i jämn fart
 const BUDDY_DX = 200; // instruktörens helikopter flyger så här långt framför (px vid skala 1)
 const LAKE_M = 44; // sjön i dalen bakom plattan, px över marken
-const TERRAIN_SCALE = { start: 0.5, min: 0.3, max: 0.75 }; // 3D-landskapets upplösning per CSS-pixel
-const TERRAIN_REFRESH_S = 0.5; // står kameran still ritas landskapet om så här ofta (molnen driver)
+const TERRAIN_SCALE = { start: 1, min: 0.7, max: 1 }; // 3D-landskapets upplösning per CSS-pixel
+const STILL_EXIT_SCALE = 0.8; // högsta upplösningen när menyns eller resultatets fasta utsikt lämnas
+// Fri flygning med 3D-helikoptern: kameran bakom och ovanför, helikoptern mitt i nedre delen av bilden
+// (andel av bredd och höjd för modellens mitt, skalan i px per meter vid 1080 px höjd, vinklar i rad).
+const CHASE = { x: 0.49, y: 0.75, pxPerM: 88, yaw: 0.05, pitch: 0.42, dist: 30 };
+// Landskapets horisont under fri flygning med 3D-helikoptern (andel av höjden): högt upp, så att fjällen
+// fyller mitten av bilden. Den glider dit när helikoptern lämnar plattan.
+const CHASE_HORIZON = 0.36;
+// Och landskapets kamera står så här högt över helikoptern (m), som en kamera bakom och ovanför den: man ser
+// ned på fjällkedjorna, som lägger sig i lager under horisonten, och topparna på helikopterns höjd står under den.
+const CHASE_LIFT_M = 450;
 const DUSK_SUN = { x: 0.87, y: 0.15 }; // kvällssolen i 3D, andel av bredd och höjd: till höger, över fjällen
+// Övningarna med 3D-helikoptern: från sidan (px per meter vid skala 1, vinklar i rad). I en hovring svänger
+// kameran runt till framsidan, med plattan under (hoverpad.js): in när man är så här nära bandet (m),
+// ut igen när man är så här långt från det, och svängen tar SWING_S sekunder.
+const SCHOOL_SIDE = { pxPerM: 19, yaw: Math.PI / 2, pitch: 0.1, dist: 30, sun: [-0.82, 0.5, 0.3] };
+// Plattan ligger på en klipphylla högt över dalen: landskapets kamera står landM över dalbottnen, så att
+// sjön, skogen och kullarna syns precis bortom hyllans kant och fjällen reser sig bakom dem.
+const HOVER_VIEW = { inM: 25, outM: 60, swingS: 1.3, yaw: Math.PI - 0.08, landM: 180, landZoom: 0.72, warm: 0.3 };
+const HOVER_DROP_M = 0.2; // så mycket lägre än plattans kamera hovrar helikoptern vid målhöjden (m)
+// Hovringens helikopter snett framifrån (plattans kamera ser den något ovanifrån): kursen vriden så att
+// nosen pekar förbi kameran och sidan med den röda randen och stjärtbommen syns bakåt, kameran lite högre
+// än helikoptern så att rotorskivan blir en ellips och taket fångar solen. Blank lack som speglar himlen,
+// varm sol från vänster, kall himmel i skuggan och ett varmt motljus längs kanten mot himlen.
+// Kameran ser den ovanifrån ungefär som plattan (pitch), så att den hör till samma bild; kroppen är kortare
+// och högre (stretch) som H135, lätt krängd (roll), och solen lyser på sidan medan nosen hamnar i halvskugga.
+const HOVER_HELI = {
+  heading: 0.3, pitch: 0.26, roll: 0.09, zoom: 0.84, liftM: 0.1, front: 0.5, discTilt: 0.1, blur: 0.3,
+  sun: [0.9, 0.5, 0.6], sunColor: '#ffd49a', sunK: 1.35, fill: 0.1, shine: 0.5,
+  rim: { dir: [-0.6, 0.3, 0.75], color: '#ffe6c8', k: 0.8 },
+  stretch: [0.98, 1.14, 0.9],
+};
+/** Sidled (m, åt höger i bild) som lägger kabinen över plattans mitt: kursen vrider kroppen kring en punkt bakom kabinen. */
+const hoverShiftM = () => 2.4 * Math.sin(-HOVER_HELI.heading);
+const HOVER_SHADOW = 1.35; // skuggans styrka på plattan i hovringen (drawHeliShadow)
+const HOVER_MIN_HH = 2.35; // mittpunktens lägsta höjd över plattan (m): medarna 1,55 · zoom under den // lite svagare än i landskapet, så att den vita lacken får form och inte bränns ut
+// Startskärmen med 3D-helikoptern: snett framifrån och lite underifrån, stor uppe till vänster, i
+// kvällssolen som står lågt till höger bakom loggan (px per meter som andel av bredden, vinklar i rad).
+// Kameran står lite under helikoptern, som lutar nosen ned, så att rotorskivan ses underifrån och bladen
+// sveper över kabintaket i stället för tvärs över rutorna. Kameran ser kroppen snett från sidan, så att den långa
+// röda stjärten syns. Ljuset: en låg, varm kvällssol från höger (ljus nos, sidan mot oss i halvskugga där lacken
+// speglar himlen), kall blå himmel i skuggorna och kvällssolens varma motljus längs nosens kant.
+const TITLE_VIEW = {
+  pxPerW: 0.047, dx: -0.065, dy: 0.022, liftM: 60, yaw: 2.55, pitch: -0.18, roll: 0, nose: 0.15, tilt: 0.08, dist: 12,
+  sun: [-0.85, 0.35, 0.15], // från höger och lite bakifrån (ljus rakt framifrån gör kroppen platt som en leksak)
+  rim: { dir: [-0.9, 0.2, 0.3], color: '#ff9a50', k: 10 }, // kvällssolen bakom till höger: varm kant på nosen
+  sunK: 2.0, // starkare sol än i landskapet: tydlig ljus- och skuggsida
+  sunColor: '#ffb070', // låg kvällssol från höger, som strålar över nosen och längs sidan
+  fill: 0.36, // ljus, kall himmel i skuggan: sidan blir ljusgrå, inte smutsig
+  stretch: [1.05, 1.16, 0.88], // högre och kortare kabin, som H135 snett framifrån
+};
+// Startskärmens demohelikopter: vit kabin med röd bakdel, nos och stjärt (heli3d.js, scheme 'white')
+const TITLE_LIVERY = { body: '#eef0f3', accent: '#c8261f', trim: '#ffffff', scheme: 'white' };
+// Inmatningen (Ny flygning) med 3D-helikoptern: den står på plattan på klipphyllan till höger om formuläret,
+// snett framifrån med nosen åt vänster, med utsikten över dalen och fjällen bakom (hoverpad.js view).
+// Plattans mitt och horisonten som andel av bredd och höjd, skalan i px per meter som andel av
+// min(bredd, höjd · aspect), helikopterns kurs (rad) och hur länge bilden tonar in (s).
+// Solen står bakom kameran, högt och lite till höger (x höger, y upp, z bort), så att både nosen och
+// sidan mot oss får ljus och skuggan faller bakåt på plattan.
+const SETUP_VIEW = {
+  x: 0.835, horizon: 0.515, mPerW: 0.051, aspect: 1.07, heading: -0.6, hh: 1.55, dusk: 0.25, fadeS: 0.45,
+  sun: [0.3, 0.85, -0.45], sunK: 1.2,
+};
+// Helikoptern vid inmatningen i samma blanka finish som på startskärmen (heli3d.js shine): lacken och glaset
+// speglar himlen. Huvudljuset kommer snett framifrån från vänster (heli3d.js räknar x åt vänster), så att nosen
+// lyser och sidan mot oss får form i stället för att lysas upp jämnt; ett varmt motljus bakifrån till höger
+// lägger en kant längs bommen och kåpan som lyfter den från utsikten. Rotorskivan lutar lite mot kameran,
+// så att bladen syns som blad och inte som ett streck rakt från sidan.
+const SETUP_HELI = {
+  sun: [0.55, 0.6, -0.45], sunColor: '#ffe2c0', sunK: 1.35, fill: 0.36, discTilt: 0.08, blur: 0.12,
+  rim: { dir: [0.5, 0.3, 0.8], color: '#ffb070', k: 2.5 },
+  stretch: [1.03, 1.1, 0.94],
+};
+
+/**
+ * Kontaktskuggan under medarna vid inmatningen: mörka, mjuka fläckar där medarna vilar på hällen, så att
+ * helikoptern står på plattan och inte svävar över den. Medarnas läge som i heli3d.js (x ±1,12 m,
+ * z −1,45 … 1,98 m), sträckta och vridna som modellen, med mittpunkten (z −1,6) över plattans mitt.
+ */
+function drawSkidContact(ctx, f, heading, stretch, alpha) {
+  const hc = Math.cos(heading);
+  const hs = Math.sin(heading);
+  ctx.save();
+  for (const side of [-1, 1]) {
+    for (let i = 0; i <= 6; i++) {
+      const mx = side * 1.12 * stretch[0];
+      const dz = (-1.45 + (i / 6) * 3.43) * stretch[2] + 1.6;
+      const p = padProject(f, -(mx * hc + dz * hs), 0, -(-mx * hs + dz * hc));
+      const r = p.k * 0.6;
+      ctx.setTransform(ctx.getTransform().a, 0, 0, ctx.getTransform().d * 0.3, 0, 0);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.scale(1, 0.3);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+      g.addColorStop(0, `rgb(12 9 6 / ${0.3 * alpha})`);
+      g.addColorStop(1, 'rgb(12 9 6 / 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-r, -r, 2 * r, 2 * r);
+    }
+  }
+  ctx.restore();
+}
+// Topparna i utsikten (m): i sidled från kameran, avstånd och höjd. De sprids över bildens bredd bakom sjön.
+const OVERLOOK_PEAKS = [
+  { dx: -3800, z: 9500, h: 2050 },
+  { dx: 900, z: 10800, h: 2300 },
+  { dx: 4300, z: 8800, h: 1900 },
+  { dx: 8400, z: 10200, h: 2250 },
+];
+
+// Startskärmens utsikt i 3D: kameran står still högt över fjällen i kvällsljus, med ett stort massiv nere
+// till vänster, kedjor bakom, en sjö i dalen och ett molnhav under. Topparna anges där de ska stå i bild
+// (andel av bredd och höjd för toppen), med avstånd (m) och radie (m), så att bilden blir densamma på alla
+// skärmar. turn är massivets ryggrad i varv (0 = åt höger, 0,25 = rakt bort). Sjön står fast i världen (m från
+// kameran). Horisonten i andel av höjden.
+const TITLE_LAND = {
+  x: 52000, camM: 3000, horizon: 0.515, cx: 0.5, sun: { x: 0.93, y: 0.5 }, cloudNear: 1200, cloudMore: 0.55, cloudLift: 400,
+  light: [0.72, 0.16, 0.68], // låg kvällssol till höger bakom fjällen: varma krön mot solen, blåvioletta skuggsidor mot oss
+  lake: { dx: 0, z: 15000, rx: 4500, rz: 2500 },
+  peaks: [
+    { sx: 0.17, sy: 0.555, z: 4600, r: 3400, turn: 0.917 }, // massivet i förgrunden, ryggen ned åt höger
+    // Övriga massiv med ryggen mest på tvären: långa, taggiga krön i stället för en rad spetsiga toppar
+    { sx: 0.31, sy: 0.58, z: 8200, r: 3800, turn: 0.4 },
+    { sx: 0.03, sy: 0.56, z: 9500, r: 4600, turn: 0.45 },
+    { sx: 0.85, sy: 0.645, z: 6200, r: 4400, turn: 0.55 },
+    { sx: 0.66, sy: 0.58, z: 11000, r: 4600, turn: 0.07 },
+    { sx: 0.62, sy: 0.55, z: 17000, r: 5400, turn: 0.47 },
+    // Solbelysta toppar bakom massivet i stället för de runda åsarna där
+    { sx: 0.1, sy: 0.555, z: 14000, r: 4600, turn: 0.95 },
+    { sx: 0.27, sy: 0.56, z: 12000, r: 3400, turn: 0.52 },
+    { sx: 0.25, sy: 0.548, z: 19000, r: 5000, turn: 0.02 },
+  ],
+};
+
+// Resultatskärmens utsikt i kvällssol (fri flygning): en solbelyst topp till vänster bakom rubriken, en kedja
+// längs horisonten och låga klippor nedtill. Höger halva täcks av räddaren på klippan (rescuer.js).
+// Samma fält som TITLE_LAND; dusk är kvällsljusets styrka.
+const RESULT_LAND = {
+  x: 81000, camM: 2300, horizon: 0.5, cx: 0.5, sun: { x: 0.95, y: 0.4 }, cloudNear: 2600, cloudMore: 0.2, cloudLift: 0,
+  dusk: 0.95,
+  lake: { dx: 0, z: 15000, rx: 4500, rz: 2500 }, // används inte (som TITLE_LAND)
+  light: [0.85, 0.26, 0.05], // lågt släpljus: snöfälten på toppens flank lyser, branten mot oss ligger i blå skugga
+  vista: 1,
+  peaks: [
+    { sx: 0.16, sy: 0.3, z: 9000, r: 3100, turn: 0.9 }, // den stora toppen till vänster
+    { sx: 0.03, sy: 0.4, z: 12000, r: 4200, turn: 0.4 },
+    { sx: 0.33, sy: 0.43, z: 15000, r: 4200, turn: 0.55 },
+    { sx: 0.47, sy: 0.445, z: 19000, r: 4800, turn: 0.1 },
+    { sx: 0.6, sy: 0.43, z: 17000, r: 4600, turn: 0.6 },
+    { sx: 0.76, sy: 0.44, z: 20000, r: 5200, turn: 0.3 },
+    { sx: 0.92, sy: 0.43, z: 16000, r: 4600, turn: 0.8 },
+  ],
+};
+
+// Fjällräddaren-menyns utsikt: en kedja i låg kvällssol som står strax under flikarna och syns genom glaset,
+// med solbelysta klippor nedtill där räddaren står. Samma fält som TITLE_LAND.
+const MENU_LAND = {
+  x: 64000, camM: 2100, horizon: 0.47, cx: 0.5, sun: { x: 0.9, y: 0.36 }, cloudNear: 9000, cloudMore: 0, cloudLift: 0,
+  dusk: 1,
+  lake: { dx: 0, z: 15000, rx: 4500, rz: 2500 }, // används inte (som TITLE_LAND)
+  light: [0.85, 0.3, -0.2], // låg sol till höger, lite framifrån: varma solsidor mot oss
+  vista: 0.8,
+  peaks: [
+    { sx: 0.08, sy: 0.27, z: 9000, r: 3800, turn: 0.9 },
+    { sx: 0.3, sy: 0.33, z: 13000, r: 4400, turn: 0.45 },
+    { sx: 0.5, sy: 0.3, z: 16000, r: 4800, turn: 0.1 },
+    { sx: 0.7, sy: 0.33, z: 14000, r: 4600, turn: 0.6 },
+    { sx: 0.94, sy: 0.26, z: 11000, r: 4200, turn: 0.3 },
+  ],
+};
 
 export class GameRenderer {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {object} [opts]
    * @param {import('./terrain.js').TerrainRenderer|null} [opts.terrain]  3D-landskapet bakom, om det finns
+   * @param {import('./heli3d.js').Heli3D|null} [opts.heli3d]  helikoptern i 3D (fri flygning), om WebGL2 finns
    */
-  constructor(canvas, { terrain = null } = {}) {
+  constructor(canvas, { terrain = null, heli3d = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.terrain = terrain;
+    this.heli3d = heli3d;
+    this.hoverPad = heli3d ? HoverPad.create() : null; // plattan under hovringen, bara med 3D-helikoptern
+    this.hoverOn = false;
+    this.hoverP = 0; // 0 = sidovyn, 1 = framifrån över plattan
+    this.hoverGuide = null;
+    this.chaseBox = null; // 3D-helikopterns ruta i bild, så att etiketterna lyfts över den
     this.terrainOff = false; // för långsam dator: tillbaka till 2D för resten av besöket
     this.terrainScale = TERRAIN_SCALE.start;
     this.terrainQuality = 'high'; // färre steg i shadern om datorn inte hinner med
     this.frameAvg = 1 / 60; // s per bild, glidande medel
     this.slowS = 0;
     this.fastS = 0;
-    this.terrainKey = '';
-    this.terrainAt = -Infinity;
     this.terrainShown = null;
     this.peaks = new PeakField(); // milstolparnas toppar i 3D
     this.distance = 0; // px landskapet rullat
+    this.camDist = null; // distance när 3D-kamerans läge (camXM, m) senast räknades fram
+    this.camXM = 0;
     this.mountains = []; // { m, startAt, entry } – sx = W + entry - (distance - startAt)
     this.sent = new Set(); // milstolpar som redan skickats in under passet
     this.speed = 0; // px/s just nu
@@ -105,6 +283,7 @@ export class GameRenderer {
   /** Nytt pass: tillbaka till startplatsen, utan berg eller konfetti från förra passet eller demoturen. */
   clearMountains() {
     this.distance = 0;
+    this.camDist = null;
     this.mountains = [];
     this.sent.clear();
     this.peaks.clear();
@@ -173,16 +352,22 @@ export class GameRenderer {
    * @param {DOMRect[]} [v.avoid]      instrument i DOM som etiketter inte får hamna under
    * @param {boolean} [v.flying]        skicka in nya berg (bara under passet)
    * @param {boolean} [v.gauge]         rita höjdskalan till vänster
+   * @param {boolean} [v.labels]        false: inga etiketter på topparna (resultatskärmen)
+   * @param {boolean} [v.result]        resultatet efter fri flygning: en fast utsikt i kvällssol (RESULT_LAND)
+   * @param {boolean} [v.menu]          Fjällräddaren-menyn: en fast utsikt i kvällssol (MENU_LAND)
    * @param {number} [v.heliX, v.heliY] helikopterns plats, andel av bredd och höjd (glider dit)
    * @param {number} [v.dusk]           0–1, kvällsljus på start- och resultatskärmen (glider dit)
    * @param {object[]} [v.guides]        övningens hjälplinjer (exercise.js stepGuides)
    * @param {boolean} [v.landingPad]     markera landningsplatsen under helikoptern
+   * @param {boolean} [v.hoverPad]       hovringssteg: kameran svänger till framsidan över en platta nära bandet
    * @param {boolean} [v.workshop]       verkstaden vid startplatsen (övningar)
    * @param {boolean} [v.blind]          i moln: bara helikoptern syns, inga linjer eller skalor
    * @param {object} [v.parked]          helikopter som står parkerad vid verkstan (livery)
    * @param {object} [v.buddyLivery]     instruktörens helikopter i "Följ instruktören"
    * @param {{progress:number, loaded:boolean}} [v.winch]  vinschens lina och sandsäcken
    * @param {object} [v.livery]          helikopterns utseende
+   * @param {boolean} [v.title]           startskärmen: 3D-helikoptern snett framifrån, stor uppe till vänster
+   * @param {boolean} [v.setup]           inmatningen: 3D-helikoptern parkerad på plattan, snett framifrån
    */
   draw(v) {
     const { canvas, ctx } = this;
@@ -202,9 +387,19 @@ export class GameRenderer {
     const dt = Math.min(0.1, frameS);
     this.lastDraw = t;
     const ease = (now, target) => (now === null ? target : now + (target - now) * Math.min(1, dt / EASE_S));
-    this.heliX = ease(this.heliX, v.heliX ?? HELI_X);
+    const chase = Boolean(v.chase && this.heli3d && !this.heli3d.lost);
+    this.heliX = ease(this.heliX, v.heliX ?? (chase ? CHASE.x : HELI_X));
     this.heliY = ease(this.heliY, v.heliY ?? 0.5);
-    this.dusk = ease(this.dusk, v.dusk ?? 0);
+    // Menyn täcker skärmen när den visas: kvällsljuset hoppar direkt dit, så att utsikten kan stå still (#titleLandscape)
+    // Samma sak för resultatets fasta utsikt (RESULT_LAND).
+    const stillView = v.menu || v.result;
+    this.dusk = stillView ? v.dusk ?? 0 : ease(this.dusk, v.dusk ?? 0);
+    if (!stillView && this.stillKey) {
+      // Efter en stillastående utsikt (ritad i full upplösning) börjar nästa skärm i lite lägre upplösning,
+      // så att övergången inte hackar; #use3d höjer den sedan av sig själv om datorn hinner med
+      this.terrainScale = Math.min(this.terrainScale, STILL_EXIT_SCALE);
+      this.stillKey = null; // canvasen visar något annat: den fasta utsikten ritas om nästa gång
+    }
     const dusk = this.dusk;
 
     // Kameran zoomar ut lite när det går fort, så att farten känns och man ser mer av det som kommer.
@@ -217,19 +412,53 @@ export class GameRenderer {
     const y = (alt) => heliY0 - (alt - cam) * pxPerM;
     const scale = Math.max(0.6, Math.min(1.9, W / 1000)); // helikopterns storlek
     const hx = W * this.heliX;
+    // 3D-helikoptern bakifrån: lyfter från plattan och stannar sedan i nedre delen av bilden
+    const chasePx = CHASE.pxPerM * Math.min(H / 1080, W / 1500);
+    const chaseY = chase ? Math.max(y(v.h) - 1.45 * chasePx, H * CHASE.y) : 0;
+    this.chaseBox = chase ? { x0: hx - 4 * chasePx, x1: hx + 4 * chasePx, top: chaseY - 2.4 * chasePx, bottom: H } : null;
     const airborne = Math.min(1, v.h / 3);
     const thin = Math.min(1, Math.max(0, cam / SKY_TOP_M));
     this.lastH = v.h;
 
     this.effects.update(dt, this.speed);
-    if (v.h < DOWNWASH_M && v.rotor.blur > 0.25 && y(0) < H) {
+    if (v.h < DOWNWASH_M && v.rotor.blur > 0.25 && y(0) < H && !(v.title && this.landscape3d)) {
       this.effects.downwash(dt, hx, v.rotor.blur * (1 - v.h / DOWNWASH_M), c.dust);
     }
 
-    const td = this.#use3d(frameS);
+    // Menyns stillastående utsikt säger inget om hur tungt landskapet är: upplösningen ändras inte där
+    const td = this.#use3d(v.menu ? 0 : frameS);
+    // Inmatningen: helikoptern står på plattan på klipphyllan, snett framifrån (#setupStage)
+    if (!v.setup) this.setupFade = 0;
+    else if (this.#setupStage(ctx, W, H, v, t, dt, frameS)) return;
+    // Startskärmen i 3D: en fast utsikt över fjällen, där helikoptern alltid hänger i luften
+    // Fjällräddaren-menyn (v.menu) står framför en fast utsikt i kvällssol (MENU_LAND), utan helikopter i bild
+    const vista = Boolean(v.title || v.result || v.menu) && td;
+    // Hovringen: kameran svänger runt till helikopterns framsida, med plattan under (hoverpad.js)
+    const hov = this.#hoverState(v, dt, W, H);
+    // Över plattan står solen lite lägre och varmare (eftermiddagsljus), så att hällen, blocken och
+    // helikoptern får varma ljusa sidor och djupare skuggor
+    const hovDusk = hov ? dusk + (Math.max(dusk, HOVER_VIEW.warm) - dusk) * hov.e : dusk;
     if (td) {
       ctx.clearRect(0, 0, W, H);
-      this.#landscape3d(ctx, W, H, v, { pxPerM, heliY0, cam, hx, t, dt, dusk, thin, scale, y });
+      // Under hovringen står landskapets kamera still lågt över dalen, med horisonten högre upp och
+      // lite vidvinkel, så att sjön och dalen syns bortom hyllan och fjällen står en bit bort
+      const land = vista
+        ? { vista: true, hx, heliY0, cam }
+        : hov
+        ? {
+            heliY0: heliY0 + (hov.f.horizon - heliY0) * hov.e,
+            cam: cam + (HOVER_VIEW.landM - cam) * hov.e,
+            pxPerM: pxPerM * (1 + (HOVER_VIEW.landZoom - 1) * hov.e),
+            overlook: hov.e > 0.5, // utsikten från hyllan: fjäll bakom sjön och ingen startplatta i dalen
+            clouds: 1 - hov.e, // klart väder över dalen: stackmolnen speglades som vita fläckar i sjön
+            hx: hx + (hov.f.cx - hx) * hov.e,
+          }
+        : {
+            heliY0: chase ? heliY0 + (H * CHASE_HORIZON - heliY0) * smooth01((v.h - 30) / 170) : heliY0,
+            cam: chase ? cam + CHASE_LIFT_M * smooth01((v.h - 30) / 170) : cam,
+            hx,
+          };
+      this.#landscape3d(ctx, W, H, v, { pxPerM, ...land, t, dt, dusk: hovDusk, thin, scale, y });
     } else {
       this.#sendMountains(v, W, H, y, hx);
       drawSky(ctx, W, H, thin, dusk, c);
@@ -243,12 +472,29 @@ export class GameRenderer {
       this.#mountains(ctx, W, H, v, y, dt, cam, thin, dusk, hx, scale);
       this.#clouds(ctx, W, H, cam, y, dusk);
     }
-    if (y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk, td);
+    if (!vista && y(0) < H + 80) this.#ground(ctx, W, H, y(0), v, hx, t, dusk, td);
+    if (vista && (v.result || v.menu)) {
+      // Resultatet: bara utsikten bakom panelerna, helikoptern har landat utom synhåll (och konfettin vid befordran)
+      this.effects.drawParticles(ctx, y);
+      this.gaugeY = H / 2;
+      return;
+    }
     if (!td) drawFog(ctx, W, H, fogAmount(cam), c);
     if (v.blind) drawCloudBank(ctx, W, H, t, this.distance, c);
+    if (v.gauge && !v.blind) gaugeShade(ctx, W, H);
     this.#lines(ctx, W, H, v, y, c);
-    const front = this.#guides(ctx, W, H, v, y, c, dt, scale, hx);
-    this.effects.drawStreaks(ctx, W, H, dt, this.speed, v.vy * pxPerM, fast ** 1.5, c.streak);
+    // Helbilden över plattan med utsikten (hoverpad.js) räknas i förväg, en remsa per bild, så fort
+    // steget är en hovring. Är den klar tonar den in medan kameran svänger runt; annars glider
+    // plattan upp underifrån framför landskapet. Bandet och sidovyns ring tonar ut.
+    const padView = this.#padView(v, W, H, dusk, frameS);
+    const padF = hov
+      ? { ...hov.f, horizon: hov.f.horizon + (padView ? 0 : (1 - hov.e) * (H - hov.f.horizon + 30)) }
+      : null;
+    if (hov) this.#hoverBack(ctx, W, H, hov, padF, t, hovDusk, padView);
+    ctx.globalAlpha = hov ? 1 - hov.e : 1;
+    const front = this.#guides(ctx, W, H, v, y, c, dt, scale, hx, Boolean(hov));
+    ctx.globalAlpha = 1;
+    this.effects.drawStreaks(ctx, W, H, dt, vista ? 0 : this.speed, vista ? 0 : v.vy * pxPerM, fast ** 1.5, c.streak);
     this.effects.drawParticles(ctx, y);
 
     // Helikoptern: medarna mot marken vid h = 0. I luften gungar den lite, och
@@ -258,11 +504,32 @@ export class GameRenderer {
       y(v.h) - 32 * scale + airborne * 2.5 * Math.sin(t * 2.1) + shake * (Math.sin(t * 43) + Math.sin(t * 71)) * 0.5;
     if (v.winch) drawWinch(ctx, hx, hy + 20 * scale, Math.min(H + 20, y(0)), v.winch, scale, c);
     ctx.fillStyle = c.shadow;
-    if (y(0) < H) {
+    if (chase) {
+      this.#heli3d(ctx, v, hx, chaseY + airborne * 2.5 * Math.sin(t * 2.1), chasePx, t, airborne, dusk, shake);
+      front?.();
+      if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
+      else this.gaugeY = H / 2;
+      return;
+    }
+    if (!vista && y(0) < H) {
       const sw = 60 * scale * Math.max(0.2, 1 - v.h / 120);
       ctx.beginPath();
       ctx.ellipse(hx, y(0) + 2, sw, 4, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (v.title && this.heli3d && !this.heli3d.lost) {
+      if (vista) this.#titleHeli(ctx, { ...v, h: Math.max(v.h, TITLE_VIEW.liftM) }, hx, heliY0, y(0), W, t, 1, dusk);
+      else this.#titleHeli(ctx, v, hx, heliY0, y(0), W, t, airborne, dusk);
+      return;
+    }
+    if (v.workshop && this.heli3d && !this.heli3d.lost) {
+      // Övningarna: 3D-helikoptern från sidan, eller framifrån över plattan i hovringen
+      this.#schoolHeli(ctx, v, hx, y(v.h), scale, t, airborne, hovDusk, shake, hov, padF);
+      if (!hov) front?.();
+      if (hov) this.#hoverFront(ctx, W, H, hov, padF, v, t);
+      if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
+      else this.gaugeY = H / 2;
+      return;
     }
     ctx.save();
     ctx.translate(hx + shake * Math.sin(t * 57) * 0.5, hy);
@@ -276,6 +543,321 @@ export class GameRenderer {
 
     if (v.gauge && !v.blind) this.#gauge(ctx, W, H, v, c);
     else this.gaugeY = H / 2;
+  }
+
+  /**
+   * Räddningshelikoptern i 3D, sedd bakifrån och ovanifrån (heli3d.js). Den gungar lite
+   * i luften, lutar nosen framåt i fart och skakar av kraften i full stigning.
+   */
+  #heli3d(ctx, v, x, y, pxPerM, t, airborne, dusk, shake) {
+    const climb = Math.max(-1, Math.min(1, v.vy / 40));
+    const out = this.heli3d.render({
+      pxPerM,
+      dpr: devicePixelRatio || 1,
+      yaw: CHASE.yaw,
+      pitch: CHASE.pitch,
+      dist: CHASE.dist,
+      roll: airborne * (0.035 * Math.sin(t * 0.7) + 0.015 * Math.sin(t * 1.9)) + shake * 0.004 * Math.sin(t * 61),
+      nose: airborne * (0.1 - 0.05 * climb),
+      discTilt: 0.05 + 0.18 * airborne, // i fart ses rotorskivan nästan från kanten, som i förlagan
+      rotor: v.rotor,
+      livery: v.livery,
+      dusk,
+      time: t,
+    });
+    this.#blitHeli(ctx, out, x + shake * Math.sin(t * 57) * 0.5, y, pxPerM);
+  }
+
+  /**
+   * Startskärmens helikopter i 3D: snett framifrån, stor och nära, med bladen synliga (kort slutartid)
+   * och kvällssolen som lyser upp nosen. Den gungar och lutar mjukt, som när den hänger i luften.
+   * Den är en stor bild i förgrunden, inte i landskapets skala: de första liftM metrarna lyfter den
+   * från plattan upp till sin plats, och sedan står den still i bild medan landskapet sjunker undan.
+   * @param {number} atY      skärmens y för modellens mitt i luften
+   * @param {number} groundY  skärmens y för marken
+   */
+  #titleHeli(ctx, v, hx, atY, groundY, W, t, airborne, dusk) {
+    const T = TITLE_VIEW;
+    const px = T.pxPerW * W;
+    const bob = airborne * (0.12 * Math.sin(t * 1.3) + 0.05 * Math.sin(t * 2.9)) * px;
+    const out = this.heli3d.render({
+      pxPerM: px,
+      dpr: devicePixelRatio || 1,
+      yaw: T.yaw + 0.04 * Math.sin(t * 0.23),
+      pitch: T.pitch,
+      dist: T.dist,
+      roll: airborne * (T.roll + 0.025 * Math.sin(t * 0.7)),
+      nose: airborne * (T.nose + 0.02 * Math.sin(t * 0.5)) - Math.max(-0.03, Math.min(0.03, v.vy * 0.001)),
+      discTilt: 0.05 + (T.tilt - 0.05) * airborne,
+      rotor: { ...v.rotor, blur: v.rotor.blur * 0.35 }, // kort slutartid: bladen syns, med kort svep
+      livery: v.livery,
+      shine: 1,
+      dusk: 0, // blå himmel som fyllnadsljus i skuggorna och en varm, gyllene sol: kallt mot varmt
+      time: t,
+      sun: T.sun,
+      rim: T.rim,
+      sunK: T.sunK,
+      sunColor: T.sunColor,
+      fill: T.fill,
+      stretch: T.stretch,
+      warm: 0.6,
+    });
+    // Mitten på helikopterns plats i bild, men aldrig så lågt att medarna går under marken
+    const H = this.canvas.clientHeight;
+    const onPad = groundY - 1.55 * px; // medarna på marken
+    const air = atY + T.dy * H;
+    this.#blitHeli(ctx, out, hx + T.dx * W, onPad + (Math.min(air, onPad) - onPad) * smooth01(v.h / T.liftM) + bob, px);
+  }
+
+  /**
+   * Inmatningens bild (SETUP_VIEW): utsikten från klipphyllan med plattan (hoverpad.js view) och
+   * 3D-helikoptern parkerad på den, snett framifrån. Utsikten räknas i remsor de första bilderna;
+   * tills den är klar ritas den vanliga scenen (false). Sedan tonar den in över landskapet, som då
+   * inte behöver ritas om: dess canvas visar sin senaste bild bakom.
+   * @returns {boolean} true om bilden är ritad
+   */
+  #setupStage(ctx, W, H, v, t, dt, frameS) {
+    if (!this.hoverPad || this.hoverPad.lost || !this.heli3d || this.heli3d.lost) return false;
+    const S = SETUP_VIEW;
+    const pxPerM = S.mPerW * Math.min(W, H * S.aspect);
+    const f = { cx: W * S.x, horizon: H * S.horizon, focal: pxPerM * PAD_CAM.dist, pxPerM };
+    const n = Math.hypot(...S.sun);
+    const sun = S.sun.map((x) => x / n);
+    const view = this.hoverPad.view({
+      width: W,
+      height: H,
+      horizon: f.horizon,
+      cx: f.cx,
+      focal: f.focal,
+      scale: Math.min(devicePixelRatio || 1, 1),
+      sun,
+      dusk: S.dusk,
+      frameMs: frameS * 1000,
+    });
+    if (!view?.ready) {
+      this.setupFade = 0;
+      return false;
+    }
+    this.setupFade = Math.min(1, (this.setupFade ?? 0) + dt / S.fadeS);
+    const a = this.setupFade;
+    if (a >= 1) this.terrain?.keepAlive(); // landskapet syns inte: håll bara grafikkortet vaket
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = a;
+    ctx.drawImage(view.canvas, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+    drawHeliShadow(ctx, f, S.hh, sun, a, S.heading);
+    drawSkidContact(ctx, f, S.heading, SETUP_HELI.stretch, a);
+    const out = this.heli3d.render({
+      pxPerM,
+      dpr: devicePixelRatio || 1,
+      yaw: Math.PI,
+      pitch: Math.atan2(PAD_CAM.height - S.hh, PAD_CAM.dist),
+      dist: PAD_CAM.dist,
+      heading: S.heading,
+      discTilt: SETUP_HELI.discTilt,
+      // Rotorn går på tomgång: bladen syns, med ett kort svep av rörelseoskärpa
+      rotor: { angle: (v.rotor.angle ?? 0) + t * 0.9, blur: Math.max(v.rotor.blur * 0.35, SETUP_HELI.blur) },
+      livery: v.livery,
+      shine: 1,
+      dusk: S.dusk,
+      time: t,
+      sun: SETUP_HELI.sun,
+      sunColor: SETUP_HELI.sunColor,
+      rim: SETUP_HELI.rim,
+      fill: SETUP_HELI.fill,
+      warm: 1, // samma gyllene eftermiddagssol som på plattan
+      sunK: SETUP_HELI.sunK,
+      stretch: SETUP_HELI.stretch,
+    });
+    const c = padProject(f, 0, S.hh, 0);
+    ctx.globalAlpha = a;
+    this.#blitHeli(ctx, out, c.x, c.y, pxPerM);
+    ctx.globalAlpha = 1;
+    this.chaseBox = null;
+    this.gaugeY = H / 2;
+    return true;
+  }
+
+  /** Lägger 3D-helikopterns bild i scenen med mittpunkten på (sx, y), och ljussken kring lamporna. */
+  #blitHeli(ctx, out, sx, y, pxPerM) {
+    if (!out) return;
+    ctx.drawImage(out.canvas, sx + out.x0, y + out.y0, out.w, out.h);
+    // Ljussken kring lamporna
+    ctx.globalCompositeOperation = 'lighter';
+    for (const l of out.lights) {
+      if (l.a <= 0.02) continue;
+      const r = pxPerM * (0.15 + 0.5 * l.a * l.a); // lanternorna lyser smalt, blinkljuset större
+      const g = ctx.createRadialGradient(sx + l.x, y + l.y, 0, sx + l.x, y + l.y, r);
+      g.addColorStop(0, alpha(l.color, 0.7 * l.a));
+      g.addColorStop(0.25, alpha(l.color, 0.22 * l.a));
+      g.addColorStop(1, alpha(l.color, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(sx + l.x - r, y + l.y - r, 2 * r, 2 * r);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  /**
+   * Hovringen med plattan: på när steget är en hovring och man är nära bandet, av igen när
+   * man är långt från det (eller steget är slut). Svängen mellan vyerna går mjukt.
+   * @returns {{e:number, at:number, tol:number, label:string, progress:number, f:object}|null}
+   *   e: 0 = sidovyn, 1 = framifrån; f: kamerans mått (hoverpad.js hoverFrame)
+   */
+  #hoverState(v, dt, W, H) {
+    const ok = v.hoverPad && this.hoverPad && !this.hoverPad.lost && this.heli3d && !this.heli3d.lost && !v.blind;
+    const g = ok ? (v.guides ?? []).find((q) => q.kind === 'band' && q.ring) : null;
+    if (g) {
+      const at = (g.lo + g.hi) / 2;
+      const tol = (g.hi - g.lo) / 2;
+      const d = Math.abs(v.h - at);
+      if (d < tol + HOVER_VIEW.inM) this.hoverOn = true;
+      else if (d > tol + HOVER_VIEW.outM) this.hoverOn = false;
+      this.hoverGuide = { at, tol, label: g.label, progress: g.progress ?? 0, inside: v.h >= g.lo && v.h <= g.hi };
+    } else {
+      this.hoverOn = false;
+    }
+    this.hoverP = clamp01(this.hoverP + (this.hoverOn ? dt : -dt) / HOVER_VIEW.swingS);
+    if (this.hoverP <= 0 || !this.hoverGuide) return null;
+    const p = this.hoverP;
+    // Helikoptern hovrar lite under kamerans höjd (HOVER_DROP_M): den ses då en aning ovanifrån som plattan,
+    // och står lägre i bilden med rotorn fri från bildkanten. Medarna hålls minst en halvmeter över hällen.
+    const hh = Math.max(HOVER_MIN_HH, hoverHeight(v.h - this.hoverGuide.at, this.hoverGuide.tol) - HOVER_DROP_M);
+    return { e: p * p * (3 - 2 * p), ...this.hoverGuide, hh, f: hoverFrame(W, H) };
+  }
+
+  /**
+   * Helbilden över plattan (hoverpad.js view): ritas i förväg, en remsa per bild, när steget är en
+   * hovring. Ljuset är hovringens fasta eftermiddagsljus, så att bilden inte räknas om under svängen.
+   * @returns {HTMLCanvasElement|null} den färdiga bilden, eller null
+   */
+  #padView(v, W, H, dusk, frameS) {
+    if (!v.hoverPad || v.blind || !this.hoverPad || this.hoverPad.lost || !this.heli3d || this.heli3d.lost) return null;
+    const f = hoverFrame(W, H);
+    const d = Math.round(Math.max(dusk, HOVER_VIEW.warm) * 20) / 20;
+    const out = this.hoverPad.view({
+      width: W,
+      height: H,
+      horizon: f.horizon,
+      cx: f.cx,
+      focal: f.focal,
+      scale: Math.min(devicePixelRatio || 1, 1),
+      sun: padSun(d),
+      dusk: d,
+      frameMs: frameS * 1000,
+    });
+    return out?.canvas ?? null;
+  }
+
+  /** Plattan, helikopterns skugga, dammet och ringens bortre halva: bakom helikoptern. */
+  #hoverBack(ctx, W, H, hov, f, t, dusk, full) {
+    const sun = padSun(dusk);
+    const dpr = devicePixelRatio || 1;
+    if (full) {
+      ctx.globalAlpha = hov.e;
+      ctx.drawImage(full, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+    const img = full ? null : this.hoverPad.render({
+      width: W,
+      height: H - hov.f.horizon,
+      cx: f.cx,
+      focal: f.focal,
+      scale: Math.min(dpr, 1.5),
+      sun,
+      dusk,
+    });
+    if (img) ctx.drawImage(img, 0, f.horizon, W, H - hov.f.horizon);
+    else if (!full) return;
+    ctx.save();
+    ctx.translate(hoverShiftM() * hov.e * f.pxPerM, 0);
+    // heli3d.js ser modellens +x till höger i bild när nosen pekar mot kameran, skuggan räknar det åt
+    // vänster: med kursen vänd hamnar stjärtbommens skugga på samma sida som bommen (formen är symmetrisk).
+    // Mörkare än vid inmatningen, så att skuggan läses som helikopterns och binder den till plattan.
+    drawHeliShadow(ctx, f, hov.hh, sun, hov.e * HOVER_SHADOW, -HOVER_HELI.heading * hov.e);
+    ctx.restore();
+    drawTargetRing(ctx, f, hov.inside, t, hov.e, 'back');
+    drawDownwash(ctx, f, hov.hh, t, hov.e, 'back');
+  }
+
+  /** Rotorvinden, ringens främre halva och etiketten: framför helikoptern. */
+  #hoverFront(ctx, W, H, hov, f, v, t) {
+    drawDownwash(ctx, f, hov.hh, t, hov.e, 'front');
+    drawTargetRing(ctx, f, hov.inside, t, hov.e, 'front');
+    drawPadLabel(ctx, f, hov.label, hov.progress, hov.e, Math.max(0.9, Math.min(1.6, H / 760)));
+  }
+
+  /**
+   * Övningarnas helikopter i 3D: från sidan med nosen åt höger, eller i hovringen framifrån
+   * över plattan. Under svängen glider läget, skalan och vinkeln mellan de två.
+   * @param {number} groundY  skärmens y för helikopterns höjd (medarnas underkant)
+   */
+  #schoolHeli(ctx, v, hx, groundY, scale, t, airborne, dusk, shake, hov, f) {
+    const sidePx = SCHOOL_SIDE.pxPerM * scale;
+    const bob = airborne * 2.5 * Math.sin(t * 2.1);
+    const side = {
+      x: hx + shake * Math.sin(t * 57) * 0.5,
+      y: groundY - 1.55 * sidePx + bob + shake * (Math.sin(t * 43) + Math.sin(t * 71)) * 0.5,
+      px: sidePx,
+      yaw: SCHOOL_SIDE.yaw,
+      pitch: SCHOOL_SIDE.pitch,
+      dist: SCHOOL_SIDE.dist,
+      nose: (this.speed > 0 ? 0.08 * v.rotor.blur * airborne : 0) - Math.max(-0.05, Math.min(0.05, v.vy * 0.002)),
+      heading: 0,
+      sx: 1,
+      sy: 1,
+      sz: 1,
+    };
+    let o = side;
+    if (hov) {
+      // Framifrån: kameran på plattans kamera (hoverpad.js), helikopterns mitt hh över plattan
+      const c = padProject(f, 0, hov.hh + HOVER_HELI.liftM + 0.06 * Math.sin(t * 1.7), 0);
+      const front = {
+        x: c.x + hoverShiftM() * hov.f.pxPerM * HOVER_HELI.zoom,
+        y: c.y,
+        px: hov.f.pxPerM * HOVER_HELI.zoom,
+        yaw: HOVER_VIEW.yaw + 0.04 * Math.sin(t * 0.37),
+        pitch: Math.atan2(PAD_CAM.height - hov.hh, PAD_CAM.dist) + HOVER_HELI.pitch,
+        dist: PAD_CAM.dist,
+        nose: 0.03 + 0.02 * Math.sin(t * 0.6) - Math.max(-0.04, Math.min(0.04, v.vy * 0.004)),
+        heading: HOVER_HELI.heading + 0.03 * Math.sin(t * 0.29),
+        sx: HOVER_HELI.stretch[0],
+        sy: HOVER_HELI.stretch[1],
+        sz: HOVER_HELI.stretch[2],
+      };
+      const e = hov.e;
+      const mixv = (a, b) => a + (b - a) * e;
+      o = Object.fromEntries(Object.keys(side).map((k) => [k, mixv(side[k], front[k])]));
+    }
+    const out = this.heli3d.render({
+      pxPerM: o.px,
+      dpr: devicePixelRatio || 1,
+      yaw: o.yaw,
+      pitch: o.pitch,
+      dist: o.dist,
+      roll: airborne * (0.025 * Math.sin(t * 0.7) + 0.01 * Math.sin(t * 1.9)) + (hov ? HOVER_HELI.roll * hov.e : 0),
+      nose: o.nose,
+      heading: o.heading,
+      stretch: [o.sx, o.sy, o.sz],
+      // Snett ovanifrån ses rotorskivan som en ellips; den lutar lite framåt som i en hovring
+      discTilt: 0.04 + (hov ? (HOVER_HELI.discTilt - 0.04) * hov.e : 0),
+      front: hov ? HOVER_HELI.front * hov.e : 0, // framvyns form (heli3d.js), används inte snett framifrån
+      // Över plattan som på ett foto med kort slutartid: skarpa, mörka blad med bara ett kort svep
+      rotor: hov ? { ...v.rotor, blur: v.rotor.blur + (Math.min(v.rotor.blur, HOVER_HELI.blur) - v.rotor.blur) * hov.e } : v.rotor,
+      livery: v.livery,
+      dusk,
+      time: t,
+      // Över plattan: solen snett från vänster bakom kameran (i kvällsljuset plattans låga kvällssol, heliSun)
+      sun: hov ? SCHOOL_SIDE.sun.map((s, i) => s + (HOVER_HELI.sun[i] + (heliSun(dusk)[i] - HOVER_HELI.sun[i]) * dusk - s) * hov.e) : undefined,
+      warm: hov ? hov.e : 0, // samma gyllene sol som över dalen (hoverpad.js)
+      sunK: hov ? 1 + (HOVER_HELI.sunK - 1) * hov.e : 1,
+      sunColor: hov && dusk < 0.5 ? HOVER_HELI.sunColor : undefined,
+      fill: hov ? 0.34 + (HOVER_HELI.fill - 0.34) * hov.e : undefined,
+      shine: hov ? HOVER_HELI.shine * hov.e : 0,
+      day: 1 - dusk, // blank lack som speglar dagshimlen (kvällshimlen i kvällsljuset)
+      bladeK: hov ? 1 - 0.55 * hov.e : 1, // mörka blad mot himlen, inte ljusgrå svep över kabinen
+      rim: hov ? { ...HOVER_HELI.rim, k: HOVER_HELI.rim.k * hov.e } : undefined,
+    });
+    this.#blitHeli(ctx, out, o.x, o.y, o.px);
   }
 
   /** Stjärnor när luften blir tunn. */
@@ -342,6 +924,10 @@ export class GameRenderer {
    * @param {{m:object, sx:number, sy:number, passed:boolean}[]} visible  topparna i bild
    */
   #signs(ctx, W, v, visible, dt, hx, scale, y) {
+    if (v.labels === false) {
+      this.signAlpha.clear(); // tonas in igen nästa gång de syns
+      return;
+    }
     const c = this.colors;
     const taken = [...(v.avoid ?? [])];
     // Etiketterna skalar med skärmbredden: ~1,6 på 1 600 px, större på en storskärm.
@@ -349,7 +935,7 @@ export class GameRenderer {
     const shown = (m) => (this.signAlpha.get(m.name) ?? 0) > 0;
     const order = [...visible].sort((a, b) => shown(b.m) - shown(a.m));
     // Helikoptern flyger över toppen: etiketten lyfts mjukt över den i stället för att hamna bakom.
-    const heli = { x0: hx - 130 * scale, x1: hx + 100 * scale, top: y(v.h) - 86 * scale, bottom: y(v.h) };
+    const heli = this.chaseBox ?? { x0: hx - 130 * scale, x1: hx + 100 * scale, top: y(v.h) - 86 * scale, bottom: y(v.h) };
     const signs = [];
     for (const { m, sx, sy, passed } of order) {
       const L = labelLayout(ctx, m, sx, sy, passed, s, fmtM);
@@ -391,8 +977,11 @@ export class GameRenderer {
   #use3d(dt) {
     const ok = Boolean(this.terrain?.ready) && !this.terrainOff;
     if (ok && dt > 0 && dt < 5) {
-      this.frameAvg += (Math.min(dt, 0.5) - this.frameAvg) * 0.1;
-      this.slowS = this.frameAvg > 1 / 42 ? this.slowS + dt : 0;
+      // Enstaka långa bilder (en ny skärm, bilder till menyn) ska inte sänka upplösningen
+      this.frameAvg += (Math.min(dt, 0.06) - this.frameAvg) * 0.1;
+      // De första sekunderna medan sidan laddar är bilderna ojämna: sänk inte för dem
+      this.warmS = (this.warmS ?? 0) + dt;
+      this.slowS = this.warmS > 2 && this.frameAvg > 1 / 42 ? this.slowS + dt : 0;
       this.fastS = this.frameAvg < 1 / 56 ? this.fastS + dt : 0;
       if (this.slowS > 0.4) {
         this.slowS = 0;
@@ -425,8 +1014,14 @@ export class GameRenderer {
    * (peaks3d.js) och får etiketter här.
    */
   #landscape3d(ctx, W, H, v, o) {
+    if (o.vista) return this.#titleLandscape(W, H, o, v.result ? RESULT_LAND : v.menu ? MENU_LAND : TITLE_LAND);
     const basePxPerM = (H * 0.8) / VIEW_SPAN_M; // utan utzoomning, så att sidledes läget inte hoppar
-    const camX = this.distance / basePxPerM;
+    // Kamerans läge i meter räknas i steg, så att landskapet och topparna inte hoppar när fönstret
+    // byter storlek (t.ex. helskärm mitt i flygningen): skalan per pixel ändras då.
+    const moved = this.distance - (this.camDist ?? 0);
+    this.camXM = this.camDist === null || moved < 0 ? this.distance / basePxPerM : this.camXM + moved / basePxPerM;
+    this.camDist = this.distance;
+    const camX = this.camXM;
     const focal = o.pxPerM * PLANE_M;
     const items = this.peaks.update({
       milestones: v.milestones,
@@ -445,22 +1040,20 @@ export class GameRenderer {
       cx: o.hx,
       cy: o.heliY0,
       focal,
+      gridFocal: basePxPerM * PLANE_M, // terrängens rutnät följer inte utzoomningen
       camX,
       camY: o.cam,
       dusk: o.dusk,
       thin: o.thin,
       sun: DUSK_SUN,
-      peaks: items.map((p) => ({ x: p.x, z: p.z, h: p.m.h, r: p.r })),
+      peaks: items.map((p) => ({ x: p.x, z: p.z, h: p.m.h, r: p.r })).concat(this.#overlookPeaks(o.overlook, camX)),
       // Plattan vid startplatsen, ungefär lika stor som helikoptern
-      pad: { x: 0, z: PLANE_M, r: (110 * o.scale) / basePxPerM },
+      pad: o.overlook ? null : { x: 0, z: PLANE_M, r: (110 * o.scale) / basePxPerM },
     };
-    // Rita bara om när något ändrats, eller då och då för molnens skull.
-    const key = JSON.stringify(view, (k, val) => (typeof val === 'number' ? Math.round(val * 100) / 100 : val));
-    if (key !== this.terrainKey || o.t - this.terrainAt > TERRAIN_REFRESH_S) {
-      this.terrainKey = key;
-      this.terrainAt = o.t;
-      this.terrain.render({ ...view, scale: this.terrainScale, quality: this.terrainQuality, time: o.t });
-    }
+    // Varje bild, även när kameran står still: terrain.js återanvänder då rutnätet och bara molnen
+    // och färgerna ritas om. Att rita bara ibland gav långa stopp (300–500 ms) i grafikdrivrutinen
+    // när kortet fick vila mellan bilderna.
+    this.terrain.render({ ...view, clouds: o.clouds ?? 1, scale: this.terrainScale, quality: this.terrainQuality, time: o.t });
 
     const visible = items
       .map((p) => ({
@@ -468,16 +1061,84 @@ export class GameRenderer {
         sx: o.hx + ((p.x - camX) * focal) / p.z,
         sy: o.heliY0 - ((p.m.h - o.cam) * focal) / p.z,
         passed: this.peaks.passed.has(p.m.name),
+        landmark: p.landmark,
       }))
       .filter(({ sx, sy }) => sx > -200 && sx < W + 200 && sy > -40 && sy < H + 20);
     // Konfetti när helikoptern når upp till en topp i bild.
     const c = this.colors;
-    for (const { m, sx, passed } of visible) {
-      if (!passed || this.celebrated.has(m.name)) continue;
+    for (const { m, sx, sy, passed, landmark } of visible) {
+      if (!passed || landmark || this.celebrated.has(m.name)) continue;
       this.celebrated.add(m.name);
-      if (v.flying && sx > 0 && sx < W) this.effects.burst(sx, m.h, [c.accent, c.record, c.guide, c.cyan, '#ffffff']);
+      // Konfettin räknas i 2D-scenens höjd: den höjd som hamnar där toppen står i bild
+      const alt = m.h + (o.y(m.h) - sy) / o.pxPerM;
+      if (v.flying && sx > 0 && sx < W) this.effects.burst(sx, alt, [c.accent, c.record, c.guide, c.cyan, '#ffffff']);
     }
     this.#signs(ctx, W, v, visible, o.dt, o.hx, o.scale, o.y);
+  }
+
+  /**
+   * Startskärmens utsikt (TITLE_LAND): kameran står still, så att rutnätet bara räknas en gång och
+   * varje bild bara ritar om molnen och färgerna. Brännvidden följer inte utzoomningen.
+   */
+  #titleLandscape(W, H, o, T = TITLE_LAND) {
+    const focal = ((H * 0.8) / VIEW_SPAN_M) * PLANE_M;
+    const cx = W * T.cx;
+    const cy = H * T.horizon;
+    const peaks = T.peaks.map((p) => ({
+      x: Math.round(T.x + ((p.sx * W - cx) * p.z) / focal),
+      z: p.z,
+      h: Math.round(T.camM - ((p.sy * H - cy) * p.z) / focal),
+      r: p.r + (p.turn ?? 0), // bråkdelen är ryggradens riktning i varv (massifAt i terrain.js)
+    }));
+    const { dx, z, rx, rz } = T.lake;
+    // Menyns utsikt står helt still bakom korten: den ritas en gång i full upplösning och sedan hålls
+    // grafikkortet bara vaket (keepAlive), så att menyns bilder och glas får hela grafikkortet.
+    // Resultatets utsikt likaså: den står still bakom panelerna (konfettin ritas på 2D-canvasen ovanpå).
+    const still = T === MENU_LAND || T === RESULT_LAND;
+    const stillKey = still ? `${T === MENU_LAND ? 'menu' : 'result'}|${W}x${H}|${o.dusk}` : null;
+    if (still && stillKey === this.stillKey) {
+      this.terrain.keepAlive();
+      return;
+    }
+    this.stillKey = stillKey;
+    this.terrain.render({
+      width: W,
+      height: H,
+      cx,
+      cy,
+      focal,
+      camX: T.x,
+      camY: T.camM,
+      dusk: o.dusk * (T.dusk ?? 0.75),
+      thin: 0,
+      sun: T.sun,
+      peaks,
+      pad: null,
+      lake: null && { x: T.x + dx, z, rx, rz },
+      mirror: true, // kameran står still: spegelbilden ritas bara en gång
+      vista: T.vista ?? 1,
+      cloudNear: T.cloudNear,
+      cloudMore: T.cloudMore,
+      cloudLift: T.cloudLift,
+      light: T.light,
+      clouds: 1,
+      scale: still ? TERRAIN_SCALE.max : this.terrainScale,
+      quality: still ? 'high' : this.terrainQuality,
+      time: o.t,
+    });
+  }
+
+  /**
+   * Fjällen bakom sjön i utsikten från hovringsplattan: några snöklädda toppar som står fast i
+   * världen där kameran var när utsikten började, så att rutnätet bara räknas om en gång.
+   */
+  #overlookPeaks(on, camX) {
+    if (!on) {
+      this.overlookX = null;
+      return [];
+    }
+    this.overlookX ??= camX;
+    return OVERLOOK_PEAKS.map((p) => ({ x: this.overlookX + p.dx, z: p.z, h: p.h, r: 0.85 * p.h + 300 }));
   }
 
   #clouds(ctx, W, H, cam, y, dusk) {
@@ -570,7 +1231,7 @@ export class GameRenderer {
    * etikett. Hovringsbandet fylls på medan man håller sig i det och har en ring runt
    * helikoptern. Returnerar ringens främre halva, som ritas efter helikoptern.
    */
-  #guides(ctx, W, H, v, y, c, dt, scale, hx) {
+  #guides(ctx, W, H, v, y, c, dt, scale, hx, noRing = false) {
     let front = null;
     for (const g of v.guides ?? []) {
       if (g.kind === 'ring') {
@@ -607,7 +1268,7 @@ export class GameRenderer {
         dashed(ctx, 0, W, top, c.guide);
         dashed(ctx, 0, W, bottom, c.guide);
         guideLabel(ctx, g.label, LABEL_LEFT_PX, inBand(top, bottom), c);
-        if (g.ring) {
+        if (g.ring && !noRing) {
           // "Håll dig inom ringen": en lysande ring på målhöjden runt helikoptern
           const inside = v.h >= g.lo && v.h <= g.hi;
           const ring = { x: hx, y: y((g.lo + g.hi) / 2) - 8 * scale, rx: 150 * scale, ry: 20 * scale, inside };
@@ -639,75 +1300,154 @@ export class GameRenderer {
       .filter((line) => line.yy > -20 && line.yy < H + 20);
 
     for (const line of lines) {
-      ctx.strokeStyle = line.color;
+      // Ett mjukt, streckat höjdband i luften i stället för en skarp linje tvärs över landskapet: det tonar in
+      // efter höjdskalan och ut mot högerkanten, med ett svagt sken kring strecken
+      const fade = (a) => {
+        const g = ctx.createLinearGradient(GAUGE_X + W * 0.13, 0, W, 0);
+        g.addColorStop(0, alpha(line.color, 0));
+        g.addColorStop(0.2, alpha(line.color, a));
+        g.addColorStop(0.8, alpha(line.color, a));
+        g.addColorStop(1, alpha(line.color, 0));
+        return g;
+      };
+      ctx.fillStyle = fade(0.12);
+      ctx.fillRect(GAUGE_X, line.yy - 4, W - GAUGE_X, 8);
+      ctx.save();
+      ctx.strokeStyle = fade(0.6);
       ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
       ctx.beginPath();
       ctx.moveTo(GAUGE_X, line.yy);
       ctx.lineTo(W, line.yy);
       ctx.stroke();
+      ctx.restore();
     }
-    ctx.font = '600 16px "Barlow Condensed", system-ui, sans-serif';
+    ctx.font = '600 19px "Barlow Condensed", system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = c.lineText;
+    ctx.save();
+    ctx.shadowColor = 'rgb(0 18 45 / 0.8)';
+    ctx.shadowBlur = 6;
     for (const line of placeLabels(lines, 18)) {
       let x = W - 20;
       for (const r of v.avoid ?? []) {
         if (r.top - 4 < line.yy && r.bottom + 22 > line.yy && r.right > x - 220) x = Math.min(x, r.left - 12);
       }
-      ctx.fillText(line.label, x, line.yy - 4);
+      ctx.fillText(line.label, x, line.yy - 6);
     }
+    ctx.restore();
   }
 
-  /** Höjdskalan till vänster: från marken till en bit över det man siktar på. */
+  /**
+   * Höjdskalan till vänster: från marken till en bit över det man siktar på. Ett tunt
+   * vitt band med streck åt höger och siffror med mjuk skugga, så att den syns mot både
+   * himmel och moln. Under höjdrutan lyser skalan cyan en bit och tonar sedan ut.
+   */
   #gauge(ctx, W, H, v, c) {
     const x = GAUGE_X;
-    const top = GAUGE_TOP_PX;
-    const bottom = H - GAUGE_BOTTOM_PX;
+    const u = Math.max(0.8, Math.min(1.6, H / 720)); // storlekar efter skärmhöjden
+    const top = v.workshop ? GAUGE_TOP_PX : Math.round(H * GAUGE_TOP_FREE); // övningens rubrik behöver plats
+    const bottom = Math.round(H * (1 - GAUGE_BOTTOM_FREE));
     // Fasta steg så att skalan inte zoomar om vid varje passerad topp.
     const guideTop = Math.max(0, ...(v.guides ?? []).map((g) => g.hi ?? g.h));
     const reach = Math.max(v.h, v.hMax ?? 0, v.todayBest ?? 0, guideTop) * 1.15;
     const steps = v.workshop ? SCHOOL_GAUGE_STEPS_M : GAUGE_STEPS_M;
     const range = steps.find((r) => r >= reach) ?? Math.ceil(reach / 1000) * 1000;
-    const gy = (alt) => bottom - (Math.min(alt, range) / range) * (bottom - top);
-    const major = [50, 100, 250, 500, 1000, 2000, 2500].find((s) => range / s <= 6);
+    // Skalan fortsätter en bit ovanför den översta siffran, så att den inte slutar tvärt i den.
+    const scaleTop = top + (bottom - top) * GAUGE_HEADROOM;
+    const gy = (alt) => bottom - (Math.min(alt, range) / range) * (bottom - scaleTop);
+    const major = [50, 100, 250, 500, 1000, 2000, 2500].find((s) => range / s <= 5);
+    const cur = gy(v.h);
+    const boxHalf = H * 0.05; // höjdrutan täcker ungefär så här mycket åt varje håll
 
     ctx.save();
-    ctx.shadowColor = 'rgb(0 0 0 / 0.5)';
-    ctx.shadowBlur = 4;
+    ctx.lineCap = 'butt';
+    // Skuggan gör vita streck läsbara mot moln och snö; en enda väg per färg håller det billigt.
+    ctx.shadowColor = 'rgb(0 18 45 / 0.55)';
+    ctx.shadowBlur = 4 * u;
+    ctx.shadowOffsetY = 1;
     ctx.strokeStyle = c.tick;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, 2 * u);
     ctx.beginPath();
     ctx.moveTo(x, top);
     ctx.lineTo(x, bottom);
+    // Streck åt höger: långa vid siffrorna, mellanlånga halvvägs, korta däremellan
+    const minor = major / 4;
+    const minorPx = (bottom - scaleTop) * (minor / range);
+    for (let i = 0; bottom - i * minorPx >= top - 0.5; i++) {
+      const yy = Math.round(bottom - i * minorPx) + 0.5;
+      const len = i % 4 === 0 ? 24 : i % 2 === 0 ? 14 : 8;
+      ctx.moveTo(x, yy);
+      ctx.lineTo(x + len * u, yy);
+    }
     ctx.stroke();
-    ctx.font = '600 17px "Barlow Condensed", system-ui, sans-serif';
+
+    ctx.font = `600 ${Math.round(25 * u)}px "Barlow Condensed", system-ui, sans-serif`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = c.tickText;
-    for (let alt = 0; alt <= range + 1e-9; alt += major / 5) {
-      const yy = Math.round(gy(alt)) + 0.5;
-      const big = Math.abs(alt / major - Math.round(alt / major)) < 1e-6;
-      ctx.lineWidth = big ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(x - (big ? 10 : 5), yy);
-      ctx.lineTo(x + (big ? 10 : 5), yy);
-      ctx.stroke();
-      if (big) ctx.fillText(`${fmtM(alt)} m`, x + 18, yy);
+    ctx.shadowBlur = 7 * u;
+    ctx.shadowColor = 'rgb(0 18 45 / 0.85)';
+    for (let alt = 0; alt <= range + 1e-9; alt += major) {
+      const yy = Math.round(gy(alt));
+      // Siffrorna bakom höjdrutan tonar bort i stället för att sticka ut runt den
+      const near = Math.abs(yy - cur) / boxHalf;
+      if (near < 1.1) continue;
+      ctx.globalAlpha = Math.min(1, (near - 1.1) / 0.5);
+      const label = alt === range ? `${fmtM(alt)} m` : fmtM(alt);
+      ctx.fillText(label, x + 34 * u, yy + 1);
+      // En andra, tät skugga ger en mörk kant runt siffrorna, så att de syns mot vita moln
+      ctx.shadowBlur = 1.5 * u;
+      ctx.fillText(label, x + 34 * u, yy + 1);
+      ctx.shadowBlur = 7 * u;
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
 
-    // Höjden hittills: blå linje från marken
-    ctx.strokeStyle = c.sessionMax;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
+    // Cyan glöd som lyser starkast vid helikoptern och tonar ut en bit nedåt
+    ctx.save();
+    const glow = ctx.createLinearGradient(0, cur, 0, bottom);
+    const span = Math.max(1, bottom - cur);
+    glow.addColorStop(0, c.gaugeNow);
+    glow.addColorStop(Math.min(0.5, (H * 0.07) / span), alpha(c.gaugeNow, 0.6));
+    glow.addColorStop(Math.min(1, Math.max(0.6, (H * 0.3) / span)), alpha(c.gaugeNow, 0));
+    glow.addColorStop(1, alpha(c.gaugeNow, 0));
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = Math.max(3, 3 * u);
+    ctx.shadowColor = c.gaugeNow;
+    ctx.shadowBlur = 8 * u;
     ctx.beginPath();
     ctx.moveTo(x, bottom);
-    ctx.lineTo(x, gy(v.h));
+    ctx.lineTo(x, cur);
     ctx.stroke();
-    // Milstolparna som korta streck till vänster
-    ctx.fillStyle = c.milestone;
-    for (const m of v.milestones) if (m.h <= range) ctx.fillRect(x - 16, Math.round(gy(m.h)), 8, 2);
+    // Markören vid höjdrutan
+    ctx.fillStyle = c.gaugeNow;
+    ctx.shadowBlur = 10 * u;
+    roundRect(ctx, x - 5 * u, cur - 2 * u, 15 * u, 4 * u, 2 * u);
+    ctx.fill();
+    ctx.restore();
+
+    // Nästa fjälltopp som en liten bergssiluett till vänster om skalan. En prick per topp
+    // blev en prickad linje som såg ut som felsökning; toppen man passerat visas ändå i rutan.
+    const next = v.milestones.filter((m) => m.h > v.h && m.h <= range).sort((a, b) => a.h - b.h)[0];
+    if (next && Math.abs(gy(next.h) - cur) > boxHalf * 0.6) {
+      const my = gy(next.h);
+      const s = 7 * u;
+      ctx.save();
+      ctx.fillStyle = c.tickText;
+      ctx.shadowColor = 'rgb(0 18 45 / 0.7)';
+      ctx.shadowBlur = 4 * u;
+      ctx.beginPath();
+      ctx.moveTo(x - 4 * u, my + s * 0.5);
+      ctx.lineTo(x - 4 * u - s * 0.7, my - s * 0.5);
+      ctx.lineTo(x - 4 * u - s * 1.1, my - s * 0.1);
+      ctx.lineTo(x - 4 * u - s * 1.5, my - s * 0.75);
+      ctx.lineTo(x - 4 * u - s * 2.4, my + s * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
     // Dagens rekord och maxhöjden: trianglar
     for (const [alt, color] of [[v.todayBest, c.record], [v.hMax, c.sessionMax]]) {
       if (!alt) continue;
@@ -726,8 +1466,23 @@ export class GameRenderer {
       else continue;
       ctx.fill();
     }
-    this.gaugeY = gy(v.h);
+    this.gaugeY = cur;
   }
+}
+
+/**
+ * En smal, mjuk skugga längs vänsterkanten bakom höjdskalan, så att de vita strecken syns
+ * mot moln och snö. Vanlig alfa utan färgton, så att himlen och landskapet behåller sina
+ * egna färger, och den fungerar likadant över 2D- och 3D-landskapet.
+ */
+function gaugeShade(ctx, W, H) {
+  const w = Math.min(W * 0.16, 340);
+  const g = ctx.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, 'rgb(6 34 78 / 0.34)');
+  g.addColorStop(0.5, 'rgb(6 34 78 / 0.16)');
+  g.addColorStop(1, 'rgb(6 34 78 / 0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, H);
 }
 
 /**
@@ -771,6 +1526,7 @@ function readColors(el) {
     rotor: v('--heli-rotor'),
     tick: v('--scene-tick'),
     tickText: v('--scene-text-muted'),
+    gaugeNow: v('--gauge-now'),
     lineText: v('--scene-text'),
     milestone: v('--line-milestone'),
     record: v('--line-record'),
@@ -997,4 +1753,5 @@ function drawParked(ctx, x, groundY, livery, c) {
 
 const mod = (a, n) => ((a % n) + n) % n;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth01 = (x) => clamp01(x) * clamp01(x) * (3 - 2 * clamp01(x));
 export const fmtM = (m) => Math.round(m).toLocaleString('sv-SE');
