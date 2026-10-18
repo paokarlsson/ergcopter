@@ -1,13 +1,10 @@
 // Små bilder till korten i Fjällräddaren-menyn: en scen med fjäll och helikopter och
-// det som övningen handlar om. Ritas en gång. Med 3D-landskapet (terrain.js) och
-// 3D-helikoptern (heli3d.js) får varje kort en egen scen med egen kamera (thumb-shots.js).
-// Utan dem ritas himmel och fjäll här, med den platta helikoptern och band, pilar och
-// linjer som förklaring.
+// det som övningen handlar om. Ritas en gång: himmel och fjäll, med den platta helikoptern
+// och band, pilar och linjer som förklaring.
 
 import { drawHelicopter, drawCloud } from './heli-draw.js';
 import { mix, alpha } from './color.js';
 import { rand } from './mountains.js';
-import { drawShot, shotView } from './thumb-shots.js';
 
 const W = 320;
 const H = 200;
@@ -20,66 +17,15 @@ const DUSK_IDS = ['exam', 'mission', 'altitude', 'late-catch'];
  * @param {string} id      övningens id, 'lesson-1'…, 'exam', 'mission' eller 'free'
  * @param {object} c       scenens färger (render.js)
  * @param {object} livery  helikopterns utseende
- * @param {HTMLCanvasElement|null} [photo]  bilden av 3D-landskapet från thumbView(id)
- * @param {object|null} [heli]      Heli3D
- * @param {object|null} [hoverPad]  HoverPad, hyllan med plattan i plattscenerna
  */
-export function drawThumb(canvas, id, c, livery, photo = null, heli = null, hoverPad = null) {
+export function drawThumb(canvas, id, c, livery) {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   const seed = seedOf(id);
-  if (photo && heli && !heli.lost) {
-    // Lite mer kontrast än landskapet i spelet: korten ska lysa mot den mörka panelen
-    ctx.filter = 'saturate(1.15) contrast(1.18)';
-    ctx.drawImage(photo, 0, 0, W, H);
-    ctx.filter = 'none';
-    drawShot(ctx, id, heli, hoverPad, livery, grade);
-    vignette(ctx);
-    return;
-  }
-  if (photo) ctx.drawImage(photo, 0, 0, W, H);
-  else backdrop(ctx, c, seed, DUSK_IDS.includes(id) ? 1 : 0);
+  backdrop(ctx, c, seed, DUSK_IDS.includes(id) ? 1 : 0);
   const motif = MOTIFS[motifOf(id)] ?? MOTIFS.free;
-  motif(ctx, c, livery, Boolean(photo));
-}
-
-/**
- * Djupt blått i himlen och skuggorna, som i spelets övriga bilder: landskapet blir kvällsklart
- * och mörkare än helikoptern, som ritas efteråt och lyser mot det. Hyllan med plattan
- * (nedanför ledge) tonas svagare, så att plattans målning syns.
- */
-function grade(ctx, ledge = null) {
-  ctx.save();
-  ctx.globalCompositeOperation = 'multiply';
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, 'rgb(96 128 190)'); // himlen överst ljusare än skuggorna, så att kortet lyser uppifrån
-  if (ledge === null) {
-    g.addColorStop(0.45, 'rgb(132 154 202)');
-    g.addColorStop(1, 'rgb(80 100 146)');
-  } else {
-    const at = ledge / H;
-    g.addColorStop(at * 0.9, 'rgb(132 154 202)');
-    g.addColorStop(Math.min(1, at + 0.02), 'rgb(176 190 220)');
-    g.addColorStop(1, 'rgb(120 136 176)');
-  }
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  ctx.restore();
-}
-
-/** Mörkare hörn och ett svagt ljus uppifrån, som ett foto. */
-function vignette(ctx) {
-  const g = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.35, W / 2, H * 0.45, W * 0.72);
-  g.addColorStop(0, 'rgb(0 0 0 / 0)');
-  g.addColorStop(1, 'rgb(2 8 20 / 0.5)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-}
-
-/** Kameran för kortets bild i 3D-landskapet (TerrainRenderer.snapshots): scenens egen. */
-export function thumbView(id) {
-  return shotView(id);
+  motif(ctx, c, livery);
 }
 
 const seedOf = (id) => [...id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
@@ -130,8 +76,7 @@ function heli(ctx, c, livery, x, y, s = 0.42) {
   ctx.restore();
 }
 
-function pad(ctx, x, photo = false) {
-  if (photo) return;
+function pad(ctx, x) {
   ctx.fillStyle = '#2f343c';
   ctx.beginPath();
   ctx.ellipse(x, GROUND + 4, 46, 6, 0, 0, Math.PI * 2);
@@ -208,15 +153,15 @@ const LESSON_MOTIF = { 1: 'bounce', 2: 'stairs', 3: 'freefall', 4: 'sandbag' };
 
 // Motiven håller sig mellan rubriken upptill (y < 50) och stjärnorna nedtill (y > 150).
 const MOTIFS = {
-  'first-lift'(ctx, c, l, photo) {
-    pad(ctx, 160, photo);
+  'first-lift'(ctx, c, l) {
+    pad(ctx, 160);
     dashedLine(ctx, 66, c.guide);
     text(ctx, '50 m', 262, 80, 18);
     arrow(ctx, 236, 150, 92, c.guide);
     heli(ctx, c, l, 140, 128, 0.5);
   },
-  bounce(ctx, c, l, photo) {
-    pad(ctx, 236, photo);
+  bounce(ctx, c, l) {
+    pad(ctx, 236);
     ctx.strokeStyle = alpha('#ffffff', 0.85);
     ctx.lineWidth = 2.5;
     ctx.setLineDash([4, 5]);
@@ -336,8 +281,8 @@ const MOTIFS = {
     for (const [x, y] of [[156, 108], [216, 98], [276, 110]]) glowRing(ctx, c, x, y, 12, 30);
     heli(ctx, c, l, 70, 110, 0.4);
   },
-  exam(ctx, c, l, photo) {
-    pad(ctx, 112, photo);
+  exam(ctx, c, l) {
+    pad(ctx, 112);
     heli(ctx, c, l, 112, 150, 0.46);
     // Guldmedalj med stjärna
     ctx.fillStyle = '#f6c744';
@@ -353,25 +298,22 @@ const MOTIFS = {
     ctx.textBaseline = 'middle';
     ctx.fillText('★', 250, 100);
   },
-  mission(ctx, c, l, photo) {
+  mission(ctx, c, l) {
     // En topp med en skadad skidåkare, räddningshelikoptern med vinschen nere.
-    // I 3D-bilden står toppen redan i landskapet.
-    if (!photo) {
-      ctx.fillStyle = mix('#6e7d93', c.duskTop, 0.4);
-      ctx.beginPath();
-      ctx.moveTo(140, GROUND);
-      ctx.lineTo(236, 122);
-      ctx.lineTo(330, GROUND);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#f4f7fb';
-      ctx.beginPath();
-      ctx.moveTo(236, 122);
-      ctx.lineTo(216, 136);
-      ctx.lineTo(256, 136);
-      ctx.closePath();
-      ctx.fill();
-    }
+    ctx.fillStyle = mix('#6e7d93', c.duskTop, 0.4);
+    ctx.beginPath();
+    ctx.moveTo(140, GROUND);
+    ctx.lineTo(236, 122);
+    ctx.lineTo(330, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f4f7fb';
+    ctx.beginPath();
+    ctx.moveTo(236, 122);
+    ctx.lineTo(216, 136);
+    ctx.lineTo(256, 136);
+    ctx.closePath();
+    ctx.fill();
     ctx.strokeStyle = '#2f343c';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -382,8 +324,8 @@ const MOTIFS = {
     ctx.fillRect(229, 114, 14, 8);
     heli(ctx, c, l, 236, 76, 0.4);
   },
-  landing(ctx, c, l, photo) {
-    pad(ctx, 160, photo);
+  landing(ctx, c, l) {
+    pad(ctx, 160);
     glowRing(ctx, c, 160, GROUND + 4, 52, 7);
     arrow(ctx, 250, 70, 140, c.guide);
     heli(ctx, c, l, 160, 112, 0.5);

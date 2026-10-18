@@ -163,18 +163,12 @@ body {
   font: 18px/1.4 var(--font-text);
 }
 
-#scene,
-#terrain {
+#scene {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-}
-
-/* 3D-landskapet (terrain.js) ritas i lägre upplösning och skalas upp mjukt */
-#terrain {
-  visibility: hidden;
 }
 
 button,
@@ -859,22 +853,12 @@ button.danger {
 
 .screen.career-screen {
   padding: 14px max(16px, 2vw) 18px;
-  /* Överst en klarblå himmel bakom rubriken som ljusnar mot ett varmt dis. Fjällen i kvällssol (render.js
-     MENU_LAND) får synas genom glaset; bara en lätt skymning bakom korten och varmt ljus nere till höger. */
+  /* Överst en klarblå himmel bakom rubriken som ljusnar mot ett varmt dis. Fjällen i kvällssol får synas
+     genom glaset; bara en lätt skymning bakom korten och varmt ljus nere till höger. */
   background:
     radial-gradient(34% 30% at 88% 100%, rgb(255 150 70 / 0.22), rgb(255 150 70 / 0)),
     linear-gradient(180deg, rgb(26 70 156 / 0.62), rgb(60 110 186 / 0.34) 12%, rgb(120 150 200 / 0.12) 22%, rgb(120 150 200 / 0) 28%),
     linear-gradient(180deg, rgb(5 12 26 / 0), rgb(5 12 26 / 0.14) 24%, rgb(5 12 26 / 0.4) 60%, rgb(5 12 26 / 0.5));
-}
-/* Fjällräddaren sedd över axeln uppe till höger (view/rescuer-bust.js), bakom flikarna och sidopanelen */
-.career-figure {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 30vw;
-  height: 100%;
-  z-index: -1;
-  pointer-events: none;
 }
 .career {
   display: grid;
@@ -892,7 +876,7 @@ button.danger {
   gap: 16px;
   height: max(118px, calc(21.5vh - 28px));
 }
-/* Helikoptern (view/hero-heli.js) fyller vänstra tredjedelen; hela flygplanet syns, bara rotorbladen får skäras av upptill */
+/* Helikoptern fyller vänstra tredjedelen */
 .career-heli {
   position: absolute;
   top: -14px;
@@ -1338,7 +1322,7 @@ button.danger {
   place-items: center start;
   padding-left: max(16px, 6vw);
   padding-top: max(24px, 3vh); /* rubriken ligger till vänster, skärmknapparna till höger */
-  /* Gradienterna ligger över 3D-utsikten men under klippan och räddaren (.result-figure): djupblå kvällshimmel
+  /* Gradienterna ligger över landskapet: djupblå kvällshimmel
      uppe till vänster, en mjuk mörk fläck bakom rubriken och mörkare förgrund nedtill */
   background:
     radial-gradient(ellipse 70% 60% at 0% 0%, rgb(18 40 104 / 0.62), rgb(18 40 104 / 0.24) 50%, rgb(18 40 104 / 0)),
@@ -1346,7 +1330,7 @@ button.danger {
     linear-gradient(90deg, rgb(4 10 22 / 0.34), rgb(4 10 22 / 0.14) 45%, rgb(4 10 22 / 0) 66%),
     linear-gradient(0deg, rgb(8 8 16 / 0.72), rgb(8 8 16 / 0.36) 20%, rgb(8 8 16 / 0) 40%); /* mörk förgrund under knapparna */
 }
-/* Ljussättningen över hela bilden, även klippan och räddaren: förgrunden sjunker i kall skugga nedtill */
+/* Ljussättningen över hela bilden: förgrunden sjunker i kall skugga nedtill */
 .screen.result::after {
   content: '';
   position: absolute;
@@ -1354,21 +1338,6 @@ button.danger {
   z-index: -1;
   background: linear-gradient(0deg, rgb(6 10 22 / 0.5), rgb(6 10 22 / 0.22) 12%, rgb(6 10 22 / 0) 24%);
   pointer-events: none;
-}
-/* Fjällräddaren på klippan till höger (view/rescuer.js); under resultatet i staplingsordningen */
-.result-figure {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 100%; /* klippan räknas från högerkanten; på breda skärmar fortsätter hällarna längs hela nederkanten */
-  height: 100%;
-  z-index: -1;
-  pointer-events: none;
-}
-@media (max-aspect-ratio: 5/4) {
-  .result-figure {
-    display: none;
-  }
 }
 .result-wrap {
   width: min(max(760px, 69vw), 100%);
@@ -2022,7 +1991,7 @@ button.danger {
   display: grid;
   gap: 2vh;
 }
-/* Nästan täckande paneler utan bakgrundsoskärpa: lättläst och billigt över 3D-scenen */
+/* Nästan täckande paneler utan bakgrundsoskärpa: lättläst och billigt över scenen */
 .drill > .glass {
   background: linear-gradient(180deg, rgb(22 37 62 / 0.95), rgb(11 21 39 / 0.96));
   border-color: rgb(160 195 240 / 0.16);
@@ -2339,31 +2308,6 @@ button.danger {
   100% {
     opacity: 0;
     transform: translate(-20%, 0);
-  }
-}
-
-/* Fri flygning: helikoptern står mitt i nedre delen av bilden, så notisen ligger till vänster om den */
-.chase-view .toast {
-  left: 17.5vw;
-  bottom: 17%;
-  max-width: 18.5vw;
-  padding: 10px 20px 12px 18px;
-  font-size: clamp(1.3rem, 2.3vw, 2.5rem);
-  animation-name: toast-side;
-}
-@keyframes toast-side {
-  0% {
-    opacity: 0;
-    transform: translate(-30%, 0) skewX(-8deg);
-  }
-  12%,
-  85% {
-    opacity: 1;
-    transform: translate(0, 0) skewX(0);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(0, 12px);
   }
 }
 
@@ -3171,8 +3115,7 @@ dialog#settings .settings-field input[type='checkbox'] {
     padding-top: 44px;
     text-align: center;
   }
-  .career-heli,
-  .career-figure {
+  .career-heli {
     display: none;
   }
   .career-title,
