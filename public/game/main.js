@@ -25,6 +25,7 @@ import { now } from '../shared/sources/source.js';
 import { MockSource } from '../shared/sources/mock.js';
 import { UsbPm5Source } from '../shared/sources/usb.js';
 import { Pm5Source } from '../shared/sources/ble.js';
+import { BikeSource } from '../shared/sources/bike.js';
 import { mountScreenControls, toggleFullscreen } from '../shared/screen.js';
 import { openLive } from '../shared/live.js';
 
@@ -107,6 +108,7 @@ const DEMO_MENU_REST_S = 12; // s som demospelaren står still i Fjällräddaren
 function createSource(kind) {
   if (kind === 'usb') return new UsbPm5Source();
   if (kind === 'ble') return new Pm5Source();
+  if (kind === 'bike') return new BikeSource();
   return new MockSource({ spm: DEMO_SPM }); // bara för ?demo, finns inte i gränssnittet
 }
 
@@ -208,7 +210,7 @@ else (async () => {
   try {
     last = localStorage.getItem(SOURCE_KEY);
   } catch {}
-  if (last === 'ble' || (last === 'usb' && UsbPm5Source.supported)) ui.el.sourceSelect.value = last;
+  if (last === 'ble' || last === 'bike' || (last === 'usb' && UsbPm5Source.supported)) ui.el.sourceSelect.value = last;
   else if (!UsbPm5Source.supported) ui.el.sourceSelect.value = 'ble'; // t.ex. Android och iOS saknar WebHID
   if (last === 'usb' && UsbPm5Source.supported) {
     const s = attach('usb');
