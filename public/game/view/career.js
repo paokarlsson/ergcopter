@@ -4,12 +4,9 @@
 
 import { drawThumb } from './thumbs.js';
 import { drawHelicopter } from './heli-draw.js';
-import { HeroHeli } from './hero-heli.js';
 import { programOf } from '../core/exercise.js';
 
 const $ = (id) => document.getElementById(id);
-// Där rubrikens helikopter ryms i sin canvas (andelar): hela flygplanet syns, med luft under medarna
-const HERO_RECT = [0.17, 0.09, 0.9, 0.915];
 
 const STEPS = [
   {
@@ -55,17 +52,9 @@ const STATE = {
 const EXAM_THUMBS = { 'exam-hover': 'hover', 'exam-freefall': 'freefall', 'exam-engine': 'engine', 'exam-precision': 'hover', 'exam-landing': 'landing' };
 
 export class CareerMenu {
-  /** Bilder av 3D-landskapet till korten: (id[]) → canvas[] eller null. Sätts av main.js. */
-  photos = null;
-  /** 3D-helikoptern (heli3d.js) som ritas in i korten, eller null. Sätts av main.js. */
-  heli3d = null;
-  /** Hyllan med plattan (hoverpad.js) till plattscenerna, eller null. Sätts av main.js. */
-  hoverPad = null;
-  #thumbs = []; // korten som visas: { canvas, thumb, livery }
-  #photoCache = new Map(); // landskapsbilden per kort, tas en gång
   #art = new Map(); // färdiga kortbilder, så att ett flikbyte inte ritar om helikoptrarna
   #artColors = null;
-  #hero; // rubrikens helikopter i 3D
+  #heroLivery = null; // rubrikens helikopter
 
   constructor() {
     this.el = {
@@ -82,7 +71,7 @@ export class CareerMenu {
       free: $('menu-free'),
       heli: $('career-heli'),
     };
-    this.#hero = new HeroHeli(this.el.heli, (canvas, livery) => drawHeader(canvas, this.m?.colors, livery), HERO_RECT, true);
+    new ResizeObserver(() => this.#drawHero()).observe(this.el.heli);
     this.tab = 'school';
     this.m = null;
     this.onChoose = null;
@@ -113,7 +102,8 @@ export class CareerMenu {
     e.alarm.textContent = m.alarm ?? '';
     e.free.hidden = !m.junior;
     e.pull.replaceChildren('Dra för att starta', Object.assign(document.createElement('strong'), { textContent: m.suggested?.name ?? 'Fri flygning' }));
-    this.#hero.show(m.rescue);
+    this.#heroLivery = m.rescue;
+    this.#drawHero();
     // Fliken där förslaget finns
     const s = m.suggested;
     this.tab = !s ? (m.junior ? 'missions' : 'school') : s.kind === 'exam' ? 'exam' : s.steps ? 'exercises' : 'school';
@@ -156,38 +146,33 @@ export class CareerMenu {
     e.sideTitle.textContent = step.title;
     e.sideText.textContent = step.text;
     e.sideGoal.hidden = true;
-    this.#thumbs = [];
-    const cards = this.#cards();
-    e.cards.replaceChildren(...cards);
+    e.cards.replaceChildren(...this.#cards());
     e.cards.scrollTop = 0;
-    this.#addPhotos();
   }
 
-  /** Byter kortens ritade bakgrund mot en bild av 3D-landskapet, när det finns. */
-  #addPhotos() {
-    if (!this.photos) return;
-    const missing = [...new Set(this.#thumbs.map((t) => t.thumb))].filter((id) => !this.#photoCache.has(id));
-    if (missing.length) {
-      const shots = this.photos(missing);
-      if (!shots) return;
-      missing.forEach((id, i) => this.#photoCache.set(id, shots[i]));
-    }
-    for (const t of this.#thumbs) this.#paint(t.canvas, t.thumb, t.livery);
+  /** Rubrikens helikopter, i canvasens storlek (ritas om när den ändras). */
+  #drawHero() {
+    const canvas = this.el.heli;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(canvas.clientWidth * dpr);
+    const h = Math.round(canvas.clientHeight * dpr);
+    if (!this.#heroLivery || w < 8 || h < 8) return; // dold
+    canvas.width = w;
+    canvas.height = h;
+    drawHeader(canvas, this.m?.colors, this.#heroLivery);
   }
 
-  /** Ritar kortets bild, från cachen om den redan är ritad med samma landskap och helikopter. */
+  /** Ritar kortets bild, från cachen om den redan är ritad med samma helikopter. */
   #paint(canvas, thumb, livery) {
     if (this.#artColors !== this.m.colors) {
       this.#art.clear();
       this.#artColors = this.m.colors;
     }
-    const photo = this.#photoCache.get(thumb) ?? null;
-    const heli = photo && this.heli3d && !this.heli3d.lost ? this.heli3d : null;
-    const key = [thumb, livery?.body, livery?.accent, photo ? 1 : 0, heli ? 1 : 0].join('|');
+    const key = [thumb, livery?.body, livery?.accent].join('|');
     let art = this.#art.get(key);
     if (!art) {
       art = document.createElement('canvas');
-      drawThumb(art, thumb, this.m.colors, livery, photo, heli, this.hoverPad);
+      drawThumb(art, thumb, this.m.colors, livery);
       this.#art.set(key, art);
     }
     canvas.width = art.width;
@@ -268,7 +253,6 @@ export class CareerMenu {
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
     this.#paint(canvas, thumb, livery ?? m.school);
-    this.#thumbs.push({ canvas, thumb, livery: livery ?? m.school });
     b.append(canvas, Object.assign(document.createElement('span'), { className: 'card-title', textContent: title }));
     if (stars !== null) b.append(starRow(stars));
     if (state || stateText) {
@@ -326,7 +310,7 @@ function lockIcon() {
   return svg;
 }
 
-/** Reservbild utan WebGL: den platta helikoptern, skalad till canvasen. */
+/** Rubrikens helikopter: den platta helikoptern, skalad till canvasen. */
 function drawHeader(canvas, c, livery) {
   if (!c) return;
   const ctx = canvas.getContext('2d');
