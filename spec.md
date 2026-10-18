@@ -14,6 +14,7 @@ Spelet heter **Ergcopter**. På startskärmen väljer man grundspelet, "så hög
 
 - Webbapp på en enda sida som körs i Chrome eller Edge på en dator kopplad till en storskärm.
 - PM5 läses via USB (WebHID) eller Bluetooth (Web Bluetooth). Båda kräver säker kontext (https eller localhost), och anslutningen måste startas av ett användarklick. USB ger även kraftkurvan. Fungerar inte i Firefox; på iPhone/iPad fungerar bara Bluetooth, via appen Bluefy.
+- En smart cykeltrainer (till exempel Zwift Ride eller Wahoo KICKR) kan användas i stället för SkiErg, via Bluetooth (avsnitt 3).
 - Ingen backend behövs: sidan är statiska filer. Den publiceras på GitHub Pages (https), och `server.js` eller Docker räcker för att köra lokalt. Topplista, inställningar och övningsframsteg sparas lokalt i webbläsaren (localStorage).
 - En separat live-dashboard (`dashboard.html`) för operatören visar siffror och kraftkurva från PM via USB, med samma datakälla som spelet, plus medel- och maxeffekt och antal drag. Flyger spelet i en annan flik i samma webbläsare visar dashboarden också höjden och skillnaden mot det som krävs (`shared/live.js`, BroadcastChannel). Krävd effekt i watt skickas bara när råa watt är påslaget (avsnitt 6).
 - Allt ritas i Canvas 2D: landskapet, helikoptern, etiketterna, linjerna och höjdskalan. Instrumenten är DOM. Spelet har ingen 3D-grafik (WebGL): den togs bort eftersom sidan blev för tung att ladda och köra.
@@ -82,6 +83,7 @@ Implementationer (`public/shared/sources/`):
 
 - **UsbPm5Source**: USB via WebHID och CSAFE-kommandon. Läser dragfas och kraftbuffert var 50:e ms och ger både drag och kraftsampel.
 - **Pm5Source**: Web Bluetooth enligt ovan.
+- **BikeSource** (`bike.js`, tolkningen i `bike-data.js`): smart cykeltrainer via Web Bluetooth, valet "Cykel (Bluetooth)". Läser FTMS Indoor Bike Data (0x1826/0x2AD2) i första hand och Cycling Power Measurement (0x1818/0x2A63) som reserv, med kadens ur vevvarven. Bara notiser, inget skrivs till trainern, så Zwift kan styra motståndet samtidigt. Varje avläsning med effekt över 0 och kadens över 0 (när kadens finns) blir ett "drag" med ny `strokeCount`, så motorn (avsnitt 4) håller effekten till nästa avläsning, ungefär varje sekund. Avläsningar när ingen trampar skickas inte vidare, annars skulle en stillastående cykel starta nedräkningen. Parametrarna är trimmade för SkiErg, och det visas som en varning vid anslutning.
 - **MockSource**: genererar drag i en inställbar takt (standard 40 drag/min) med aktuell effekt och en påhittad kraftkurva, så att motorn och fysiken körs precis som med riktig erg. Används av `?demo`.
 - **ScriptedSource**: spelar upp en fördefinierad effektprofil, till exempel "245 W i 300 s". Används av strategisimulatorn och testerna.
 
