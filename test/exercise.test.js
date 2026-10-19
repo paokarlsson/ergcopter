@@ -80,6 +80,35 @@ test('hovringen räknas i sträck: att lämna bandet nollställer tiden', () => 
   assert.equal(run.status, 'passed');
 });
 
+test('ovanför linjen: under linjen står klockan still men börjar inte om', () => {
+  const run = new ExerciseRun({ name: 'x', maxS: 999, steps: [{ type: 'above', floor: 100, holdS: 5 }] });
+  const f = { t: 0, h: 0, v: 0 };
+  const tick = (h, s) => {
+    for (let i = 0; i < s * 20; i++) {
+      f.t += 0.05;
+      f.h = h;
+      run.update(f, 1);
+    }
+  };
+  tick(120, 3);
+  tick(90, 2);
+  assert.ok(Math.abs(run.step.held - 3) < 0.06, `${run.step.held} s`);
+  tick(130, 2.1);
+  assert.equal(run.status, 'passed');
+  assert.equal(run.results[0].stars, 3); // i snitt 20–30 m över linjen
+});
+
+test('ovanför linjen: högt över linjen ger färre stjärnor', () => {
+  const run = new ExerciseRun({ name: 'x', maxS: 999, steps: [{ type: 'above', floor: 100, holdS: 2 }] });
+  const f = { t: 0, h: 300, v: 0 };
+  for (let i = 0; i < 3 * 20; i++) {
+    f.t += 0.05;
+    run.update(f, 1);
+  }
+  assert.equal(run.status, 'passed');
+  assert.equal(run.results[0].stars, 1);
+});
+
 /** Piloten drar direkt när helikoptern passerat 700 m, alltså ovanför hämtgränsen 650 m. */
 function earlyCatcher() {
   const pilot = autopilot();

@@ -4,6 +4,8 @@
 //
 // Steg:
 //   { type: 'climb', to, blind? }                     stig till höjden `to`
+//   { type: 'above', floor, holdS, margin?, blind? }  håll dig ovanför `floor` i sammanlagt holdS s;
+//                                                     under linjen står klockan still
 //   { type: 'hover', at, tol, holdS, total?, blind? } håll dig inom at ± tol i holdS sekunder,
 //                                                     i sträck eller sammanlagt (total)
 //   { type: 'land', maxSpeed }                        sätt ner med högst maxSpeed m/s
@@ -26,6 +28,11 @@ const EPS = 1e-9;
 const CAUGHT_SINK = 1; // m/s: sjunker inte fortare än så räknas som uppfången
 const SAFETY_SINK = 8; // m/s: faller man så fort under golvet tar instruktören över, även före släppet
 const HANDBACK_SHARE = 0.8; // instruktören lämnar tillbaka när man drar minst så här stor del av behovet
+const ABOVE_MARGIN = 100; // m: över linjen räknas stjärnorna mot så här stort utrymme
+
+// Hovring i ett smalt band kräver att varje drag träffar rätt effekt på några procent, och
+// med ergen blir det mest frustration. Därför håller man sig ovanför en linje i stället:
+// det är ett jämnt tröskelpass, och ett snedsteg nedåt stoppar bara klockan (plan.md §3).
 
 export const EXERCISES = [
   {
@@ -51,16 +58,16 @@ export const EXERCISES = [
   {
     id: 'hover',
     name: 'Hovring',
-    goal: 'Håll dig på 300 m ±25 m i 30 s',
+    goal: 'Håll dig ovanför 300 m i 30 s',
     maxS: 240,
-    steps: [{ type: 'hover', at: 300, tol: 25, holdS: 30 }],
+    steps: [{ type: 'above', floor: 300, holdS: 30 }],
   },
   {
     id: 'stairs',
     name: 'Trappan',
-    goal: 'Hovra 12 s på varje trappsteg: 100, 200, 300 och 400 m',
+    goal: 'Håll dig ovanför varje trappsteg i 12 s: 100, 200, 300 och 400 m',
     maxS: 420,
-    steps: [100, 200, 300, 400].map((at) => ({ type: 'hover', at, tol: 20, holdS: 12 })),
+    steps: [100, 200, 300, 400].map((floor) => ({ type: 'above', floor, holdS: 12 })),
   },
   {
     id: 'altitude',
@@ -105,19 +112,19 @@ export const EXERCISES = [
   {
     id: 'sandbag',
     name: 'Sandsäcken',
-    goal: 'Hovra på 150 m medan vinschen hämtar sandsäcken, landa sedan mjukt med lasten',
+    goal: 'Hovra kring 150 m medan vinschen hämtar sandsäcken, landa sedan mjukt med lasten',
     maxS: 360,
     steps: [
-      { type: 'winch', at: 150, tol: 20, holdS: 15, load: 0.2 },
+      { type: 'winch', at: 150, tol: 40, holdS: 15, load: 0.2 },
       { type: 'land', maxSpeed: 2 },
     ],
   },
   {
     id: 'engine',
     name: 'Motorstopp',
-    goal: 'Hovra på 400 m. När motorn stannar faller du – hämta upp när den startar igen',
+    goal: 'Hovra kring 400 m. När motorn stannar faller du – hämta upp när den startar igen',
     maxS: 360,
-    steps: [{ type: 'engineout', at: 400, tol: 30, cutAfter: [4, 12], drop: 100, floor: 180 }],
+    steps: [{ type: 'engineout', at: 400, tol: 50, cutAfter: [4, 12], drop: 100, floor: 180 }],
   },
   {
     id: 'follow',
@@ -137,12 +144,9 @@ export const EXERCISES = [
   {
     id: 'clouds',
     name: 'Molnflygning',
-    goal: 'I molnet syns ingenting. Stig till 350 m och håll höjden i 30 s med bara höjdmätaren',
+    goal: 'I molnet syns ingenting. Håll dig ovanför 350 m i 30 s med bara höjdmätaren',
     maxS: 360,
-    steps: [
-      { type: 'climb', to: 350, blind: true },
-      { type: 'hover', at: 350, tol: 30, holdS: 30, blind: true },
-    ],
+    steps: [{ type: 'above', floor: 350, holdS: 30, blind: true }],
   },
   {
     id: 'patrol',
@@ -190,6 +194,7 @@ const starsLow = (x, three, two) => (x <= three + EPS ? 3 : x <= two + EPS ? 2 :
 // Gränserna för tre och två stjärnor; en stjärna är godkänt. Samma värden i bedömningen och i starGuide.
 const STARS = {
   hover: [0.3, 0.55], // medelavvikelse som andel av bandet (även vinschen)
+  above: [0.4, 0.7], // medelhöjd över linjen som andel av utrymmet (ABOVE_MARGIN)
   land: [0.3, 0.6], // sättningsfart som andel av gränsen
   catch: [0.35, 0.65], // djup under hämtgränsen som andel av utrymmet ned till golvet
   follow: [0.9, 0.75], // andel av tiden i nivå med instruktören (högre är bättre)
@@ -241,6 +246,22 @@ const STEPS = {
       s.total
         ? `Håll dig mellan ${m(s.at - s.tol)} och ${m(s.at + s.tol)}: ${Math.floor(s.held)} av ${s.holdS} s`
         : `Håll ${m(s.at)} ±${s.tol} m i ${s.holdS} s`,
+  },
+
+  above: {
+    init: () => ({ held: 0, over: 0 }),
+    update(s, f, _power, dt) {
+      if (f.h >= s.floor) {
+        s.held += dt;
+        s.over += (f.h - s.floor) * dt;
+      }
+      if (s.held < s.holdS - EPS) return;
+      const avgOver = s.over / Math.max(EPS, s.held);
+      const share = avgOver / (s.margin ?? ABOVE_MARGIN);
+      s.result = { held: s.held, avgOver, stars: starsLow(share, ...STARS.above), score: -share };
+      return 'done';
+    },
+    text: (s) => `Håll dig ovanför ${m(s.floor)}: ${Math.floor(s.held)} av ${s.holdS} s`,
   },
 
   land: {
@@ -621,6 +642,11 @@ export function stepGuides(step, t = 0) {
   switch (step.type) {
     case 'climb':
       return { ...none, lines: [{ kind: 'line', h: step.to, label: `Mål ${fmt(step.to)} m` }] };
+    case 'above': {
+      const label = `Håll dig ovanför ${fmt(step.floor)} m ${Math.floor(step.held ?? 0)} / ${step.holdS} s`;
+      const progress = Math.min(1, (step.held ?? 0) / step.holdS);
+      return { ...none, lines: [{ kind: 'band', lo: step.floor, hi: step.floor + (step.margin ?? ABOVE_MARGIN), label, progress }] };
+    }
     case 'hover':
     case 'winch': {
       const label = step.type === 'winch' ? 'Vinschen går' : step.total ? 'Håll dig här' : 'Hovra här';
@@ -676,6 +702,8 @@ export function describeResults(results) {
         case 'freefall':
         case 'engineout':
           return `hämtad på ${dec(r.catchS)} s, ${m(r.depth)} under gränsen${r.attempts > (r.reps ?? 1) ? ` (${r.attempts} försök)` : ''}`;
+        case 'above':
+          return `${Math.round(r.held)} s ovanför linjen, i snitt ${m(r.avgOver)} över`;
         case 'hover':
           return `hovrade ${Math.round(r.held)} s, i snitt ${m(r.avgDev)} från målet`;
         case 'winch':
@@ -711,6 +739,11 @@ export function starGuide(step) {
     case 'winch': {
       const [three, two] = STARS.hover;
       return lines(`i snitt inom ${near(three * step.tol)} från målet`, `i snitt inom ${near(two * step.tol)}`, `inom ±${m(step.tol)}`);
+    }
+    case 'above': {
+      const room = step.margin ?? ABOVE_MARGIN;
+      const [three, two] = STARS.above;
+      return lines(`i snitt högst ${m(three * room)} över linjen`, `högst ${m(two * room)} över`, `ovanför ${m(step.floor)}`);
     }
     case 'land': {
       const [three, two] = STARS.land;

@@ -31,7 +31,7 @@ export const LESSONS = [
     number: 2,
     name: 'Lektion 2: Höjd',
     goal: 'Trappan, följ instruktören och höjdflygning',
-    intro: 'I dag går vi högre. Hovra på varje trappsteg, följ mig – och sedan upp till 1 000 m.',
+    intro: 'I dag går vi högre. Ta dig över varje trappsteg, följ mig – och sedan upp till 1 000 m.',
     moments: ['stairs', 'follow', 'altitude'],
     teaser: 'Nästa lektion: fritt fall. Då släpper du helikoptern på 1 000 m.',
   },
@@ -63,15 +63,15 @@ export const EXAM = {
   id: 'exam',
   kind: 'exam',
   name: 'Uppflygning',
-  goal: 'Fem moment i ett pass. Alla ska vara godkända för att bli junior fjällräddare',
-  intro: 'Jag är din examinator. Fem moment, inga omtag. Lycka till!',
+  goal: 'Fyra moment i ett pass. Alla ska vara godkända för att bli junior fjällräddare',
+  intro: 'Jag är din examinator. Fyra moment, inga omtag. Lycka till!',
   moments: [
     {
       id: 'exam-hover',
       name: 'Lyft och hovring',
-      goal: 'Lyft och håll 150 m ±15 m i 20 s',
+      goal: 'Lyft och håll dig ovanför 150 m i 20 s',
       maxS: 180,
-      steps: [{ type: 'hover', at: 150, tol: 15, holdS: 20 }],
+      steps: [{ type: 'above', floor: 150, holdS: 20 }],
     },
     {
       id: 'exam-freefall',
@@ -86,16 +86,9 @@ export const EXAM = {
     {
       id: 'exam-engine',
       name: 'Motorstopp',
-      goal: 'Hovra på 450 m tills motorn stannar. Hämta upp före 230 m när den startar igen',
+      goal: 'Hovra kring 450 m tills motorn stannar. Hämta upp före 230 m när den startar igen',
       maxS: 240,
-      steps: [{ type: 'engineout', at: 450, tol: 30, cutAfter: [3, 10], drop: 100, floor: 230 }],
-    },
-    {
-      id: 'exam-precision',
-      name: 'Precisionshovring',
-      goal: 'Håll 250 m ±15 m i 20 s',
-      maxS: 180,
-      steps: [{ type: 'hover', at: 250, tol: 15, holdS: 20 }],
+      steps: [{ type: 'engineout', at: 450, tol: 50, cutAfter: [3, 10], drop: 100, floor: 230 }],
     },
     {
       id: 'exam-landing',

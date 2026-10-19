@@ -109,7 +109,8 @@ P_req(h) = P0 * (1 + h / H_air)                // effekt som krävs för att hå
 n        = √(E / E0)                            // rotorvarv relativt hovringsvarvet vid marken
 T / Mg   = σ * n²                               // lyftkraft relativt tyngden
 dE/dt    = P - P0 * σ * n³ - T * v              // motor − luftförlust − arbete på helikoptern
-dv/dt    = g * (T / Mg - 1)                     // acceleration
+dv/dt    = g * (T / Mg - 1) + c(h) * |v|        // acceleration; luftkuddens broms bara när v < 0
+c(h)     = cushion * e^(−h / cushionM)          // luftkudden nära marken
 dh/dt    = v                                    // stig- eller sjunkhastighet (m/s)
 ```
 
@@ -120,6 +121,7 @@ med `E0 = 1,5 * rotorTauS * P0` (rotorns energi vid hovringsvarv vid marken) och
 - **Stadig stigning** ger `v = G * (P - P_req(h)) / P0`, eftersom överskottet går till lägesenergi. Jämviktshöjden och τ är därför desamma som i den analytiska lösningen nedan.
 - **Farten** följer effekten på ungefär `3G / 2g` sekunder: 2 s med standardvärdet g = 15 m/s², 3 s med jordens 9,81. `g` är ett spelval, eftersom världen redan är skalad.
 - **Autorotation:** utan motor bär rotorn en kort stund, sedan faller helikoptern. När den sjunker driver fallet rotorn, eftersom arbetet `T * v` blir negativt. Fallet bromsas mot sluthastigheten `G * P_req(h) / P0`, alltså den stadiga farten vid 0 W. Farten slår först över en stund innan den lägger sig. Drar man grönt i hög fart fortsätter helikoptern nedåt en stund innan den vänder.
+- **Luftkudden:** nära marken trycks luften under rotorn ihop och bromsar sjunket. Bromsen är proportionell mot sjunkfarten och bär ingenting när helikoptern står still, så man svävar inte på den och lyftet påverkas inte. Med standardvärdena (3 /s, 4 m) sätter jämna drag mellan ungefär halva och hela `P0` ner under 2 m/s, medan 0 W ändå blir en hård sättning. Utan kudden måste effekten ligga inom några procent under `P0`, och det gick inte att träffa med ergen (plan.md §3.1). Riktiga människodrivna helikoptrar flyger bara i markeffekt.
 - **Last** (sandsäcken, patienten) ökar massan så att hovringen kräver `P0` för den nya vikten. Rotorn är densamma, så helikoptern sjunker tills varvet har hunnit upp.
 - **Långa insatser** hamnar inom 1 % av den analytiska lösningen. Korta spurter tappar, eftersom rotorn och helikoptern först måste komma upp i fart: 30 s @ 450 W ungefär −3,5 % och 3 s nästan hälften.
 
@@ -142,6 +144,8 @@ Tabellen visar grundspelets värden. Standard i koden är värdena för blandad 
 | `G` | 22,5 m/s | Stigförmåga. Stighastighet när effekten ligger en hel `P0` över det som krävs |
 | `g` | 15 m/s² | Tyngdacceleration. Styr hur fort farten följer effekten, ungefär `3G / 2g` |
 | `rotorTauS` | 0,5 s | Rotorbladens massa: tidskonstanten för varvet vid hovring vid marken |
+| `cushion` | 3 /s | Luftkuddens broms på sjunket vid marken. 0 = av |
+| `cushionM` | 4 m | Luftkuddens räckvidd: bromsen är en tredjedel så stark på den höjden |
 | `maxSinkRate` | av | Maximal sjunkhastighet (m/s) |
 | `dt` | 0,05 s | Fysikens tidssteg |
 | `maxStrokeS` | 3 s | Längsta tid ett drag driver motorn |
