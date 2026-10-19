@@ -19,6 +19,8 @@ export function autopilot({ landSpeed = 0.8 } = {}) {
     switch (step.type) {
       case 'climb':
         return req(step.to + 150);
+      case 'above':
+        return hold(step.floor + 25, 0.3, 100);
       case 'hover':
       case 'winch':
         return hold(step.at, 0.3, step.tol * 4);

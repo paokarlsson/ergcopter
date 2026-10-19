@@ -13,6 +13,8 @@ export const DEFAULT_CONFIG = Object.freeze({
   g: 15, // m/s², tyngdacceleration. Farten följer effekten på ungefär 3G / 2g sekunder (jorden 9,81 ger 3 s)
   rotorTauS: 0.5, // s, rotorbladens massa: tidskonstanten för varvet vid hovring vid marken
   maxSinkRate: 0, // m/s, 0 = av
+  cushion: 3, // 1/s, luftkuddens broms på sjunket vid marken (plan.md §3.1), 0 = av
+  cushionM: 4, // m, luftkuddens räckvidd: bromsen avtar till en tredjedel på så här hög höjd
   dt: 0.05, // s, fysikens tidssteg
 
   // Motorn (spec §4)
@@ -80,6 +82,8 @@ export const CONFIG_SCHEMA = [
   { group: 'Fysik', key: 'G', label: 'G – stigförmåga (m/s vid en P0 överskott, inte tyngdacceleration)', type: 'number', min: 0.1, max: 1000, step: 0.1 },
   { group: 'Fysik', key: 'g', label: 'g – tyngdacceleration (m/s², jorden 9,81; högre = kvickare)', type: 'number', min: 1, max: 100, step: 0.1 },
   { group: 'Fysik', key: 'rotorTauS', label: 'Rotorbladens massa (s: hur fort varvet följer motorn vid marken)', type: 'number', min: 0.05, max: 10, step: 0.05 },
+  { group: 'Fysik', key: 'cushion', label: 'Luftkudden vid marken (1/s: hur hårt sjunket bromsas, 0 = av)', type: 'number', min: 0, max: 20, step: 0.5 },
+  { group: 'Fysik', key: 'cushionM', label: 'Luftkuddens räckvidd (m)', type: 'number', min: 0.5, max: 50, step: 0.5 },
   { group: 'Fysik', key: 'maxSinkRate', label: 'Max sjunkhastighet (m/s, 0 = av)', type: 'number', min: 0, max: 1000, step: 0.5 },
   { group: 'Fysik', key: 'dt', label: 'Tidssteg dt (s)', type: 'number', min: 0.01, max: 0.2, step: 0.01 },
   { group: 'Motor', key: 'maxStrokeS', label: 'Längsta tid ett drag driver motorn (s)', type: 'number', min: 1, max: 10, step: 0.5 },

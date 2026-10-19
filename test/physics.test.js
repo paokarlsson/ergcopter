@@ -218,9 +218,36 @@ test('kopian är oberoende', () => {
 });
 
 test('mjuk sättning: farten i första nedslaget gäller, inte ett skutt efteråt', () => {
-  const f = hovering(std, 5);
+  const f = hovering({ ...std, cushion: 0 }, 5); // utan luftkudde blir sjunket stadigt ända ned
   const power = () => f.requiredPower() - (0.8 * f.P0) / std.G; // sjunker stadigt 0,8 m/s
   for (let i = 0; i < 20 * 20 && !f.touchdown; i++) f.step(power());
   for (let i = 0; i < 20; i++) f.step(power());
   assert.ok(f.touchdown && Math.abs(f.touchdown.speed - 0.8) < 0.05, `sättning ${f.touchdown?.speed.toFixed(3)} m/s`);
+});
+
+/** Sjunker från 40 m med fast effekt (andel av P0) tills sättningen; ger sättningsfarten. */
+function landWith(c, share) {
+  const f = hovering(c, 40);
+  for (let i = 0; i < 20 * 120 && !f.touchdown; i++) f.step(share * f.P0);
+  return f.touchdown?.speed;
+}
+
+test('luftkudden: jämna drag mellan halva och hela lyfteffekten sätter ner under 2 m/s (plan.md §3.1)', () => {
+  for (const share of [0.5, 0.7, 0.9, 0.97]) {
+    const speed = landWith(std, share);
+    assert.ok(speed < 2, `${share * 100} % av P0: ${speed.toFixed(2)} m/s`);
+  }
+  // Utan kudden måste effekten ligga inom några procent under P0.
+  assert.ok(landWith({ ...std, cushion: 0 }, 0.7) > 5);
+});
+
+test('luftkudden: att sluta dra helt blir ändå en hård sättning', () => {
+  assert.ok(landWith(std, 0) > 8);
+});
+
+test('luftkudden bär inget: på hovringseffekten står helikoptern still nära marken', () => {
+  const f = hovering(std, 2);
+  for (let i = 0; i < 20 * 10; i++) f.step(f.requiredPower());
+  assert.ok(Math.abs(f.h - 2) < 0.05, `höjd ${f.h.toFixed(2)} m`);
+  assert.ok(f.cushion(500) < 1e-6, 'högt upp finns ingen kudde');
 });

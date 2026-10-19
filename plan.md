@@ -14,7 +14,7 @@ Status: aspirantens flygskola går att spela: 14 övningar, 4 lektioner och uppf
 
 Det gamla läget mäter i princip bara styrka och kondition. Fjällräddaren ska belöna fler saker:
 
-- **Precision:** hålla ett höjdband och landa mjukt. Alla mål uttrycks relativt den egna lyfteffekten `P0`, så en lätt eller otränad spelare har samma chans. Att hovra på 300 m kräver bara 11 % över `P0`.
+- **Precision:** hålla sig ovanför en linje, tajma hämtningar och landa mjukt. Alla mål uttrycks relativt den egna lyfteffekten `P0`, så en lätt eller otränad spelare har samma chans. Att hovra på 300 m kräver bara 11 % över `P0`.
 - **Timing och läsförmåga:** sluta och börja veva i rätt ögonblick, parera en luftgrop, utnyttja uppvind.
 - **Hushållning:** fördela krafterna över ett långt uppdrag i stället för att ta ut sig tidigt.
 - **Beslut:** ta uppdraget eller inte, vänta ut vädret, välja flyghöjd, vända i tid.
@@ -54,20 +54,29 @@ Alla övningar är alltid öppna. Varje godkänd övning får 1–3 stjärnor f�
 |---|---|---|
 | first-lift | Första lyftet | Lyft till 50 m och landa (högst 3 m/s) |
 | bounce | Studsa | Lyft till 30 m och sätt ner mjukt, tre gånger |
-| hover | Hovring | 300 m ±25 m i 30 s |
-| stairs | Trappan | Hovra 12 s på 100, 200, 300 och 400 m (±20 m) |
+| hover | Hovring | Ovanför 300 m i 30 s |
+| stairs | Trappan | Ovanför 100, 200, 300 och 400 m, 12 s på varje |
 | altitude | Höjdflygning | Stig till 1 000 m och landa mjukt |
 | freefall | Fritt fall | Släpp på 1 000 m, hämta upp under 650 m men före 450 m |
 | elevator | Hissen | Tre fall i rad: släpp på 700 m, hämta upp mellan 500 och 330 m |
 | late-catch | Sen hämtning | Släpp på 800 m, vänta till 400 m, hämta upp före 280 m |
-| sandbag | Sandsäcken | Hovra på 150 m medan vinschen går, landa med lasten (20 % av kroppsvikten) |
-| engine | Motorstopp | Hovra på 400 m; motorn stannar efter 4–12 s, startar 100 m lägre; hämta upp före 180 m |
+| sandbag | Sandsäcken | Hovra på 150 m ±40 m medan vinschen går, landa med lasten (20 % av kroppsvikten) |
+| engine | Motorstopp | Hovra på 400 m ±50 m; motorn stannar efter 4–12 s, startar 100 m lägre; hämta upp före 180 m |
 | follow | Följ instruktören | Håll dig i nivå (±25 m) med instruktörens helikopter i 80 s, minst 60 % av tiden |
-| clouds | Molnflygning | I moln: stig till 350 m och håll 350 m ±30 m i 30 s med bara höjdmätaren |
+| clouds | Molnflygning | I moln: ovanför 350 m i 30 s med bara höjdmätaren |
 | patrol | Patrull | Mellan 400 och 500 m i sammanlagt 2 minuter |
 | rings | Ringbanan | Flyg genom minst 7 av 10 ringar |
 
-Stjärnorna bygger på landningsfarten (andel av gränsen), medelavvikelsen i hovringsbandet, hur djupt under hämtgränsen man hämtar upp (andel av utrymmet ned till golvet), andelen tid i nivå med instruktören och antalet ringar. En övning får stjärnorna från sitt svagaste moment.
+Stjärnorna bygger på landningsfarten (andel av gränsen), hur nära linjen man ligger (medelhöjden över linjen som andel av 100 m), medelavvikelsen i hovringsbandet, hur djupt under hämtgränsen man hämtar upp (andel av utrymmet ned till golvet), andelen tid i nivå med instruktören och antalet ringar. En övning får stjärnorna från sitt svagaste moment.
+
+### Hovring: ovanför en linje i stället för i ett band
+
+Att hovra i ett smalt band visade sig vara för svårt med ergen. Stadig stigning är `G · (P − P_req) / P0`, så att stå still kräver att varje drag träffar rätt effekt på några procent. Ett SkiErg-drag varierar mer än så, svaret kommer sent (motorn, rotorn och farten) och ett band kan man missa åt två håll. Därför håller man sig i stället ovanför en linje (`above`):
+
+- Klockan går bara när man är ovanför linjen. Under den står den still men börjar inte om, så ett snedsteg kostar bara tid.
+- Det blir ett jämnt tröskelpass: man ligger strax över behovet. Att ligga högt kostar mer effekt, eftersom behovet växer med höjden, och ger färre stjärnor (tre stjärnor i snitt högst 40 m över linjen, två högst 70 m).
+- Där ett band behövs (vinschen, motorstoppet, patrullen) är det brett, och tiden räknas sammanlagt.
+- Övningarna bygger mest på det ergen är bra på: stig, släpp och hämta upp. Det blir intervaller i flygspråk.
 
 ### Lektioner
 
@@ -90,7 +99,9 @@ Lektionerna sätter ihop övningar till ett längre pass i samma flygning (`core
 ### 3.1 Mjuk landning
 
 - Sjunkhastigheten styrs av hur mycket effekten ligger under behovet: den stadiga farten är `G · (P − P_req) / P0`, och rotorn och helikoptern tar ett par sekunder på sig att komma dit (spec §5). Med 0 W faller man i över 20 m/s.
-- För att sätta ner under 2 m/s måste man ligga inom ungefär 9 % under sin lyfteffekt. Det kräver precision snarare än kraft.
+- Utan hjälp måste man ligga inom ungefär 9 % under sin lyfteffekt för att sätta ner under 2 m/s. Det gick inte att träffa med ergen.
+- **Luftkudden** (spec §5, `cushion` och `cushionM`): de sista metrarna bromsas sjunket. Jämna drag mellan ungefär halva och hela lyfteffekten sätter ner under 2 m/s, så rådet är "dra lugnt, lite under hovringen, och sluta inte dra helt". Med 0 W blir det ändå en hård landning, och stjärnorna kräver fortfarande en lugn sjunk (tre stjärnor under 0,6 m/s när gränsen är 2 m/s).
+- En flare (släpp och ta i vid en linje strax ovanför plattan) provades i simulering men krävde lika exakt tajming nära marken, så den byggdes inte.
 - **Byggt:** fysiken registrerar sjunkhastigheten när helikoptern sätter ner (`flight.touchdown`). Landningssteget underkänner en landning över gränsen.
 - **Flygloggen** (spec §9.1) visar för varje landning hur många drag under 25 m som ledde till en mjuk sjunk och de sista dragen före sättningen. Loggar från riktiga spelare avgör om landningen är för svår. Spelet ska vara mer kul än svårt, så visar loggarna det förenklas landningen.
 
@@ -116,17 +127,17 @@ Vinschen går bara medan man är i bandet, men börjar inte om när man lämnar 
 
 ### 3.5 Uppflygningen
 
-Uppflygningen är obligatorisk för att bli junior. Den är fem moment i ett pass med en examinator, och varje moment bedöms strängt: för tidig hämtning eller ett övertagande underkänner momentet direkt, utan nytt försök. Alla moment flygs ändå, så att protokollet blir komplett.
+Uppflygningen är obligatorisk för att bli junior. Den är fyra moment i ett pass med en examinator, och varje moment bedöms strängt: för tidig hämtning eller ett övertagande underkänner momentet direkt, utan nytt försök. Alla moment flygs ändå, så att protokollet blir komplett.
 
 | Moment | Krav |
 |---|---|
-| Lyft och hovring | 150 m ±15 m i 20 s |
+| Lyft och hovring | Ovanför 150 m i 20 s |
 | Fritt fall | Släpp på 800 m, hämta upp under 550 m men före 400 m |
-| Motorstopp | Hovra på 450 m; hämta upp före 230 m när motorn startar igen |
-| Precisionshovring | 250 m ±15 m i 20 s |
+| Motorstopp | Hovra på 450 m ±50 m; hämta upp före 230 m när motorn startar igen |
 | Landning | Högst 1,5 m/s |
 
-- Uppflygningen är öppen från början. Banden på ±15 m och landningen under 1,5 m/s kräver att man övat.
+- Uppflygningen är öppen från början. Hämtningarna och landningen under 1,5 m/s kräver att man övat.
+- Precisionshovringen (250 m ±15 m) är struken: den mätte mest hur exakt ergen går att dosera.
 - Underkänd: protokollet visar vad som brast, och med `lessonPerDay` görs omprovet nästa dag.
 - Godkänd: certifikat med namn och datum, konfetti, graden junior och den lätta räddningshelikoptern i fri flygning. Menyn visar första larmet (Suljätten, 845 m) som kommer med uppdragen.
 
@@ -235,7 +246,7 @@ Vädret gör att samma uppdrag blir olika varje gång och att det inte räcker a
 
 1. ✅ **Övningsmotor.** Varje övning är en lista med steg: stig till X, håll X ±Y i Z s, fall till X, landa under V m/s. Motorn är ren logik, enhetstestad och körbar headless, som fysiken. Se `public/game/core/exercise.js`. `npm run exercises` kör övningarna med en autopilot (`tools/autopilot.js`).
 2. ✅ **Skolhelikopter.** Helikoptertyp som parameteruppsättning, med tak (1 500 m) och egen grafik. Se `public/game/core/helicopters.js`. Ljudet återstår.
-3. ✅ **Fjällräddaren-menyn efter inmatningen** (`view/career.js`): rubrik med räddningshelikoptern, namn, grad och loggbok, och karriärens steg som flikar: 1. Flygskolan (lektionerna och sedan övningarna, hela flygskolan i ett rutnät), 2. Övningar (de fjorton övningarna), 3. Uppflygning (med sina fem moment) och 4. Räddningsuppdrag (låst tills uppdragen finns). Korten ligger fyra i bredd och fyra rader i höjd på en glaspanel; fler rader rullas fram. Varje val är ett kort med en bild (`view/thumbs.js`): ritad himmel och fjäll med den platta helikoptern och förklarande band och pilar; stjärnor eller läge, och låsta kort under mörkt glas med ett hänglås; sidopanelen beskriver fliken och målet för kortet man pekar på, och visar vad ett drag startar. Juniorer har också Fri flygning där. Man väljer med piltangenterna och Enter, siffrorna 1–4 byter flik, ett tryck eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
+3. ✅ **Fjällräddaren-menyn efter inmatningen** (`view/career.js`): rubrik med räddningshelikoptern, namn, grad och loggbok, och karriärens steg som flikar: 1. Flygskolan (lektionerna och sedan övningarna, hela flygskolan i ett rutnät), 2. Övningar (de fjorton övningarna), 3. Uppflygning (med sina fyra moment) och 4. Räddningsuppdrag (låst tills uppdragen finns). Korten ligger fyra i bredd och fyra rader i höjd på en glaspanel; fler rader rullas fram. Varje val är ett kort med en bild (`view/thumbs.js`): ritad himmel och fjäll med den platta helikoptern och förklarande band och pilar; stjärnor eller läge, och låsta kort under mörkt glas med ett hänglås; sidopanelen beskriver fliken och målet för kortet man pekar på, och visar vad ett drag startar. Juniorer har också Fri flygning där. Man väljer med piltangenterna och Enter, siffrorna 1–4 byter flik, ett tryck eller avstår (Esc). Efter en övning kommer man tillbaka till menyn, så att man kan fortsätta öva utan att skriva in sig igen. Godkända övningar sparas på namnet (`progress.js`). Man står på ergen och ska inte behöva röra skärmen: menyn föreslår nästa ej godkända övning (sedan fri flygning) och ett drag startar den direkt. Efter en övning går ett drag tillbaka till menyn. De första 3 sekunderna i menyn och på resultatet räknas inga drag, så att man hinner läsa. Att trycka eller använda tangenterna behövs bara för att välja något annat än förslaget.
 4. ✅ **Hjälplinjer på skärmen:** målhöjd som streckad linje, hovringsband som fylls på med en lysande ring på målhöjden runt helikoptern, släpphöjd och fångstzon i fritt fall, en pulserande ring på plattan när man ska landa, och verkstaden vid startplatsen. Rubriken uppe till vänster säger vilken övning det är ("Övning 3 – Hovring", i lektioner också momentet). Panelen till höger tar effektstapelns plats under övningen och visar uppgiften med ett kort råd och återkopplingen, vad som krävs för en, två och tre stjärnor i steget (`starGuide` i `exercise.js`, samma gränser som bedömningen) som rader med guldstjärnor, höjd, mål (sjunkfarten mot gränsen under landningen) och den relativa effekten, och effekten de senaste 30 sekunderna. `?demo=hover` (eller annat övnings-id) flyger en övning utan erg.
 5. ✅ **Profiler och grader** som sparas på namnet, med loggbok och personbästa.
 6. ✅ **Uppflygningen**, lektionerna, övningarna 5–14 och den lätta räddningshelikoptern. `?demo=<id>` flyger en övning, lektion (`lesson-1`) eller uppflygningen (`exam`) med autopiloten.
@@ -250,7 +261,7 @@ Första bygget omfattade steg 1–4 med övningarna 1–4, andra bygget steg 5�
 - **Riktning:** Ska det bara vara upp och ner, som i dag, eller en sidovy där man också flyger åt sidan till platsen? Sidovyn blir snyggare men kräver mycket mer, eftersom ergen bara ger ett värde, effekten.
 - **Tröghet:** Byggt som fysik (spec §4–5, `physics-plan.md`): motorn ger varje drags effekt utan medelvärde, rotorbladen har massa (`rotorTauS`, 0,5 s) och `g` (15 m/s²) styr hur fort farten följer. Öppet är om värdena är rätt när riktiga spelare provar, och om hämtningarna i fritt fall har blivit för svåra: autopiloten hämtar nu upp ungefär 50 m under gränsen i stället för 30 m. Rotorbladens massa kan också bli en egenskap per helikopter, där den tunga helikoptern är trögare.
 - **Användning:** Spelet körs hemma, av samma personer över tid. Därför är karriären med sparade profiler och en lektion per dag viktig. På ett event stängs `lessonPerDay` av.
-- **Svårighet i uppflygningen:** är ±15 m och 1,5 m/s lagom för att motivera några lektioner? Behöver provas av riktiga spelare. Flygloggarna (spec §9.1) visar vilka moment som är svåra.
+- **Svårighet i uppflygningen:** är hämtningarna och 1,5 m/s med luftkudden lagom för att motivera några lektioner? Behöver provas av riktiga spelare. Flygloggarna (spec §9.1) visar vilka moment som är svåra.
 - **Gamla läget:** Ska "så högt som möjligt" med topplista finnas kvar på sikt?
 - **Namn på helikoptrarna.**
 - **Förvarning om luftgropar:** ska de alltid synas i förväg, eller bara hos högre grader?

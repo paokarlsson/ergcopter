@@ -757,7 +757,7 @@ function drillInfo(run, f, h, vy, lift) {
     note = last.status === 'passed' ? `✓ ${last.name} ${starText(last.stars)}` : `✗ ${last.name}: ${last.failReason}`;
   } else if (moments > 1 && f.t < INTRO_S) note = `${who}: ${run.exercise.intro}`;
   let done = null; // andel av steget, för stapeln
-  if (step.type === 'hover' || step.type === 'winch') done = step.held / step.holdS;
+  if (step.type === 'hover' || step.type === 'winch' || step.type === 'above') done = step.held / step.holdS;
   else if (step.type === 'follow') done = step.elapsed / step.path.at(-1)[0];
   else if (step.type === 'rings') done = step.outcomes.length / step.rings.length;
   else if (step.type === 'freefall' && (step.reps ?? 1) > 1) done = step.catches.length / step.reps;
@@ -779,9 +779,10 @@ function drillInfo(run, f, h, vy, lift) {
 /** Kort råd under instruktionen i övningens panel, per stegtyp. */
 const STEP_LEADS = {
   climb: 'Dra hårdare än hovringen så stiger du. Släpp lite när du närmar dig målet.',
+  above: 'Ligg strax ovanför linjen. Hamnar du under står klockan bara still.',
   hover: 'Stabil höjd och jämna drag ger fler stjärnor.',
-  winch: 'Häng stilla i bandet medan vinschen arbetar.',
-  land: 'Bromsa i god tid och sätt ner mjukt på plattan.',
+  winch: 'Häng kvar i bandet medan vinschen arbetar.',
+  land: 'Dra lugnt, lite under hovringen. Luftkudden nära marken tar emot – sluta bara inte dra helt.',
   freefall: 'Låt den falla fritt och fånga upp den i zonen.',
   engineout: 'Motorn kan stanna när som helst. Var beredd att fånga upp.',
   follow: 'Ligg i nivå med instruktörens helikopter.',
@@ -794,6 +795,8 @@ function stepGoal(step) {
   switch (step.type) {
     case 'climb':
       return m(step.to);
+    case 'above':
+      return `över ${m(step.floor)}`;
     case 'hover':
     case 'winch':
       return `${m(step.at)} ±${step.tol}`;

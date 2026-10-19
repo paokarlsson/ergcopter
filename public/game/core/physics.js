@@ -13,6 +13,11 @@
 // tidskonstanten rotorTauS vid marken (E0 = 1,5 · rotorTauS · P0). Tyngden är Mg = P0 / G.
 // Då kräver hovring på höjden h exakt P0 · (1 + h / H_air), och stadig stigning ger
 // v = G · (P − P_req(h)) / P0. När helikoptern sjunker driver fallet rotorn: autorotation.
+//
+// Luftkudden: nära marken trycks luften under rotorn ihop och bromsar sjunket,
+//   dv/dt += c · e^(−h / L) · |v|  när v < 0   (c = cushion, L = cushionM)
+// Den bär ingenting när helikoptern står still, så man svävar inte på den, men den
+// tar emot en lugn sjunk så att landningen blir mjuk utan exakt effekt (plan.md §3.1).
 // Allt räknas relativt spelarens P0, så alla flyger samma helikopter skalad efter sin
 // egen lyfteffekt (spec §6).
 
@@ -83,6 +88,12 @@ export class Flight {
     return (this.airDensity() * this.rotorSpeed ** 2) / this.massRatio;
   }
 
+  /** Luftkuddens broms (1/s) på höjden h: hur fort den tar ned sjunkfarten. */
+  cushion(h = this.h) {
+    const { cushion = 0, cushionM = 1 } = this.cfg;
+    return cushion > 0 ? cushion * Math.exp(-Math.max(0, h) / cushionM) : 0;
+  }
+
   /** Effekt som krävs för att hålla höjden h. */
   requiredPower(h = this.h) {
     return this.P0 * (1 + h / this.cfg.H_air);
@@ -125,6 +136,7 @@ export class Flight {
     this.E = Math.max(0, this.E + (power - this.rotorP0 * sigma * n ** 3 - work) * dt);
 
     let v = this.v + g * (lift / this.massRatio - 1) * dt;
+    if (v < 0) v *= Math.exp(-this.cushion() * dt); // luftkudden bromsar sjunket
     if (maxSinkRate > 0) v = Math.max(v, -maxSinkRate);
     if (this.h <= 0 && v < 0) v = 0; // markvillkor
     if (ceiling > 0 && this.h >= ceiling && v > 0) v = 0; // taket

@@ -28,7 +28,7 @@ const STEPS = [
     id: 'exam',
     label: 'Uppflygning',
     title: 'Uppflygning',
-    text: 'Fem moment i ett pass med examinatorn, utan omtag. Klarar du alla blir du junior fjällräddare och får räddningshelikoptern.',
+    text: 'Fyra moment i ett pass med examinatorn, utan omtag. Klarar du alla blir du junior fjällräddare och får räddningshelikoptern.',
   },
   {
     id: 'missions',
@@ -49,7 +49,7 @@ const STATE = {
 };
 
 // Bilden till uppflygningens moment, från övningen som liknar det mest
-const EXAM_THUMBS = { 'exam-hover': 'hover', 'exam-freefall': 'freefall', 'exam-engine': 'engine', 'exam-precision': 'hover', 'exam-landing': 'landing' };
+const EXAM_THUMBS = { 'exam-hover': 'hover', 'exam-freefall': 'freefall', 'exam-engine': 'engine', 'exam-landing': 'landing' };
 
 export class CareerMenu {
   #art = new Map(); // färdiga kortbilder, så att ett flikbyte inte ritar om helikoptrarna
